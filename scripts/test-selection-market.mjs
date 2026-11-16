@@ -38,6 +38,17 @@ for(const key of ['gGoals','gCorners','gCards','gGoalTime','gPlayer','gTeamFouls
 // Other fixtures and other actual provider market keys are independent.
 assert.notEqual(selectionMarketIdentity(over),selectionMarketIdentity(pick('101|g6379|2.5|Over')));
 assert.notEqual(selectionMarketIdentity(over),selectionMarketIdentity(pick('100|g6379p1|2.5|Over')));
+// Zizobet embeds line/interval/threshold parameters after @. Those
+// parameters are alternatives within the same native market ID, not new
+// independent markets that can be stacked on one ticket.
+const nativeA=pick('100|zz6379@eyJwMSI6IjEifQ|2.5|Over');
+const nativeB=pick('100|zz6379@eyJwMSI6IjIifQ|3.5|Under');
+assert.equal(selectionMarketIdentity(nativeA),selectionMarketIdentity(nativeB));
+assert.throws(()=>assertDistinctSelectionMarkets([nativeA,nativeB]),
+ error=>error.code==='DUPLICATE_MARKET');
+assert.deepEqual(toggleMarketSelection([nativeA],nativeB),[nativeB]);
+assert.notEqual(selectionMarketIdentity(nativeA),
+ selectionMarketIdentity(pick('100|zz6380@eyJwMSI6IjEifQ|2.5|Over')));
 // IDs and frozen source contracts, never translated names, drive identity.
 assert.equal(selectionMarketIdentity(over),selectionMarketIdentity({matchId:100,marketKey:'g6379',line:'2.5'}));
 assert.deepEqual(toggleMarketSelection(
