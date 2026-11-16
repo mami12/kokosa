@@ -69,6 +69,9 @@ try{
  await assert.rejects(assertMarketEnabled(quoted,(...args)=>db.query(...args),live),
   error=>error?.code==='MARKET_NOT_OFFERED');
  await assertMarketEnabled(quoted,(...args)=>db.query(...args),prematch);
+ await assert.rejects(assertMarketEnabled({market_name:'Early Payout'},async()=>{
+  throw Error('excluded markets must be rejected before any policy query');
+ }),error=>error?.code==='MARKET_NOT_OFFERED');
  await db.query("update app_market_catalog set enabled=false where key='zizobet:prematch:800'");
  await refreshMarketCatalog({database});
  assert.equal(marketIsEnabled(quoted,prematch),false,'Prematch native ID block applies');
