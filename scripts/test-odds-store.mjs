@@ -67,6 +67,11 @@ check('history is newest first', hist.length < 2 || new Date(hist[0].at) >= new 
 
 const suspended = { ...moved, suspended: true };
 check('a suspension change is reported', store.applyRows([suspended]).changed.length === 1);
+const renamed = { ...suspended, marketName: String(suspended.marketName ?? '') + ' revised' };
+check('a market label change is broadcast without a price move', store.applyRows([renamed]).changed.length === 1);
+const renamedStored = store.getOddsForMatches([sample.matchId]).find((r) =>
+  r.market_key === sample.marketKey && r.line === (sample.line ?? '') && r.outcome_key === sample.outcomeKey);
+check('the revised market label replaces the stale stored label', renamedStored?.market_name === renamed.marketName);
 
 // --- the board view ---------------------------------------------------------------
 const boardRows = store.getOddsForMatches([sample.matchId]);
