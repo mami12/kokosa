@@ -126,7 +126,7 @@ export function oddsOf(row,quotes,meta,live,open=true){
  const widths=new Map();for(const q of quotes??[]){const p=text(meta.positions?.get(String(q.pid))??q.pn).match(/^min\s+(\d+)-(\d+)$/i);if(!p)continue;const width=Number(p[2])-Number(p[1])+1;if(width<=0)continue;const counts=widths.get(Number(q.mid))??new Map();counts.set(width,(counts.get(width)??0)+1);widths.set(Number(q.mid),counts);}
  for(const q of quotes??[]){const id=Number(q.mid),def=(live?meta.liveMarkets:meta.preMarkets).get(id);if(!def)continue;
   if(id===27073)continue;
-  const rawName=def.Name??def.name;if(!rawName)continue;
+  const rawName=def.Name??def.name??def.nm;if(!rawName)continue;
   // Skip retirements before title expansion, key generation or odds storage.
   if(isRetiredPlayerOfferMarket({name:rawName}))continue;
   // Keep every quoted total line, including quarter thresholds (0.25/0.75).
