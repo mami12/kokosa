@@ -852,32 +852,7 @@ export async function gradeStoredEventContract(line,result,{execute}={}){
   return gradeHandicapContract(line.live_contract,result);
  const primary=await gradeSingleEventProvider(line,result,{execute,provider:'zizobet'});
  if(primary!==null)return primary;
- if(!result||!['goal','corner','card'].includes(line?.live_contract?.event)||
-     typeof execute!=='function')return null;
- // A fully confirmed primary chronology that still cannot prove this contract
- // (e.g. a same-second ordinal tie) must not be overridden by a backup source.
- const authoritative=(await execute(`select 1 from app_match_event_coverage
-   where match_id=$1 and provider='zizobet' and kind=$2
-     and complete=true and confirmed_at is not null limit 1`,
-   [line.match_id,line.live_contract.event])).rows;
- if(authoritative.length)return null;
- const {rows}=await execute(`select provider from app_match_event_coverage
-   where match_id=$1 and kind=$5 and provider=any($2::text[])
-     and complete=true and confirmed_at is not null
-     and count_home=$3 and count_away=$4
-   order by observed_at desc limit 8`,
-   [line.match_id,['fotmob','apifootball','sportapi','goalapi','bsd','worldcup26'],
-    line.live_contract.event==='goal'?result.home_score:
-      line.live_contract.event==='corner'?result.corners_home:result.cards_home,
-    line.live_contract.event==='goal'?result.away_score:
-      line.live_contract.event==='corner'?result.corners_away:result.cards_away,
-    line.live_contract.event]);
- if(!rows.length)return null;
- const verdicts=[];
- for(const row of rows){
-   const status=await gradeSingleEventProvider(line,result,{execute,provider:row.provider});
-   if(!['WON','LOST','VOID'].includes(status))return null;
-   verdicts.push(status);
- }
- return new Set(verdicts).size===1?verdicts[0]:null;
+ // Zizobet is the only settlement authority. Enrichment providers may add
+ // display metadata, but cannot decide or confirm a financial result.
+ return null;
 }
