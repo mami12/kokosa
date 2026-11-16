@@ -14,7 +14,7 @@ export function deliveryCategory(m={}){
  if(type==='over_under'||/\bgoals?\b|\btotal\b|over\s*\/?\s*under|both teams|btts|correct score|odd\s*\/\s*even/.test(n))return 'Goals';
  return 'Other';
 }
-export const offeredMarket=(m,match)=>!isExcludedOfferMarket(m)&&marketIsEnabled(m,match);
+export const offeredMarket=(m,match)=>!['Cards','Players'].includes(deliveryCategory(m))&&!isExcludedOfferMarket(m)&&marketIsEnabled(m,match);
 export function detailProjection(match,category='all',page){
  const markets=(match.markets??[]).filter(m=>offeredMarket(m,match)),sets=Object.fromEntries(CATEGORIES.map(c=>[c,new Set()]));
  for(const m of markets){const key=[m.extId??m.key,m.name,m.period??0].join('|');sets.all.add(key);sets[deliveryCategory(m)].add(key);}
