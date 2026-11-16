@@ -23,6 +23,11 @@ for(const line of ['0.25','0.75','1.25','1.75']){
 assert.equal(hasFinalSettlementRule({provider_id:'ZIZOBET',market_name:'Total Goals',
  outcome_name:'Over',outcome_key:'Over',line:'2.5'}),true,
  'ordinary half-goal totals retain their existing settlement rule');
+for(const market of ['Total Corners','Home Team Total Corners']){
+ assert.equal(hasFinalSettlementRule({provider_id:'ZIZOBET',market_name:market,
+  outcome_name:'Over',outcome_key:'Over',line:'1.75'}),false,
+  market+' quarter totals must not be graded as full wins/losses');
+}
 try{
  await db.exec(`create table app_provider_market_definition(
     provider_id text not null,scope text not null,native_market_id text not null,
