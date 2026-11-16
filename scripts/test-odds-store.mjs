@@ -68,7 +68,9 @@ check('history is newest first', hist.length < 2 || new Date(hist[0].at) >= new 
 const suspended = { ...moved, suspended: true };
 check('a suspension change is reported', store.applyRows([suspended]).changed.length === 1);
 const renamed = { ...suspended, marketName: String(suspended.marketName ?? '') + ' revised' };
-check('a market label change is broadcast without a price move', store.applyRows([renamed]).changed.length === 1);
+const renamedChanges = store.applyRows([renamed]).changed;
+check('a market label change is broadcast without a price move', renamedChanges.length === 1);
+check('metadata-only broadcasts are marked for frontend refresh', renamedChanges[0]?.metadataChanged === true);
 const renamedStored = store.getOddsForMatches([sample.matchId]).find((r) =>
   r.market_key === sample.marketKey && r.line === (sample.line ?? '') && r.outcome_key === sample.outcomeKey);
 check('the revised market label replaces the stale stored label', renamedStored?.market_name === renamed.marketName);
