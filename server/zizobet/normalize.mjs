@@ -4,6 +4,12 @@ export const OFFSET=8_000_000_000_000;
 export const zId=id=>{if(!Number.isSafeInteger(Number(id))||Number(id)<=0||Number(id)>100000000000)throw Error('Invalid Zizobet ID');return OFFSET+Number(id);};
 export const isZizoId=id=>Number(id)>OFFSET&&Number(id)<OFFSET+100000000000;
 const text=v=>String(v??'').trim();
+const flagTrue=v=>v===true||v===1||/^(?:1|true|yes|on)$/i.test(text(v));
+const flagFalse=v=>v===false||v===0||/^(?:0|false|no|off)$/i.test(text(v));
+const resolvedQuote=v=>{
+ if(v==null||text(v)==='')return false;
+ const n=Number(v);return Number.isFinite(n)?n!==0:true;
+};
 const slug=s=>text(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 const pair=s=>{const m=text(s).match(/^(\d+):(\d+)$/);return m?m.slice(1).map(Number):null;};
 const stamp=s=>{if(!s)return null;const n=Date.parse(/[zZ]|[+]\d\d:\d\d$/.test(s)?s:s+'Z');return Number.isFinite(n)?new Date(n):null;};
@@ -145,7 +151,7 @@ export function oddsOf(row,quotes,meta,live,open=true){
   const fullTotal=(live&&id===603)||(!live&&id===537);
   const label=resolveMarketTitle(position,q)??String(position);
   const canonical=/^(?:1|x|2|1x|12|x2)$/i.test(label)?label.toUpperCase():/^(?:over|o)$/i.test(label)?'Over':/^(?:under|u)$/i.test(label)?'Under':/^(?:yes|no)$/i.test(label)?label[0].toUpperCase()+label.slice(1).toLowerCase():null;
-  const price=Number(live?q.v:q.coef),suspended=!open||q.visible===false||q.lock===true||q.res!=null&&q.res!==0||!Number.isFinite(price)||price<=1;
+  const price=Number(live?q.v:q.coef),suspended=!open||flagFalse(q.visible)||flagTrue(q.lock)||resolvedQuote(q.res)||!Number.isFinite(price)||price<=1;
   // Preserve the untouched public API name/selection and quote parameters
   // for the durable PostgreSQL archive. Browser labels are a separate layer.
   const nativeQuote=Object.fromEntries(
