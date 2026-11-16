@@ -181,6 +181,10 @@ setCatalogRows([
  {key:'goals-market',name:'Total Goals',enabled:true}
 ]);
 assert.deepEqual(catalogRows().map(row=>row.key),['goals-market']);
+assert.equal(marketIsEnabled({market_name:'Early Payout'}),false,
+ 'excluded promotions cannot pass a catalog-only market check');
+assert.equal(marketIsEnabled({market_name:'Asian Handicap'}),false,
+ 'excluded handicap offers cannot pass a catalog-only market check');
 for(const category of ['players','cards','fouls'])
  assert.equal(MARKET_CATEGORY_IDS.includes(category),false,category+' category must not be offered');
 
