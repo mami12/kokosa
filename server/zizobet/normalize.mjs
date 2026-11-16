@@ -6,6 +6,7 @@ export const isZizoId=id=>Number(id)>OFFSET&&Number(id)<OFFSET+100000000000;
 const text=v=>String(v??'').trim();
 const flagTrue=v=>v===true||v===1||/^(?:1|true|yes|on)$/i.test(text(v));
 const flagFalse=v=>v===false||v===0||/^(?:0|false|no|off)$/i.test(text(v));
+const booleanFlag=v=>flagTrue(v)?true:flagFalse(v)?false:undefined;
 const resolvedQuote=v=>{
  const raw=text(v).toLowerCase();if(!raw||/^(?:false|no|off)$/.test(raw))return false;
  if(/^(?:true|yes|on)$/.test(raw))return true;
@@ -85,9 +86,10 @@ export function rowOf(game,meta,live){
 }
 export function infoOf(row,game,meta){
  const status=Number(game.EventStatus??game.MatchStatusID),phase=meta.statuses.get('1_'+status),score=pair(game.Score);
+ const liveOpen=booleanFlag(game.LiveBetStatus),prematchOpen=booleanFlag(game.s);
  const hasOpenOdds=row.service==='LIVE'
-  ? game.LiveBetStatus==null?undefined:game.LiveBetStatus===true&&status!==40
-  : typeof game.s==='boolean'?game.s:undefined;
+  ? liveOpen===undefined?undefined:liveOpen&&status!==40
+  : prematchOpen;
  const info={matchId:row.match_id,feedStatus:status===40&&score?'Finished':status===40?'Result Pending':phase==='1st half'?'First Half':phase==='2nd half'?'Second Half':phase??(row.service==='LIVE'?'Live':'Not Started'),...(hasOpenOdds===undefined?{}:{hasOpenOdds})};
  if(score){info.homeScore=score[0];info.awayScore=score[1];}
  try{
