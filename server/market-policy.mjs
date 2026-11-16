@@ -23,8 +23,12 @@ const hasPlayerParameter=market=>{
  // provider-key payload. Decode that exact Zizobet identity as a final guard.
  const encoded=String(market?.market_key??market?.marketKey??market?.accepted_contract?.providerMarketKey??'').match(/^zz\d+@([A-Za-z0-9_-]+)$/)?.[1];
  if(!encoded)return false;
- try{return !!JSON.parse(Buffer.from(encoded,'base64url').toString('utf8'))?.pl;}
- catch{return false;}
+ try{
+  const base64=encoded.replace(/-/g,'+').replace(/_/g,'/').padEnd(Math.ceil(encoded.length/4)*4,'=');
+  const decoded=atob(base64);
+  const bytes=Uint8Array.from(decoded,char=>char.charCodeAt(0));
+  return !!JSON.parse(new TextDecoder().decode(bytes))?.pl;
+ }catch{return false;}
 };
 const PLAYER_WORDS=/\b(?:player|players|goalscorer|goal scorer|top scorer|scorer|assist|assists|goalkeeper|goal keeper)\b/;
 const NAMED_PLAYER=/^[\p{L}][\p{L}'-]{1,35},\s*[\p{L}][\p{L}'-]{1,35}/u;
