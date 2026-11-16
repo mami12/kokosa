@@ -30,7 +30,7 @@ const hasPlayerParameter=market=>{
   return !!JSON.parse(new TextDecoder().decode(bytes))?.pl;
  }catch{return false;}
 };
-const PLAYER_WORDS=/\b(?:player|players|goalscorer|goal scorer|top scorer|scorer|assist|assists|goalkeeper|goal keeper)\b/;
+const PLAYER_WORDS=/\b(?:player|players|goalscorer|goal scorer|top scorer|scorer|assist|assists|goalkeeper|goal keeper)\b|\{pl\}/;
 const NAMED_PLAYER=/^[\p{L}][\p{L}'-]{1,35},\s*[\p{L}][\p{L}'-]{1,35}/u;
 const UNSUPPORTED_STATS=/\b(?:fouls?|cards?|carded|booked|bookings?|sent\s+off|tackles?|throw[ -]?ins?|saves?)\b/;
 export function isPlayerOfferMarket(market){
