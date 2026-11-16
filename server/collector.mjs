@@ -43,6 +43,9 @@ export function buildMarkets(oddsRows,{includeRemoved=false}={}) {
   const markets = new Map();
 
   for (const o of oddsRows) {
+    // Apply native title/parameter exclusions to legacy DB rows too, not only
+    // newly normalized memory-feed rows.
+    if(isExcludedOfferMarket(o))continue;
     // Zizobet emits null-price tombstones for removed/deduplicated offers.
     // Keep those in the store for stale-ticket validation, not on the board.
     if (!includeRemoved&&/^zz\d+@/.test(String(o.market_key)) && o.price == null && o.suspended === true) continue;
