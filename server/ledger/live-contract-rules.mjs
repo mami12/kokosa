@@ -561,6 +561,14 @@ export const liveContract=(line,{counts={},clock=null,teams={}}={})=>{
  // Unknown/missing foul counters leave these bets PENDING, not LOST.
  if(contract?.event==='foul'&&!['window','window-total','interval-leader'].includes(contract.kind))return null;
  if(!contract)return null;
+ // Quarter-line totals require split-stake grading. The event counter below
+ // can prove the count, but cannot represent half-win/half-loss outcomes.
+ // Leave these native offers without an auto-settlement contract so placement
+ // can accept them and the ticket remains PENDING until that rule exists.
+ const threshold=Number(contract.threshold);
+ const quarterLine=Number.isFinite(threshold)&&
+  Math.abs(threshold*4-Math.round(threshold*4))<1e-9&&Math.abs(Math.round(threshold*4))%2===1;
+ if(quarterLine&&['over','under','team-total-goals'].includes(contract.kind))return null;
  if(yellow||red){
   // Reject a color qualifier attached to an unrelated contract.
   if(contract.event!=='card'||!['over','under','exact','range','atLeast',
