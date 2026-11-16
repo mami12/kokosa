@@ -14,7 +14,7 @@ export async function seedNativeMarketCatalog({database=pool}={}){
      from app_provider_market_definition
     where provider_id='ZIZOBET' and scope in ('LIVE','PREMATCH')
       and native_market_name is not null and trim(native_market_name)<>''
- `)).rows.filter(r=>isFootballMarketName(r.name)&&!isExcludedOfferMarket({name:r.name}));
+ `)).rows.filter(r=>isFootballMarketName(r.name)&&!isExcludedOfferMarket({name:r.name,key:r.key}));
 
  if(rows.length){
    await database.query(`insert into app_market_catalog(key,name)
