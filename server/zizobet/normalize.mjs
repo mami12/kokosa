@@ -7,6 +7,14 @@ const text=v=>String(v??'').trim();
 const flagTrue=v=>v===true||v===1||/^(?:1|true|yes|on)$/i.test(text(v));
 const flagFalse=v=>v===false||v===0||/^(?:0|false|no|off)$/i.test(text(v));
 const booleanFlag=v=>flagTrue(v)?true:flagFalse(v)?false:undefined;
+// Prematch `s` is a suspension bit in numeric API snapshots (0=open,
+// 1=suspended), while older snapshots also send a boolean open flag.
+const prematchOpenFlag=v=>{
+ if(typeof v==='boolean')return v;
+ const raw=text(v).toLowerCase();if(!raw)return undefined;
+ if(raw==='0')return true;if(raw==='1')return false;
+ return booleanFlag(v);
+};
 const resolvedQuote=v=>{
  const raw=text(v).toLowerCase();if(!raw||/^(?:false|no|off)$/.test(raw))return false;
  if(/^(?:true|yes|on)$/.test(raw))return true;
@@ -86,7 +94,7 @@ export function rowOf(game,meta,live){
 }
 export function infoOf(row,game,meta){
  const status=Number(game.EventStatus??game.MatchStatusID),phase=meta.statuses.get('1_'+status),score=pair(game.Score);
- const liveOpen=booleanFlag(game.LiveBetStatus),prematchOpen=booleanFlag(game.s);
+ const liveOpen=booleanFlag(game.LiveBetStatus),prematchOpen=prematchOpenFlag(game.s);
  const hasOpenOdds=row.service==='LIVE'
   ? liveOpen===undefined?undefined:liveOpen&&status!==40
   : prematchOpen;
