@@ -23,7 +23,7 @@ import { parseBuilderId, findLeg, listAvailableTemplates } from './bet-builders.
 import { multipliedComboPrice, isSameGameComboLine } from './automatic-combos.mjs';
 import { liveRiskSettings } from '../live-risk-settings.mjs';
 import { isDecidedLiveOutcome, isYbetsNativeOffer } from './decided-markets.mjs';
-import {isExcludedOfferMarket,isRetiredPlayerOfferMarket} from '../market-policy.mjs';
+import {isExcludedOfferMarket} from '../market-policy.mjs';
 import {assertMarketEnabled} from './market-catalog-store.mjs';
 import { chargeManagerCommission, refundManagerCommission } from './manager-finance.mjs';
 import { assertPlayerCanBet } from './player-controls.mjs';
