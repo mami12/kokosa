@@ -38,7 +38,7 @@ export async function listPlayerBetActivity({ userId, status = 'ALL', from = nul
   const start = validHistoryDate(from, 'nga');
   const end = validHistoryDate(to, 'deri');
   if (start && end && start > end) fail('Intervali i datave është i pavlefshëm.');
-  const max = Math.max(1, Math.min(Number(limit) || 200, 500));
+  const max = Math.max(1, Math.min(Number(limit) || 200, 10000));
 
   const dateConditions = (alias, field, params) => {
     const parts = [];
@@ -76,7 +76,7 @@ export async function listPlayerBetActivity({ userId, status = 'ALL', from = nul
     }));
   }
 
-  // Filters operate in SQL before LIMIT; 500 recent PENDING bets cannot hide
+  // Filters operate in SQL before LIMIT; a large test run cannot hide
   // older WON/LOST selections. "ALL" merges both collections chronologically.
   return [...tickets, ...rejected]
     .sort((a, b) => new Date(b.placedAt).getTime() - new Date(a.placedAt).getTime())

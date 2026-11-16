@@ -121,7 +121,7 @@ ledgerRouter.get(
     userId: req.user.id,
     from: req.query.from,
     to: req.query.to,
-    limit: asLimit(req.query.limit, 100, 500),
+    limit: asLimit(req.query.limit, 100, 10000),
   }))),
 );
 
@@ -135,7 +135,7 @@ ledgerRouter.get(
     res.json(await betHistory.listPlayerBetActivity({
       userId: req.user.id, status: req.query.status,
       from: req.query.from, to: req.query.to,
-      limit: asLimit(req.query.limit, 200, 500),
+      limit: asLimit(req.query.limit, 200, 10000),
     }));
   }),
 );

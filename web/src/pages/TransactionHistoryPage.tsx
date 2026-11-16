@@ -119,7 +119,7 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
         ? '/manager/transactions'
         : '/me/transactions';
     try {
-      const params = { ...toDateRange(from, to), limit: 500 };
+      const params = { ...toDateRange(from, to), limit: 10000 };
       const [response, summaryResponse] = await Promise.all([
         apiClient.get(endpoint, { params }),
         user?.role === 'PLAYER'
@@ -146,7 +146,7 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
     setBetLoading(true);
     setBetError('');
     void apiClient.get('/me/bets', {
-      params: { status: betFilter, ...betRange, limit: 500 },
+      params: { status: betFilter, ...betRange, limit: 10000 },
     }).then(response => {
       if (active) setBetEntries(response.data);
     }).catch((e: any) => {
@@ -282,7 +282,7 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
               ) : (
                 <>
                   <p className="border-b border-tertiary/60 px-3 py-2 text-[11px] text-text-secondary">
-                    {betEntries.length} {" " + t("rezultate") + " "}{betEntries.length === 500 ? t('(maksimumi 500 më të fundit për filtrin)') : ''}
+                    {betEntries.length} {" " + t("rezultate")}
                   </p>
                   <div className="max-h-[560px] divide-y divide-tertiary/70 overflow-y-auto">
                     {betEntries.map(entry => (

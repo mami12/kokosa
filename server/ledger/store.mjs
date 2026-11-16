@@ -439,7 +439,7 @@ export async function listTransactions({ role = 'PLAYER', userId = null, from = 
     params.push(end);
     conditions.push(`tx.created_at <= $${params.length}::timestamptz`);
   }
-  params.push(Math.min(Math.max(Number(limit) || 100, 1), 500));
+  params.push(Math.min(Math.max(Number(limit) || 100, 1), 10000));
   const where = conditions.length ? `where ${conditions.join(' and ')}` : '';
   const res = await runQuery(
     `with source as (

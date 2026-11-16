@@ -1242,7 +1242,10 @@ export async function listLogicalTickets({userId = null, managerId = null, statu
   if (statuses) { params.push(statuses); conditions.push(`coalesce(b.logical_status,t.status)=any($${params.length}::text[])`); }
   if (from) { params.push(from); conditions.push(`coalesce(b.created_at,t.placed_at)>=$${params.length}::timestamptz`); }
   if (to) { params.push(to); conditions.push(`coalesce(b.created_at,t.placed_at)<=$${params.length}::timestamptz`); }
-  params.push(Math.min(Math.max(Number(limit)||200,1),500));
+  // The player's active/history views must not silently truncate a large test run.
+  // Keep the bound finite to protect the database while allowing all ordinary
+  // tickets in a local account to be returned in one request.
+  params.push(Math.min(Math.max(Number(limit)||200,1),10000));
   const result = await runQuery(`with batch_state as (
     select b.id,b.user_id,b.ticket_ids,b.created_at,${SYSTEM_STATUS_SQL} as logical_status
     from app_ticket_batch b join app_ticket c on c.id=any(b.ticket_ids) and c.user_id=b.user_id
@@ -1262,12 +1265,12 @@ export async function listLogicalTickets({userId = null, managerId = null, statu
 
 /** open tickets (My Bets -> active) */
 export async function listActive(userId, options = {}) {
-  return listLogicalTickets({userId,statuses:['PENDING'],limit:500},options);
+  return listLogicalTickets({userId,statuses:['PENDING'],limit:10000},options);
 }
 
-/** settled tickets (My Bets -> history): the last 50 */
+/** settled tickets (My Bets -> history): all retained tickets up to the safe response bound */
 export async function listHistory(userId, options = {}) {
-  return listLogicalTickets({userId,statuses:['WON','LOST','VOID','REVERTED','CANCELLED'],limit:50},options);
+  return listLogicalTickets({userId,statuses:['WON','LOST','VOID','REVERTED','CANCELLED'],limit:10000},options);
 }
 
 /** booking code (public) or a ticket id fragment, as the betslip's search box does */

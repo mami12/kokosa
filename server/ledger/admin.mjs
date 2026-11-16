@@ -490,7 +490,7 @@ adminRouter.post('/admin/settlement-check/place', ...admin, guard(async (req, re
 
 const listTickets = (scoped) =>
   guard(async (req, res) => {
-    const limit = Math.min(Number(req.query.limit) || 200, 500);
+    const limit = Math.min(Number(req.query.limit) || 200, 10000);
     res.json(await bets.listLogicalTickets({managerId:scoped?req.user.id:null,limit}));
   });
 

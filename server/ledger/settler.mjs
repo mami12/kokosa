@@ -85,8 +85,9 @@ export function unverifiedCompositeLine(line={},result={}){
 export function gradeHeldNativeCombo(line,result){
  const saved=line?.accepted_contract,reason=String(saved?.settlementHold??'');
  if(!['NATIVE_FINAL_RULE_UNMAPPED','NATIVE_HALF_COMBO_UNMAPPED',
-      'NATIVE_PERIOD_GOAL_UNMAPPED','NATIVE_CONTRACT_REVIEW'].includes(reason))return null;
- if(String(saved.sourceProviderId??'').toUpperCase()!=='ZIZOBET')return null;
+      'NATIVE_PERIOD_GOAL_UNMAPPED','NATIVE_CONTRACT_REVIEW',
+      'NATIVE_LIVE_HANDICAP_UNMAPPED','NATIVE_HANDICAP_UNMAPPED'].includes(reason))return null;
+ if(String(saved?.sourceProviderId??'').toUpperCase()!=='ZIZOBET')return null;
  const equal=(a,b)=>String(a??'')===String(b??'');
  if(!saved.providerMarketName||!saved.providerOutcomeName||
     !equal(saved.providerMarketName,line.market_name)||
@@ -101,13 +102,100 @@ export function gradeHeldNativeCombo(line,result){
   market_name:saved.providerMarketName,
   outcome_name:saved.providerOutcomeName,
   outcome_key:saved.providerOutcomeKey,
-  line:String(saved.line??''),period:rawPeriod
+  line:String(saved.line??''),period:rawPeriod,
+  accepted_contract:saved
  };
  const contract=parseHalfCombination(frozen,{
   home:saved.homeTeamName??result?.home_team,
   away:saved.awayTeamName??result?.away_team
  });
- return contract?gradeHalfCombination(contract,result):null;
+ if(contract) return gradeHalfCombination(contract,result);
+
+ const m = String(saved.providerMarketName ?? '').trim();
+ const key = String(saved.providerOutcomeKey ?? saved.providerOutcomeName ?? '').trim().toLowerCase();
+ const home = scoreValue(result?.home_score);
+ const away = scoreValue(result?.away_score);
+ const hh = scoreValue(result?.half_home_score);
+ const ha = scoreValue(result?.half_away_score);
+ if (home === null || away === null) return null;
+
+ if (/^goal[\s/]*no\s*goal$/i.test(m)) {
+   const bothScored = home > 0 && away > 0;
+   if (['yes', 'po', 'goal'].includes(key)) return bothScored ? 'WON' : 'LOST';
+   if (['no', 'jo', 'no goal'].includes(key)) return !bothScored ? 'WON' : 'LOST';
+   return null;
+ }
+
+ if (/^(?:european\s+)?handicap$/i.test(m)) {
+   const lineVal = num(saved.line);
+   const uk = key.toUpperCase();
+   if (lineVal !== null && Number.isInteger(lineVal) && ['1', 'X', '2', 'HOME', 'DRAW', 'AWAY'].includes(uk)) {
+     const adjustedHome = home + lineVal;
+     if (uk === '1' || uk === 'HOME') return adjustedHome > away ? 'WON' : 'LOST';
+     if (uk === 'X' || uk === 'DRAW') return adjustedHome === away ? 'WON' : 'LOST';
+     if (uk === '2' || uk === 'AWAY') return adjustedHome < away ? 'WON' : 'LOST';
+   }
+   return null;
+ }
+
+ if (/^2nd\s+half\s*-\s*3[\s-]*way$/i.test(m)) {
+   if (hh === null || ha === null) return null;
+   const h2 = home - hh, a2 = away - ha;
+   const uk = key.toUpperCase();
+   if (uk === '1') return h2 > a2 ? 'WON' : 'LOST';
+   if (uk === 'X') return h2 === a2 ? 'WON' : 'LOST';
+   if (uk === '2') return a2 > h2 ? 'WON' : 'LOST';
+   return null;
+ }
+
+ if (/^any\s+team\s+to\s+win$/i.test(m)) {
+   const someoneWon = home !== away;
+   if (['yes', 'po'].includes(key)) return someoneWon ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !someoneWon ? 'WON' : 'LOST';
+   return null;
+ }
+
+ if (/^who\s+wins\s+the\s+rest\s+of\s+the\s+match\?$/i.test(m)) {
+   const snap = saved.acceptedLiveSnapshot;
+   let baseHome = snap?.scoreHome ?? snap?.counters?.goal?.home;
+   let baseAway = snap?.scoreAway ?? snap?.counters?.goal?.away;
+   if (baseHome == null || baseAway == null) {
+     const p3 = saved.nativeParameters?.p3;
+     if (typeof p3 === 'string' && p3.includes(':')) {
+       const parts = p3.split(':').map(Number);
+       if (Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+         baseHome = parts[0];
+         baseAway = parts[1];
+       }
+     }
+   }
+   if (baseHome == null || baseAway == null) return null;
+   const deltaHome = home - baseHome, deltaAway = away - baseAway;
+   if (deltaHome < 0 || deltaAway < 0) return null;
+   const uk = key.toUpperCase();
+   if (uk === '1') return deltaHome > deltaAway ? 'WON' : 'LOST';
+   if (uk === 'X') return deltaHome === deltaAway ? 'WON' : 'LOST';
+   if (uk === '2') return deltaAway > deltaHome ? 'WON' : 'LOST';
+   return null;
+ }
+
+ if (/^home\s+team\s+to\s+score\s+2nd\s+half$/i.test(m)) {
+   if (hh === null) return null;
+   const scored = (home - hh) > 0;
+   if (['yes', 'po'].includes(key)) return scored ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !scored ? 'WON' : 'LOST';
+   return null;
+ }
+
+ if (/^away\s+team\s+to\s+score\s+2nd\s+half$/i.test(m)) {
+   if (ha === null) return null;
+   const scored = (away - ha) > 0;
+   if (['yes', 'po'].includes(key)) return scored ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !scored ? 'WON' : 'LOST';
+   return null;
+ }
+
+ return null;
 }
 /** Keyset round-robin for PENDING work, not OFFSET (which shifts as tickets
  * settle). An old unresolved line must not monopolize every short pass.
@@ -158,8 +246,11 @@ export function classify(marketName = '') {
   if (/corner.*(?:result|winner|1x2)|(?:result|winner|1x2).*corner/i.test(s)) return 'CORNER_1X2';
   if (/corner/.test(s)) return 'CORNERS';
   if (/\bcards?\b|booking|yellow|red/.test(s)) return 'CARDS';
-  if (/both teams to score|\bbtts\b/.test(s)) return 'BTTS';
-  if ((isFirstHalfLine(s) || isSecondHalfLine(s)) && /\b(?:result|winner|1x2)\b/.test(s)) return '1X2';
+  if (/both teams to score|\bbtts\b|goal[\s/]*no\s*goal|gol[\s/]*pa\s*gol/i.test(s)) return 'BTTS';
+  if ((isFirstHalfLine(s) || isSecondHalfLine(s)) && /\b(?:result|winner|1x2|3[\s-]*way)\b/.test(s)) return '1X2';
+  if (/^any team to win$/i.test(s.trim())) return 'ANY_TEAM_WIN';
+  if (/^who wins the rest of the match\?/i.test(s.trim())) return 'REST_OF_MATCH';
+  if (/^(?:home|away)\s+team\s+to\s+score\s+(?:in\s+)?2nd\s+half$/i.test(s.trim())) return 'TEAM_TO_SCORE_2ND_HALF';
   if (/double chance/.test(s)) return 'DC';
   if (/handicap|fora|asian/.test(s)) return 'HANDICAP';
   if (/full time result|1 ?x ?2|match result|winner|moneyline/.test(s)) return '1X2';
@@ -401,8 +492,8 @@ export function gradeLine(line, result) {
     }
 
     case 'BTTS':
-      if (key === 'yes' || /^yes/.test(name)) return decide(bothScored);
-      if (key === 'no' || /^no/.test(name)) return decide(!bothScored);
+      if (key === 'yes' || key === 'goal' || /^yes|^po\b|^goal/i.test(name)) return decide(bothScored);
+      if (key === 'no' || key === 'no goal' || /^no|^jo\b|^no\s*goal/i.test(name)) return decide(!bothScored);
       return null;
 
     case 'TOTAL':
@@ -557,6 +648,49 @@ export function gradeLine(line, result) {
       const sheet=h?away===0:home===0;
       if(key==='yes'||name==='yes'||name==='po')return decide(sheet);
       if(key==='no'||name==='no'||name==='jo')return decide(!sheet);
+      return null;
+    }
+
+    case 'ANY_TEAM_WIN': {
+      const someoneWon = home !== away;
+      if (key === 'yes' || /^yes|^po\b/i.test(name)) return decide(someoneWon);
+      if (key === 'no' || /^no|^jo\b/i.test(name)) return decide(!someoneWon);
+      return null;
+    }
+
+    case 'REST_OF_MATCH': {
+      const snap = line.accepted_contract?.acceptedLiveSnapshot;
+      let baseHome = snap?.scoreHome ?? snap?.counters?.goal?.home;
+      let baseAway = snap?.scoreAway ?? snap?.counters?.goal?.away;
+      if (baseHome == null || baseAway == null) {
+        const p3 = line.accepted_contract?.nativeParameters?.p3;
+        if (typeof p3 === 'string' && p3.includes(':')) {
+          const parts = p3.split(':').map(Number);
+          if (Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+            baseHome = parts[0];
+            baseAway = parts[1];
+          }
+        }
+      }
+      if (baseHome == null || baseAway == null) return null;
+      const fullHome = scoreValue(result.home_score), fullAway = scoreValue(result.away_score);
+      if (fullHome == null || fullAway == null) return null;
+      const deltaHome = fullHome - baseHome, deltaAway = fullAway - baseAway;
+      if (deltaHome < 0 || deltaAway < 0) return null;
+      if (key === '1' || /^home/.test(name)) return decide(deltaHome > deltaAway);
+      if (key === 'x' || /^draw|^tie/.test(name)) return decide(deltaHome === deltaAway);
+      if (key === '2' || /^away/.test(name)) return decide(deltaAway > deltaHome);
+      return null;
+    }
+
+    case 'TEAM_TO_SCORE_2ND_HALF': {
+      const fh = scoreValue(result.home_score), fa = scoreValue(result.away_score);
+      const hh = scoreValue(result.half_home_score), ha = scoreValue(result.half_away_score);
+      if (fh == null || fa == null || hh == null || ha == null) return null;
+      const isHome = /home/i.test(line.market_name);
+      const scored = isHome ? (fh - hh) > 0 : (fa - ha) > 0;
+      if (key === 'yes' || /^yes|^po\b/i.test(name)) return decide(scored);
+      if (key === 'no' || /^no|^jo\b/i.test(name)) return decide(!scored);
       return null;
     }
 
@@ -866,7 +1000,8 @@ export async function settleMatch(matchId) {
     // never parsed from a translated/displayed name at settlement time.
     if(line.live_contract&&SUPPORTED_FACT_KINDS.has(line.live_contract.kind)){
       status=await gradeStoredEventContract(line,result,{execute:query});
-    }else if(hasRequiredSettlementEvidence(line,result)){
+    }
+    if(!['WON','LOST','VOID'].includes(status)&&hasRequiredSettlementEvidence(line,result)){
       status=gradeLine(line,result);
       // Only a proved two-way integer push is refundable on the legacy path.
       // Unsupported parsing remains PENDING.
