@@ -515,7 +515,8 @@ export function classify(marketName = '') {
 const num = (v) => (v != null && v !== '' && Number.isFinite(Number(String(v).replace(',', '.'))) ? Number(String(v).replace(',', '.')) : null);
 const isFirstHalfLine = (marketName = '') =>
   /\b(?:first|1st)\s*half\b|\b1h\b|\bhalf.?time\b|^ht(?:\s|$)/i.test(marketName) &&
-  !/half\s*time\s*[\/\-]?\s*full\s*time|\bht\s*[\/\-]?\s*ft\b/i.test(marketName);
+  !/half\s*time\s*[\/\-]?\s*full\s*time|\bht\s*[\/\-]?\s*ft\b/i.test(marketName) &&
+  !/\bwho\s+wins\s+the\s+rest\b|\brest\s+of\b/i.test(marketName);
 const isSecondHalfLine = (marketName = '') =>
   /\b(?:second|2nd)\s*half\b|\b2h\b/i.test(marketName);
 /** The provider's period field is part of the quoted contract. A generic
@@ -608,6 +609,12 @@ export function hasRequiredSettlementEvidence(line, result) {
   }
   const family = goalTotalContract(line,result)?'TOTAL':classify(marketName);
   if(family==='DNB'&&!plainDnb(marketName))return false;
+
+  if (family === 'REST_OF_MATCH') {
+    if (/halftime\s*-?\s*who\s+wins\s+the\s+rest|\bhalftime\b.*\brest\b/i.test(marketName)) {
+      if (scoreValue(result.half_home_score) == null || scoreValue(result.half_away_score) == null) return false;
+    }
+  }
 
   if (family === 'CORNER_1X2' && (result.corners_home == null || result.corners_away == null)) return false;
   if (family === 'HT_FT') {
@@ -939,6 +946,19 @@ export function gradeLine(line, result) {
             baseHome = parts[0];
             baseAway = parts[1];
           }
+        }
+      }
+      if (baseHome == null || baseAway == null) {
+        const fromMatch = String(line.market_name ?? '').match(/(?:from\s+|\()(\d{1,2})\s*[:\-]\s*(\d{1,2})\)?/i);
+        if (fromMatch) {
+          baseHome = Number(fromMatch[1]);
+          baseAway = Number(fromMatch[2]);
+        }
+      }
+      if (baseHome == null || baseAway == null) {
+        if (/halftime\s*-?\s*who\s+wins\s+the\s+rest|\bhalftime\b.*\brest\b/i.test(line.market_name ?? '')) {
+          baseHome = scoreValue(result.half_home_score);
+          baseAway = scoreValue(result.half_away_score);
         }
       }
       if (baseHome == null || baseAway == null) return null;

@@ -230,4 +230,13 @@ const penMatch = { ...drawMatch, qualifying_team: 'away' };
 assert.equal(gradeQualification({ market_name: 'To Qualify', outcome_name: 'Arsenal' }, penMatch), 'LOST');
 assert.equal(gradeQualification({ market_name: 'To Qualify', outcome_name: 'Chelsea' }, penMatch), 'WON');
 
-console.log('PASS new football combos: Winning Margin, DC+Half BTTS, HT/FT Combos, Multiscores, Winner+Total, Team not to lose+Total, BTTS+Total, Will there be a tie, Qualification');
+// ==========================================
+// 8. REST OF MATCH (Halftime - Who wins the rest?)
+// ==========================================
+// Kazakhstan vs Slovakia: FT 2-2, HT 1-0 -> 2nd half 1-2 (Slovakia wins rest)
+const kazSvk = { home_score: 2, away_score: 2, half_home_score: 1, half_away_score: 0 };
+assert.equal(gradeLine({ market_name: 'Halftime - Who wins the rest?', outcome_name: '2', outcome_key: '2' }, kazSvk), 'WON');
+assert.equal(gradeLine({ market_name: 'Halftime - Who wins the rest?', outcome_name: '1', outcome_key: '1' }, kazSvk), 'LOST');
+assert.equal(gradeLine({ market_name: 'Halftime - Who wins the rest?', outcome_name: 'X', outcome_key: 'x' }, kazSvk), 'LOST');
+
+console.log('PASS new football combos: Winning Margin, DC+Half BTTS, HT/FT Combos, Multiscores, Winner+Total, Team not to lose+Total, BTTS+Total, Will there be a tie, Qualification, Halftime Rest of Match');
