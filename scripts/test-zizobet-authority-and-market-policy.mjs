@@ -112,7 +112,8 @@ assert.match(FINISHED_RESULT_INSERT,/source\\s*\\)\\s*values[^;]*'ZIZOBET'/s);
 
 // Half-time settlement also requires a positive Zizobet source identity.
 const halftimeRow={
- ...finishedRow,feed_status:'HT',feed_status_at:'2026-11-16T18:00:00.000Z',
+ ...finishedRow,home_score:1,away_score:0,feed_status:'HT',
+ feed_status_at:'2026-11-16T18:00:00.000Z',
  periods_score:[{t1:1,t2:0}]
 };
 assert.equal(extractConfirmedHalfTimeCandidate(halftimeRow)?.home,1);
