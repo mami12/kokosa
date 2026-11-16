@@ -49,6 +49,9 @@ assert.throws(()=>assertDistinctSelectionMarkets([nativeA,nativeB]),
 assert.deepEqual(toggleMarketSelection([nativeA],nativeB),[nativeB]);
 assert.notEqual(selectionMarketIdentity(nativeA),
  selectionMarketIdentity(pick('100|zz6380@eyJwMSI6IjEifQ|2.5|Over')));
+assert.notEqual(selectionMarketIdentity({...nativeA,period:0}),
+ selectionMarketIdentity({...nativeB,period:1}),
+ 'First-half and full-time markets stay separate when the provider reuses a native ID');
 // IDs and frozen source contracts, never translated names, drive identity.
 assert.equal(selectionMarketIdentity(over),selectionMarketIdentity({matchId:100,marketKey:'g6379',line:'2.5'}));
 assert.deepEqual(toggleMarketSelection(
