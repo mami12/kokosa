@@ -49,6 +49,7 @@ export async function refreshMarketCatalog({initialize=false,database=pool}={}){
 }
 // Used during NEW wager validation only. Historical settlement keeps its saved contract.
 export async function assertMarketEnabled(m,executor=query,match){
+ if(isExcludedOfferMarket(m))throw Object.assign(invalid('Ky treg nuk ofrohet.'),{code:'MARKET_NOT_OFFERED'});
  const f=marketFamily(m);if(!f)return;
  // One database round-trip per validation instead of three, while keeping
  // all policy reads on the supplied transaction connection.
