@@ -50,6 +50,11 @@ try{
     line:'0.25',marketType:'OVER_UNDER',status:'ACTIVE',sortOrder:2,
     outcomes:['Over','Under'].map(code=>({id:marketId+'|'+code,marketId,name:code,code,
      odds:1.95,status:'ACTIVE',priceValidUntil:Date.now()+60000}))});
+   const genericId=`${id}|zz1000@e30|`;
+   match.markets.push({id:genericId,matchId:id,name:'Match Result',extId:'zz1000@e30',
+    marketType:'1X2',status:'ACTIVE',sortOrder:3,
+    outcomes:['1','X','2'].map(code=>({id:genericId+'|'+code,marketId:genericId,name:code,code,
+     odds:2,status:'ACTIVE',priceValidUntil:Date.now()+60000}))});
    return response.json(match);
   }
   if(mode==='expand-prematch'||mode==='expand-live'){
@@ -139,6 +144,8 @@ try{
  await page.waitForSelector('[data-outcome-id="112|zz999@e30|0.25|Over"]');
  assert.ok(await page.$('[data-outcome-id="112|zz999@e30|0.25|Under"]'),
   'an unresolved but valid native Zizobet title must remain visible on the match page');
+ assert.ok(await page.$('[data-outcome-id="112|zz1000@e30||1"]'),
+  'a distinct native generic 1X2 market must not be removed by display-name deduplication');
  for(const [id,mode] of [['110','expand-prematch'],['111','expand-live']]){
   modes.set(id,mode);
   await navigate(id);
