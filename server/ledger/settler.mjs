@@ -1413,11 +1413,7 @@ export async function settleVerifiedEventFacts({
      and not exists(select 1 from app_settlement_override o where o.line_id=l.id)
      and exists(select 1 from app_match_event_coverage e
        where e.match_id=l.match_id and e.kind=l.live_contract->>'event'
-         and (e.provider='zizobet'
-           or (e.provider in ('fotmob','apifootball','sportapi','goalapi','bsd','worldcup26')
-             and e.complete=true and e.confirmed_at is not null
-             and exists(select 1 from app_match_result r where r.match_id=l.match_id
-               and r.home_score is not null and r.away_score is not null))))`,cap);
+         and e.provider='zizobet'`,cap);
  if(!rows.length)return {examined:0,graded:0,closed:[]};
  const ids=[...new Set(rows.map(l=>l.match_id))];
  const finals=(await runQuery('select match_id,home_score,away_score,corners_home,corners_away,cards_home,cards_away from app_match_result where match_id=any($1::bigint[])',[ids])).rows;
