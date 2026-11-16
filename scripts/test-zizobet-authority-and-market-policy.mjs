@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {liveContract} from '../server/ledger/live-contract-rules.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
 import {isExcludedOfferMarket} from '../server/market-policy.mjs';
+import {createEventEvidenceStore,gradeEventLine} from '../server/ledger/event-evidence.mjs';
 
 const interval=liveContract({
  market_name:'When will goal 2 be scored',
@@ -63,6 +64,25 @@ const noPrimary=await gradeStoredEventContract({
 assert.equal(noPrimary,null);
 assert.equal(providerQueries.length,1,'missing Zizobet evidence remains pending without backup-provider queries');
 assert.match(providerQueries[0],/provider=\$16::text/);
+
+// The legacy event-evidence path is also pinned to Zizobet. A complete
+// secondary timeline is not a settlement source.
+assert.equal(gradeEventLine({
+ market_name:'First Goal',outcome_name:'Home'
+ },{
+ home_score:1,away_score:0,
+ event_evidence:{source:'fotmob',complete:true,events:[
+  {id:'secondary-goal',type:'goal',team:'home',minute:20}
+ ]}
+}),null,'secondary provider timelines cannot grade legacy event contracts');
+let evidenceQueries=0;
+const evidenceStore=createEventEvidenceStore({runQuery:async()=>{
+ evidenceQueries++;throw Error('secondary evidence must be rejected before storage');
+}});
+assert.equal(await evidenceStore.saveEventEvidence(999,{
+ source:'aiscore',events:[{type:'goal',team:'home',minute:20}]
+}),false);
+assert.equal(evidenceQueries,0,'secondary evidence is not written to settlement evidence storage');
 
 // Offers that the operator does not use are rejected at the global ingest gate.
 for(const name of [
