@@ -26,7 +26,9 @@ export function hasFinalSettlementRule(offer,{home='Home',away='Away'}={}){
  // ordinary score grader only returns WON/LOST/VOID and would overpay them
  // as full wins or losses. Keep the native quote placeable, but hold it until
  // a provider-specific split settlement rule exists.
- const threshold=Number(String(offer.line??'').replace(',','.'));
+ const explicitLine=String(offer.line??offer.specifier??'').trim();
+ const namedLine=String(offer.market_name??'').match(/\b(?:total|goals?|corners?|shots?|offsides?|fouls?|cards?)\b.*?(\d+(?:[.,]\d+)?)\s*$/i)?.[1]??'';
+ const threshold=Number(String(explicitLine||namedLine).replace(',','.'));
  const quarter=Math.abs(threshold*4-Math.round(threshold*4))<1e-9&&
   Math.abs(Math.round(threshold*4))%2===1;
  const totalFamily=/\b(?:total|over\s*\/?\s*under|goal\s+line|goals?|corners?|shots?|offsides?|fouls?|cards?)\b/i.test(String(offer.market_name));
