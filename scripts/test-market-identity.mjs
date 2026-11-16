@@ -194,11 +194,12 @@ assert.equal(ui.marketGroupKey(mk('Total Corners', '9.5', 0, 'CORNERS', 'g320'))
 assert.notEqual(ui.marketGroupKey(mk('Total Corners', '9.5', 0, 'CORNERS', 'g320')),
   ui.marketGroupKey(mk('Total Corners', '9.5', 0, 'CORNERS', 'g900')),
   'different provider group IDs must never merge');
-for (const name of ['Handicap', 'Asian Handicap', 'Corners. Handicap', 'Asian Corners']) {
-  assert.equal(ui.isHandicapMarket(mk(name)), false, name + ' is not unilaterally hidden in the UI');
+for (const name of ['Handicap', 'Asian Handicap', 'Corners. Handicap', 'European Handicap']) {
+  assert.equal(ui.isHandicapMarket(mk(name)), true, name + ' is consistently hidden in the UI');
 }
-assert.equal(ui.isHandicapMarket(mk('Asian Total')), false);
-assert.equal(ui.isHandicapMarket(mk('Total')), false);
+for (const name of ['Asian Corners','Asian Total','Total']) {
+  assert.equal(ui.isHandicapMarket(mk(name)), false, name + ' is not an Asian Handicap market');
+}
 
 
 // First goal time is a TEN-outcome market. A provider can reuse the same
