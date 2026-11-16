@@ -8,7 +8,7 @@
 
 import {marketIsEnabled} from '../../../server/market-catalog.mjs';
 import { isImpossibleLiveCombination } from '../../../server/ledger/combo-feasibility.mjs';
-import { isDecidedLiveMarket, isDecidedLiveOutcome, isYbetsNativeOffer } from '../../../server/ledger/decided-markets.mjs';
+import { isDecidedLiveMarket, isDecidedLiveOutcome, isYbetsNativeOffer, isZizobetNativeOffer } from '../../../server/ledger/decided-markets.mjs';
 import { isExcludedOfferMarket } from '../../../server/market-policy.mjs';
 import { eventMarketRequirement } from '../../../server/ledger/event-market-policy.mjs';
 import { parseFirstHalfCorner } from '../../../server/ledger/live-contract-rules.mjs';
@@ -28,7 +28,7 @@ type OutcomeLike = {
   status?: string; suspended?: boolean; feedSuspended?: boolean; riskSuspended?: boolean; decided?: boolean;
 };
 type MatchLike = {
-  homeTeam?: string; awayTeam?: string;
+  homeTeam?: string; awayTeam?: string; provider?:string; raw?:{provider?:string};
   status?: string; period?: string | null; currentMinute?: number;
   homeScore?: number; awayScore?: number;
   corners?: Score | null; cards?: Score | null;
@@ -318,6 +318,9 @@ export function isMarketExpired(m: MatchLike, market: MarketLike): boolean {
   if (!market) return false;
   if (isMatchFinished(m)) return true;
   if (!isLive(m)) return false;
+  // Zizobet removes expired offers itself. Never hide an active native quote
+  // because a secondary/local score heuristic thinks its outcome is decided.
+  if (isZizobetNativeOffer(market,m)) return false;
   if (isDecidedLiveMarket(m, market)) return true;
   if (builderCompleted(m, market)) return true;
   if ((isFirstHalf(market) || (!isYbetsNativeOffer(market, m) && isHTFTMarket(String(market.name ?? '')))) && isSecondHalfOrLater(m)) return true;
@@ -395,6 +398,7 @@ export function filterDecidedOutcomes<T extends OutcomeLike>(
   if (!outcomes.length) return outcomes;
   if(!isMarketOfferSupported(market,match))return [];
   if (isMarketExpired(match, market)) return [];
+  if (isZizobetNativeOffer(market,match)) return outcomes;
   if (!isLive(match)) return outcomes;
   outcomes = outcomes.filter(outcome => outcome.decided !== true && !isDecidedLiveOutcome(match, {
     ...market, outcomeName: outcome.name, outcomeCode: outcome.code,
