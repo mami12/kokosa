@@ -44,6 +44,14 @@ try{
   if(mode==='hold'){held.set(id,response);return;}
   if(mode==='missing')return response.status(404).json({message:'match not found'});
   if(mode==='error')return response.status(503).json({message:'temporarily unavailable'});
+  if(mode==='native-template'){
+   const match=fixture(id),marketId=`${id}|zz999@e30|0.25`;
+   match.markets.push({id:marketId,matchId:id,name:'Total [total] Goals',extId:'zz999@e30',
+    line:'0.25',marketType:'OVER_UNDER',status:'ACTIVE',sortOrder:2,
+    outcomes:['Over','Under'].map(code=>({id:marketId+'|'+code,marketId,name:code,code,
+     odds:1.95,status:'ACTIVE',priceValidUntil:Date.now()+60000}))});
+   return response.json(match);
+  }
   if(mode==='expand-prematch'||mode==='expand-live'){
    const count=(fullReads.get(id)??0)+1;fullReads.set(id,count);
    const match=fixture(id);
@@ -127,6 +135,10 @@ try{
 
  // The first click must show all quoted markets once the selected full
  // snapshot finishes. No back-navigation or second click is allowed.
+ modes.set('112','native-template');await navigate('112');await loaded('112');
+ await page.waitForSelector('[data-outcome-id="112|zz999@e30|0.25|Over"]');
+ assert.ok(await page.$('[data-outcome-id="112|zz999@e30|0.25|Under"]'),
+  'an unresolved but valid native Zizobet title must remain visible on the match page');
  for(const [id,mode] of [['110','expand-prematch'],['111','expand-live']]){
   modes.set(id,mode);
   await navigate(id);
