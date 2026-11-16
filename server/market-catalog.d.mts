@@ -1,3 +1,4 @@
+export function isFootballMarketName(name:string):boolean;
 export function marketFamily(m?:unknown):{key:string;name:string}|null;
 export function marketCategories(name:string):string[];
 export function observeMarket(m:unknown):unknown;

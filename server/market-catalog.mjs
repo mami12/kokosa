@@ -1,5 +1,45 @@
 const catalog=new Map(),disabled=new Set(),disabledCategories=new Set();
 export const MARKET_CATEGORY_IDS=['totals','intervals','results','goals','corners','cards','fouls','shots','players','combos','other'];
+
+export const NON_FOOTBALL_PATTERN = new RegExp([
+  // Cricket
+  '\\b(?:innings?|boundary|wicket|wickets|batsman|bowler|sixes|fours|day\\s+session|partnership|first\\s+over|per\\s+over)\\b',
+  '\\b\\d+\\s+overs\\b',
+  '\\bovers\\s+\\d+\\b',
+  '\\bcricket\\b',
+  // Tennis / Table Tennis / Badminton / Volleyball
+  '\\b(?:aces?|tie.?break|deuce|breakpoint|service\\s+fault|penta|to\\s+retire|retirements?)\\b',
+  '\\{p\\d+_r\\}\\s+sets?\\b',
+  '\\bsets?\\s+-',
+  '\\bgame\\s+\\{p\\d+_r\\}',
+  '\\b(?:1st|2nd|3rd|4th|5th)\\s+set\\b',
+  '\\bset\\s+(?:1|2|3|4|5)\\b',
+  // Snooker / Darts
+  '\\b(?:frames?|break\\s+50\\+|break\\s+100\\+|highest\\s+break|century\\s+break|colour\\s+potted|180s|checkouts?|segment\\s+winner)\\b',
+  '\\bleg\\s+(?:handicap|winner|total)\\b',
+  // Basketball
+  '\\b(?:quarters?|points?|rebounds?|dunks?|free\\s+throw|field\\s+goal)\\b',
+  // Baseball
+  '\\b(?:home\\s+run|strikeouts?|pitcher|batting|batter|base\\s+on\\s+balls|at\\s+bat|time\\s+at\\s+bat)\\b',
+  // American Football / Rugby
+  '\\b(?:touchdowns?|touchdown|try|conversion|quarterback|passing\\s+yards|rushing\\s+yards|drive\\s+play|first\\s+down|pass\\s+completion|sack|yards?\\s+gained)\\b',
+  '(?<!goal\\s+)scoring\\s+type',
+  // Ice hockey / Hockey (Hockey has 3 periods of 20 min)
+  '\\b(?:puck|puck\\s+line|powerplay|empty\\s+net|period\\s+and\\s+matchbet|period\\s+result)\\b',
+  '\\{p\\d+_r\\}\\s+period\\b',
+  '\\bperiod\\s+-',
+  // Combat sports (Boxing / MMA / UFC)
+  '\\b(?:knockout|tko|submission|round\\s+\\d+|method\\s+of\\s+victory|fighter|knockdowns?|strikes?\\s+landed)\\b',
+  // Esports
+  '\\b(?:maps?|kills?|dragon|baron|roshan|pistol\\s+round|first\\s+blood|bomb\\s+defused|bomb\\s+planted|aegis|barracks|inhibitor)\\b',
+  // Cycling / Racing / Formula 1
+  '\\b(?:stage|pole\\s+position|fastest\\s+lap|lap\\s+-|pit\\s+stop)\\b'
+].join('|'), 'i');
+
+export function isFootballMarketName(name){
+  return !NON_FOOTBALL_PATTERN.test(String(name??''));
+}
+
 export function marketFamily(m={}){
  let name=String(m.market_name??m.marketName??m.name??'').trim().replace(/^\*\s*/,'').split(/\s+(?:Â?·)\s+/)[0];
  if(!name)return null;
@@ -26,7 +66,7 @@ export function marketCategories(name){
  for(const[tag,pattern]of Object.entries({totals:/total|over.?under/,intervals:/interval|minutes?|when will|time of/,corners:/corner/,cards:/card|booking/,fouls:/foul/,shots:/shot/,players:/player|scorer|\{pl\}|scoring type/,combos:/&|(?:^|[^\d])\+|bet builder|\b(?:and|both halves)\b/,results:/1x2|result|winner|double chance|correct score|draw no bet/,goals:/goal|score|clean sheet|to nil/}))if(pattern.test(n))tags.push(tag);
  return tags.length?tags:['other'];
 }
-export function observeMarket(m){const family=marketFamily(m);if(family&&!catalog.has(family.key))catalog.set(family.key,{...family,categories:marketCategories(family.name)});return family;}
+export function observeMarket(m){const family=marketFamily(m);if(family&&isFootballMarketName(family.name)&&!catalog.has(family.key))catalog.set(family.key,{...family,categories:marketCategories(family.name)});return family;}
 const scopeBlocks=[];
 const normScope=v=>String(v??'').trim().toLowerCase().replace(/\s+/g,' ');
 function scopeBlocked(f,match,rules=scopeBlocks){
@@ -51,8 +91,8 @@ export function marketScopeBlocked(m,match,rules){
  return scopeBlocked(family,match,(rules??[]).map(r=>({country:normScope(r.country),league:normScope(r.league),categories:(r.categories??[]).map(normScope),families:(r.families??[]).map(normScope)})));
 }
 export function marketIsEnabled(m,match){const f=observeMarket(m);if(!f)return true;return !disabled.has(f.key)&&!nativeMarketPolicyKeys(m,match).some(k=>disabled.has(k))&&!marketCategories(f.name).some(c=>disabledCategories.has(c))&&!scopeBlocked(f,match);}
-export function setCatalogRows(rows){disabled.clear();for(const r of rows){catalog.set(r.key,{key:r.key,name:r.name,sortOrder:Number(r.sort_order??r.sortOrder??1000000),categories:marketCategories(r.name)});if(r.enabled===false)disabled.add(r.key);}}
-export const catalogRows=()=>[...catalog.values()].map(r=>{const blockedBy=r.categories.filter(c=>disabledCategories.has(c));return {...r,sortOrder:r.sortOrder??1000000,manualEnabled:!disabled.has(r.key),blockedBy,enabled:!disabled.has(r.key)&&!blockedBy.length};}).sort((a,b)=>a.sortOrder-b.sortOrder||a.name.localeCompare(b.name)).map((r,i)=>({...r,position:i+1}));
+export function setCatalogRows(rows){disabled.clear();for(const r of rows){if(!isFootballMarketName(r.name))continue;catalog.set(r.key,{key:r.key,name:r.name,sortOrder:Number(r.sort_order??r.sortOrder??1000000),categories:marketCategories(r.name)});if(r.enabled===false)disabled.add(r.key);}}
+export const catalogRows=()=>[...catalog.values()].filter(r=>isFootballMarketName(r.name)).map(r=>{const blockedBy=r.categories.filter(c=>disabledCategories.has(c));return {...r,sortOrder:r.sortOrder??1000000,manualEnabled:!disabled.has(r.key),blockedBy,enabled:!disabled.has(r.key)&&!blockedBy.length};}).sort((a,b)=>a.sortOrder-b.sortOrder||a.name.localeCompare(b.name)).map((r,i)=>({...r,position:i+1}));
 export function setCategoryPolicies(rows){disabledCategories.clear();for(const r of rows??[])if(r.enabled===false&&MARKET_CATEGORY_IDS.includes(r.category))disabledCategories.add(r.category);}
 export const categoryPolicies=()=>MARKET_CATEGORY_IDS.map(category=>({category,enabled:!disabledCategories.has(category)}));
 export function marketRank(m){const f=marketFamily(m);return f?catalog.get(f.key)?.sortOrder??1000000:1000000;}

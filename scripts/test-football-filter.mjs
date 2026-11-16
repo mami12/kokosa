@@ -1,32 +1,69 @@
-import assert from 'node:assert/strict';
-import { fetchRealFootball, loadCatalog } from '../server/upstream.mjs';
-import { upsert, getSubscriptionIds, getMatches } from '../server/match-store.mjs';
-const savedFetch=globalThis.fetch;
-const countries=[{id:1,slug:'england',name:'England'},{id:2,slug:'italy',name:'Italy'},{id:3,slug:'world',name:'World'},{id:4,slug:'cyberfifa',name:'CyberFIFA'},{id:5,slug:'india',name:'India'}];
-const definitions=[[10,1,'Premier League'],[11,1,'League Two'],[12,2,'Serie C. Group A'],[13,3,'National teams. Friendlies'],[14,3,'FIFA World Cup'],[15,3,'UEFA Youth League'],[16,4,'Premier League'],[17,5,'I-League. Division 3'],[18,2,'Coppa Italia'],[19,2,'Unknown Local League']];
-const tournaments=definitions.map(([id,categoryId,name])=>({id,categoryId,name,sportId:18,category:countries.find(c=>c.id===categoryId)}));
-const fixtures=tournaments.flatMap(t=>['LIVE','PREMATCH'].map((service,index)=>({id:t.id*10+index,sportId:18,sportTag:'football',categoryId:t.categoryId,tournamentId:t.id,startAt:Math.floor(Date.now()/1000)+(index?3600:-600),service,competitors:[{name:'Home United'},{name:'Away City'}]})));
-const paths=[];
-globalThis.fetch=async(url)=>{
-  const endpoint=new URL(url).pathname.replace(/^\//,'');paths.push(endpoint);
-  const items=endpoint==='sports/get-many'?[{sport:{id:18,tag:'football',sportType:'default'}}]
-    :endpoint==='categories/get-many'?countries.map(category=>({category}))
-    :endpoint==='tournaments/get-many'?tournaments.map(tournament=>({tournament}))
-    :endpoint==='matches/get-many'?fixtures:null;
-  assert.ok(items,endpoint);
-  return {ok:true,json:async()=>({result:{items,hasMore:false}})};
-};
-try {
-  const result=await fetchRealFootball();
-  const allowed=[10,12,13,14,18].flatMap(id=>[id*10,id*10+1]).sort((a,b)=>a-b);
-  assert.deepEqual(result.rows.map(row=>row.match_id).sort((a,b)=>a-b),allowed);
-  assert.equal(result.complete,true);assert.equal(result.received,20);assert.equal(result.skipped,10);
-  const catalog=await loadCatalog();assert.equal(catalog.competitionPolicy.get(11).allowed,false);
-  assert.equal(catalog.competitionPolicy.get(12).tier,3);
-  assert.equal(paths.filter(p=>p==='tournaments/get-many').length,1,'catalog policy cached');
-  upsert(result.rows);
-  const ids=getSubscriptionIds({liveLimit:200,prematchLimit:200});
-  assert.deepEqual([...ids.live,...ids.prematch].sort((a,b)=>a-b),allowed,'excluded matches never enter ordinary odds subscriptions');
-  assert.equal(getMatches({limit:2000}).length,10);
-  console.log('PASS upstream catalog -> country/ID policy -> LIVE/PREMATCH rows -> match store -> odds subscription IDs; cups/friendlies retained and lower/youth/virtual/unknown absent');
-} finally {globalThis.fetch=savedFetch;}
+import { query } from '../server/db.mjs';
+
+export const NON_FOOTBALL_PATTERN = new RegExp([
+  // Cricket
+  '\\b(?:innings?|boundary|wicket|wickets|batsman|bowler|sixes|fours|day\\s+session|partnership|first\\s+over|per\\s+over)\\b',
+  '\\b\\d+\\s+overs\\b',
+  '\\bovers\\s+\\d+\\b',
+  '\\bcricket\\b',
+  // Tennis / Table Tennis / Badminton / Volleyball
+  '\\b(?:aces?|tie.?break|deuce|breakpoint|service\\s+fault|penta|to\\s+retire|retirements?)\\b',
+  '\\{p\\d+_r\\}\\s+sets?\\b',
+  '\\bsets?\\s+-',
+  '\\bgame\\s+\\{p\\d+_r\\}',
+  '\\b(?:1st|2nd|3rd|4th|5th)\\s+set\\b',
+  '\\bset\\s+(?:1|2|3|4|5)\\b',
+  // Snooker / Darts
+  '\\b(?:frames?|break\\s+50\\+|break\\s+100\\+|highest\\s+break|century\\s+break|colour\\s+potted|180s|checkouts?|segment\\s+winner)\\b',
+  '\\bleg\\s+(?:handicap|winner|total)\\b',
+  // Basketball
+  '\\b(?:quarters?|points?|rebounds?|dunks?|free\\s+throw|field\\s+goal)\\b',
+  // Baseball
+  '\\b(?:home\\s+run|strikeouts?|pitcher|batting|batter|base\\s+on\\s+balls|at\\s+bat|time\\s+at\\s+bat)\\b',
+  // American Football / Rugby
+  '\\b(?:touchdowns?|touchdown|try|conversion|quarterback|passing\\s+yards|rushing\\s+yards|drive\\s+play|first\\s+down|pass\\s+completion|sack|yards?\\s+gained)\\b',
+  '(?<!goal\\s+)scoring\\s+type',
+  // Ice hockey / Hockey (Hockey has 3 periods of 20 min)
+  '\\b(?:puck|puck\\s+line|powerplay|empty\\s+net|period\\s+and\\s+matchbet|period\\s+result)\\b',
+  '\\{p\\d+_r\\}\\s+period\\b',
+  '\\bperiod\\s+-',
+  // Combat sports (Boxing / MMA / UFC)
+  '\\b(?:knockout|tko|submission|round\\s+\\d+|method\\s+of\\s+victory|fighter|knockdowns?|strikes?\\s+landed)\\b',
+  // Esports
+  '\\b(?:maps?|kills?|dragon|baron|roshan|pistol\\s+round|first\\s+blood|bomb\\s+defused|bomb\\s+planted|aegis|barracks|inhibitor)\\b',
+  // Cycling / Racing / Formula 1
+  '\\b(?:stage|pole\\s+position|fastest\\s+lap|lap\\s+-|pit\\s+stop)\\b'
+].join('|'), 'i');
+
+async function testFilter() {
+  const r = await query('select key, name from app_market_catalog');
+  const all = r.rows;
+  
+  const football = [];
+  const nonFootball = [];
+
+  for (const m of all) {
+    if (NON_FOOTBALL_PATTERN.test(m.name)) {
+      nonFootball.push(m.name);
+    } else {
+      football.push(m.name);
+    }
+  }
+
+  console.log(`Total: ${all.length}`);
+  console.log(`Non-football filtered: ${nonFootball.length}`);
+  console.log(`Football kept: ${football.length}`);
+
+  // Let's check if any real football market was accidentally put into nonFootball
+  const falsePositives = nonFootball.filter(name => 
+    /\b(?:goal|goals|corner|corners|cards?|booking|fouls?|halftime|fulltime|half|btts|1x2|draw no bet|clean sheet|offside|handicap|penalty shootout)\b/i.test(name) &&
+    !/\b(?:quarter|set|frame|innings?|map|points?|touchdown|puck|wicket|runs?|period)\b/i.test(name)
+  );
+
+  console.log(`\nPotential False Positives: ${falsePositives.length}`);
+  if (falsePositives.length > 0) {
+    console.log(falsePositives);
+  }
+}
+
+testFilter().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });

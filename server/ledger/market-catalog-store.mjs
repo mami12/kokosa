@@ -1,5 +1,5 @@
 import {pool,query} from '../db.mjs';
-import {catalogRows,setCatalogRows,marketFamily,nativeMarketPolicyKeys,marketCategories,MARKET_CATEGORY_IDS,setCategoryPolicies,categoryPolicies,setScopeBlocks,scopeBlockRows,marketScopeBlocked} from '../market-catalog.mjs';
+import {catalogRows,setCatalogRows,marketFamily,nativeMarketPolicyKeys,marketCategories,MARKET_CATEGORY_IDS,setCategoryPolicies,categoryPolicies,setScopeBlocks,scopeBlockRows,marketScopeBlocked,isFootballMarketName} from '../market-catalog.mjs';
 const listeners=new Set();export const onMarketPolicy=fn=>listeners.add(fn);
 let flight,saving=0;
 /** The provider dictionary contains markets not quoted by the board yet.
@@ -7,13 +7,19 @@ let flight,saving=0;
  * so every quoted offer can later be enabled/disabled by that native identity.
  */
 export async function seedNativeMarketCatalog({database=pool}={}){
- await database.query(`insert into app_market_catalog(key,name)
-   select 'zizobet:'||lower(scope)||':'||native_market_id,
-          '['||scope||'] '||native_market_name
+ const rows=(await database.query(`
+   select 'zizobet:'||lower(scope)||':'||native_market_id as key,
+          '['||scope||'] '||native_market_name as name
      from app_provider_market_definition
     where provider_id='ZIZOBET' and scope in ('LIVE','PREMATCH')
       and native_market_name is not null and trim(native_market_name)<>''
-    on conflict(key) do nothing`);
+ `)).rows.filter(r=>isFootballMarketName(r.name));
+
+ if(rows.length){
+   await database.query(`insert into app_market_catalog(key,name)
+     select key,name from jsonb_to_recordset($1::jsonb) as x(key text,name text)
+     on conflict(key) do nothing`,[JSON.stringify(rows)]);
+ }
  return refreshMarketCatalog({database});
 }
 const invalid=(message,status=400)=>Object.assign(new Error(message),{status});
