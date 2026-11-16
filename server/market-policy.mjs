@@ -36,7 +36,7 @@ export function isPlayerOfferMarket(market){
  if(Array.isArray(builder)&&builder.some(isPlayerOfferMarket))return true;
  const type=clean(market?.marketType??market?.market_type??market?.category??'');
  return /^(?:player|players|player prop|player props|scorer)$/.test(type)||
-  hasPlayerParameter(market)||titlesOf(market).some(title=>PLAYER_WORDS.test(title));
+  hasPlayerParameter(market)||titlesOf(market).some(title=>PLAYER_WORDS.test(title)||NAMED_PLAYER.test(title));
 }
 export function isRetiredPlayerOfferMarket(market){
  const type=clean(market?.marketType??market?.market_type??market?.category??
