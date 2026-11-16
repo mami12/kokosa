@@ -1,6 +1,7 @@
 import './fixtures/isolated-casino-env.mjs';
 import assert from 'node:assert/strict';
 import {liveContract} from '../server/ledger/live-contract-rules.mjs';
+import {isZizobetNativeOffer} from '../server/ledger/decided-markets.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
 import {isExcludedOfferMarket,isPlayerOfferMarket,isRetiredPlayerOfferMarket} from '../server/market-policy.mjs';
 import {isFinished,getResult,FINISHED_RESULT_INSERT} from '../server/ledger/results.mjs';
@@ -10,6 +11,15 @@ import {SCHEMA_SQL} from '../server/schema.mjs';
 import {MARKET_CATEGORY_IDS,catalogRows,setCatalogRows} from '../server/market-catalog.mjs';
 import {snapshotRow} from '../server/ledger/match-snapshots.mjs';
 import {createEventEvidenceStore,gradeEventLine} from '../server/ledger/event-evidence.mjs';
+
+assert.equal(isZizobetNativeOffer({key:'zz910@e30'}),true,
+ 'Zizobet market-key identities are recognized as native');
+assert.equal(isZizobetNativeOffer({extId:'zz911@e30'}),true,
+ 'serialized native Zizobet extIds are recognized');
+assert.equal(isZizobetNativeOffer({}, {raw:{provider:'ZIZOBET'}}),true,
+ 'Zizobet match identity is authoritative when the market key is legacy');
+assert.equal(isZizobetNativeOffer({key:'yb910@e30'}),false,
+ 'YBets offers are not mistaken for Zizobet-native offers');
 
 const interval=liveContract({
  market_name:'When will goal 2 be scored',
