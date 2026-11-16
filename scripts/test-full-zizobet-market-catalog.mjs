@@ -97,10 +97,14 @@ assert.equal(infoOf({service:'LIVE'},{LiveBetStatus:1,EventStatus:10,Score:'0:0'
  'numeric live open flag must be treated as open');
 assert.equal(infoOf({service:'LIVE'},{LiveBetStatus:'0',EventStatus:10,Score:'0:0'},infoMeta).hasOpenOdds,false,
  'string zero live open flag must be treated as closed');
-assert.equal(infoOf({service:'PREMATCH'},{s:1},infoMeta).hasOpenOdds,true,
- 'numeric prematch open flag must be treated as open');
-assert.equal(infoOf({service:'PREMATCH'},{s:0},infoMeta).hasOpenOdds,false,
- 'numeric prematch zero flag must be treated as closed');
+assert.equal(infoOf({service:'PREMATCH'},{s:0},infoMeta).hasOpenOdds,true,
+ 'numeric prematch zero suspension bit must be treated as open');
+assert.equal(infoOf({service:'PREMATCH'},{s:'1'},infoMeta).hasOpenOdds,false,
+ 'string prematch one suspension bit must be treated as closed');
+assert.equal(infoOf({service:'PREMATCH'},{s:true},infoMeta).hasOpenOdds,true,
+ 'boolean prematch open flags retain their legacy meaning');
+assert.equal(infoOf({service:'PREMATCH'},{s:false},infoMeta).hasOpenOdds,false,
+ 'boolean prematch closed flags retain their legacy meaning');
 for(const id of ['921','922','923'])assert.equal(
  flagRows.find(row=>row.nativeMarketId===id)?.suspended,true,
  'numeric hidden/locked/resolved quote flags must suspend native market '+id);
