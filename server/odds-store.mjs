@@ -279,7 +279,8 @@ export function applyRows(rows) {
       prev.grp_order !== (Number.isFinite(Number(row.order)) ? Number(row.order) : 0) ||
       prev.render_type !== (row.renderType ?? null) ||
       prev.board_column !== (row.column ?? null) ||
-      JSON.stringify(prev.native_parameters ?? null) !== JSON.stringify(row.nativeParameters ?? row.native_parameters ?? null);
+      JSON.stringify(prev.native_parameters ?? null) !== JSON.stringify(row.nativeParameters ?? row.native_parameters ?? null) ||
+      JSON.stringify(prev.native_quote ?? null) !== JSON.stringify(row.nativeQuote ?? row.native_quote ?? null);
 
     const stored = toStored(row, at);
     bucket.set(key, stored);
