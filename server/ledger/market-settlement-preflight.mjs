@@ -26,12 +26,11 @@ export function hasFinalSettlementRule(offer,{home='Home',away='Away'}={}){
  // ordinary score grader only returns WON/LOST/VOID and would overpay them
  // as full wins or losses. Keep the native quote placeable, but hold it until
  // a provider-specific split settlement rule exists.
- const native=String(offer.provider_id??'').toUpperCase()==='ZIZOBET';
  const threshold=Number(String(offer.line??'').replace(',','.'));
  const quarter=Math.abs(threshold*4-Math.round(threshold*4))<1e-9&&
   Math.abs(Math.round(threshold*4))%2===1;
  const totalFamily=/\b(?:total|over\s*\/?\s*under|goal\s+line|corners?)\b/i.test(String(offer.market_name));
- if(native&&quarter&&totalFamily)return false;
+ if(quarter&&totalFamily)return false;
  const line={...offer,builder_legs:null,accepted_contract:{
   ...(offer.accepted_contract??{}),
   providerPeriod:offer.period??offer.accepted_contract?.providerPeriod??0
