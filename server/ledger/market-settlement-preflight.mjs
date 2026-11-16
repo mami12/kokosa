@@ -29,7 +29,7 @@ export function hasFinalSettlementRule(offer,{home='Home',away='Away'}={}){
  const threshold=Number(String(offer.line??'').replace(',','.'));
  const quarter=Math.abs(threshold*4-Math.round(threshold*4))<1e-9&&
   Math.abs(Math.round(threshold*4))%2===1;
- const totalFamily=/\b(?:total|over\s*\/?\s*under|goal\s+line|corners?)\b/i.test(String(offer.market_name));
+ const totalFamily=/\b(?:total|over\s*\/?\s*under|goal\s+line|goals?|corners?|shots?|offsides?|fouls?|cards?)\b/i.test(String(offer.market_name));
  if(quarter&&totalFamily)return false;
  const line={...offer,builder_legs:null,accepted_contract:{
   ...(offer.accepted_contract??{}),
