@@ -42,7 +42,7 @@ export function isRetiredPlayerOfferMarket(market){
   market?.column??market?.board_column??'');
  const unsupportedType=/^(?:cards?|fouls?|players?|player props?|tackles?|throw[ -]?ins?|saves?|handicap)$/.test(type);
  return unsupportedType||isPlayerOfferMarket(market)||
-  titlesOf(market).some(title=>UNSUPPORTED_STATS.test(title))||isHandicapOfferMarket(market);
+  titlesOf(market).some(title=>UNSUPPORTED_STATS.test(title)||NAMED_PLAYER.test(title))||isHandicapOfferMarket(market);
 }
 export const isHandicapOfferMarket=market=>
  titlesOf(market).some(title=>/\b(?:asian\s+)?handicap\b/.test(title));
