@@ -72,6 +72,13 @@ check('a market label change is broadcast without a price move', store.applyRows
 const renamedStored = store.getOddsForMatches([sample.matchId]).find((r) =>
   r.market_key === sample.marketKey && r.line === (sample.line ?? '') && r.outcome_key === sample.outcomeKey);
 check('the revised market label replaces the stale stored label', renamedStored?.market_name === renamed.marketName);
+const nativeSnapshot = { ...renamed, providerId:'ZIZOBET', nativeMarketId:'901',
+  nativeOutcomeId:'1', nativeMarketName:'Total Goals', nativeOutcomeName:'Over',
+  nativeParameters:{p4:42}, nativeQuote:{mid:901,id:1,p4:42,pid:1,v:1.95,visible:1,lock:0,res:'0'} };
+store.applyRows([nativeSnapshot]);
+const nativeQuoteChanged = { ...nativeSnapshot, nativeQuote:{ ...nativeSnapshot.nativeQuote, pid:2 } };
+check('a native quote snapshot change is broadcast without a price move',
+  store.applyRows([nativeQuoteChanged]).changed.length === 1);
 
 // --- the board view ---------------------------------------------------------------
 const boardRows = store.getOddsForMatches([sample.matchId]);
