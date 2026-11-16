@@ -11,11 +11,17 @@ import { isImpossibleLiveCombination } from './combo-feasibility.mjs';
 /** Native provider offers use separate identity namespaces. This permits testing the
  * provider's native contracts without pretending our aggregate-score grader
  * can settle event/player props. Settlement evidence is checked separately. */
+export function isZizobetNativeOffer(market = {}, match = {}) {
+  const key = String(market.market_key ?? market.marketKey ?? market.key ?? market.extId ?? '');
+  const id = String(market.id ?? '');
+  return /^zz\d+@/.test(key) || /(?:^|\|)zz\d+@/.test(id) ||
+    String(match.raw?.provider ?? match.provider ?? '').toUpperCase() === 'ZIZOBET';
+}
 export function isYbetsNativeOffer(market = {}, match = {}) {
   const key = String(market.market_key ?? market.marketKey ?? market.key ?? market.extId ?? '');
   const id = String(market.id ?? '');
-  return /^(?:yb|zz)\d+@/.test(key) || /(?:^|\|)(?:yb|zz)\d+@/.test(id) ||
-    ['YBETS','ZIZOBET'].includes(String(match.raw?.provider ?? match.provider ?? '').toUpperCase());
+  return isZizobetNativeOffer(market,match) || /^yb\d+@/.test(key) || /(?:^|\|)yb\d+@/.test(id) ||
+    String(match.raw?.provider ?? match.provider ?? '').toUpperCase() === 'YBETS';
 }
 const norm = value => String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 const safeNumber = value => {
