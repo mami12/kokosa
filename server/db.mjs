@@ -285,7 +285,7 @@ export async function saveOdds(rows) {
       JSON.stringify(prev.native_parameters ?? null) !== JSON.stringify(row.nativeParameters ?? row.native_parameters ?? null) ||
       JSON.stringify(prev.native_quote ?? null) !== JSON.stringify(row.nativeQuote ?? row.native_quote ?? null);
     if (!priceChanged && !suspChanged && !metadataChanged) continue;
-    changed.push(row);
+    changed.push(metadataChanged ? { ...row, metadataChanged:true } : row);
     if (priceChanged) {
       history.push([row.matchId, row.marketKey, row.line ?? '', row.outcomeKey, row.price ?? null, row.suspended === true]);
     }
