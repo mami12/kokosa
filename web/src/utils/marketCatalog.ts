@@ -4,6 +4,7 @@ import en from '../i18n/en';
 import { formatOddsButtonLabel, translateMarketName, translateOutcomeName } from './sportsbookLabels';
 import type { Translate } from './sportsbookLabels';
 import {isComboMarket} from './comboPolicy';
+import {isExcludedOfferMarket} from '../../../server/market-policy.mjs';
 
 /**
  * Contract identity and grouping always use the original provider text.
@@ -32,8 +33,12 @@ export function isHandicapMarket(market: Pick<Market, 'name' | 'marketType'>): b
  */
 export function isIdentifiedMarket(market: Market): boolean {
   const name = String(market.name ?? '').trim();
-  if (!name) return false;
-  if (/[{}]|\[[^\[\]]*[a-z!_][^\[\]]*\]/i.test(name)) return false;
+  if (!name || isExcludedOfferMarket(market)) return false;
+  // Native Zizobet templates can contain unresolved provider placeholders.
+  // Keep the exact quoted title visible; the server retains the frozen native
+  // parameters and holds unsupported settlement contracts instead of hiding them.
+  const nativeZizobet = /^zz\d+@/.test(String(market.extId ?? market.key ?? ''));
+  if (/[{}]|\[[^\[\]]*[a-z!_][^\[\]]*\]/i.test(name) && !nativeZizobet) return false;
   return !/^(?:market|unknown|unverified market(?:\b.*)?|cols-?\d+|total-2|fora-2|match market)$/i.test(name);
 }
 
