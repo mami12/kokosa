@@ -1,7 +1,7 @@
 /** Stable market GROUP identity. Quoted lines are alternatives within one provider market key.\n * Never group by translated names or generic marketType: those may describe different contracts. */
 const marketGroupKey=value=>{
   const raw=String(value??'');
-  return raw.match(/^(zz\\d+)@/i)?.[1]??raw;
+  return raw.match(/^(zz\d+)@/i)?.[1]??raw;
 };
 
 export function selectionMarketIdentity(selection) {
