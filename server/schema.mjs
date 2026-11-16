@@ -95,4 +95,11 @@ alter table odds_current add column if not exists grp_order   int     not null d
 alter table odds_current add column if not exists render_type text;
 alter table odds_current add column if not exists period      int     not null default 0;
 alter table odds_current add column if not exists board_column text;
+alter table odds_current add column if not exists provider_id text;
+alter table odds_current add column if not exists native_market_id text;
+alter table odds_current add column if not exists native_outcome_id text;
+alter table odds_current add column if not exists native_market_name text;
+alter table odds_current add column if not exists native_outcome_name text;
+alter table odds_current add column if not exists native_parameters jsonb;
+alter table odds_current add column if not exists native_quote jsonb;
 `;
