@@ -5,6 +5,8 @@ import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
 import {isExcludedOfferMarket,isPlayerOfferMarket,isRetiredPlayerOfferMarket} from '../server/market-policy.mjs';
 import {isFinished,getResult,FINISHED_RESULT_INSERT} from '../server/ledger/results.mjs';
 import {extractConfirmedHalfTimeCandidate} from '../server/ledger/halftime-results.mjs';
+import {toDbOddsShape,buildMarkets} from '../server/collector.mjs';
+import {SCHEMA_SQL} from '../server/schema.mjs';
 import {createEventEvidenceStore,gradeEventLine} from '../server/ledger/event-evidence.mjs';
 
 const interval=liveContract({
@@ -158,5 +160,31 @@ for(const market of [
 for(const market of ['Home team to score','Away team to win','Manchester United to win',
  'Total Goals','Total Shots On Target','Full Time Result','Total Corners'])
  assert.equal(isRetiredPlayerOfferMarket({market_name:market}),false,market+' must not be misclassified');
+
+
+// DB odds mode must retain the same native identity as memory mode. Otherwise
+// placement silently stops recognizing a verified Zizobet quote.
+const shaped=toDbOddsShape([{
+ matchId:123,marketKey:'zz18639@eyJwMyI6IjE6MCJ9',marketName:'Correct score rest of match',
+ line:'',outcomeKey:'z9',outcomeName:'1:0',price:2.5,suspended:false,
+ providerId:'ZIZOBET',nativeMarketId:'18639',nativeOutcomeId:'9',
+ nativeMarketName:'Correct score [{score}]',nativeOutcomeName:'1:0',
+ nativeParameters:{p3:'1:0'},nativeQuote:{mid:18639,p3:'1:0',v:2.5}
+}])[0];
+assert.equal(shaped.provider_id,'ZIZOBET');
+assert.equal(shaped.native_market_id,'18639');
+assert.equal(shaped.native_outcome_id,'9');
+assert.equal(shaped.native_market_name,'Correct score [{score}]');
+assert.deepEqual(shaped.native_parameters,{p3:'1:0'});
+assert.deepEqual(shaped.native_quote,{mid:18639,p3:'1:0',v:2.5});
+for(const column of ['provider_id','native_market_id','native_outcome_id',
+ 'native_market_name','native_outcome_name','native_parameters','native_quote'])
+ assert.match(SCHEMA_SQL,new RegExp('add column if not exists '+column));
+const oldDbPlayerRow=buildMarkets([{
+ match_id:123,market_key:'zz500@e30',market_name:'Total Goals',
+ native_market_name:'Anytime Goalscorer',native_parameters:{pl:'player-42'},
+ line:'',outcome_key:'yes',outcome_name:'Yes',price:2,suspended:false
+}]);
+assert.equal(oldDbPlayerRow.length,0,'legacy DB player quotes are hidden by native metadata');
 
 console.log('PASS Zizobet-only settlement, 50+ halftime protection, and excluded-market policy');
