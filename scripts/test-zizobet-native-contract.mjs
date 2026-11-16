@@ -22,6 +22,13 @@ assert.equal(nativeZizobetContractRow(score).market_name,'Correct score rest of 
 const extended=offer(9003,'Total Goals [p4]',{p4:42});
 assert.equal(nativeZizobetContractRow(extended).market_name,'Total Goals 42',
  'native contracts must decode parameters beyond p1-p3');
+for(const [id,name,line] of [[9010,'Total Goals','1.25'],[9011,'Total Corners','1.75'],
+ [9012,'Total Goals','0.75'],[9013,'Total Corners','0.25']]){
+ assert.equal(liveContract(nativeZizobetContractRow(offer(id,name,{},line))),null,
+  'quarter-line '+name+' '+line+' must not use full-win/full-loss event settlement');
+}
+assert.equal(liveContract(nativeZizobetContractRow(offer(9014,'Total Goals',{},'1.5')))?.kind,'over',
+ 'ordinary half-goal lines keep their verified event settlement contract');
 assert.throws(()=>nativeZizobetContractRow({...home,native_parameters:{p1:16,p2:21}}),
  e=>e.code==='MARKET_EVIDENCE_UNSUPPORTED');
 assert.throws(()=>nativeZizobetContractRow({...home,line:'0.5',native_market_id:'9002'}),
