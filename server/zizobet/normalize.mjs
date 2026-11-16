@@ -7,8 +7,9 @@ const text=v=>String(v??'').trim();
 const flagTrue=v=>v===true||v===1||/^(?:1|true|yes|on)$/i.test(text(v));
 const flagFalse=v=>v===false||v===0||/^(?:0|false|no|off)$/i.test(text(v));
 const resolvedQuote=v=>{
- if(v==null||text(v)==='')return false;
- const n=Number(v);return Number.isFinite(n)?n!==0:true;
+ const raw=text(v).toLowerCase();if(!raw||/^(?:false|no|off)$/.test(raw))return false;
+ if(/^(?:true|yes|on)$/.test(raw))return true;
+ const n=Number(raw);return Number.isFinite(n)?n!==0:true;
 };
 const slug=s=>text(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 const pair=s=>{const m=text(s).match(/^(\d+):(\d+)$/);return m?m.slice(1).map(Number):null;};
