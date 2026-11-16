@@ -1,5 +1,6 @@
+import {isRetiredPlayerOfferMarket} from './market-policy.mjs';
 const catalog=new Map(),disabled=new Set(),disabledCategories=new Set();
-export const MARKET_CATEGORY_IDS=['totals','intervals','results','goals','corners','cards','fouls','shots','players','combos','other'];
+export const MARKET_CATEGORY_IDS=['totals','intervals','results','goals','corners','shots','combos','other'];
 
 export const NON_FOOTBALL_PATTERN = new RegExp([
   // Cricket
@@ -66,7 +67,7 @@ export function marketCategories(name){
  for(const[tag,pattern]of Object.entries({totals:/total|over.?under/,intervals:/interval|minutes?|when will|time of/,corners:/corner/,cards:/card|booking/,fouls:/foul/,shots:/shot/,players:/player|scorer|\{pl\}|scoring type/,combos:/&|(?:^|[^\d])\+|bet builder|\b(?:and|both halves)\b/,results:/1x2|result|winner|double chance|correct score|draw no bet/,goals:/goal|score|clean sheet|to nil/}))if(pattern.test(n))tags.push(tag);
  return tags.length?tags:['other'];
 }
-export function observeMarket(m){const family=marketFamily(m);if(family&&isFootballMarketName(family.name)&&!catalog.has(family.key))catalog.set(family.key,{...family,categories:marketCategories(family.name)});return family;}
+export function observeMarket(m){const family=marketFamily(m);if(family&&isFootballMarketName(family.name)&&!isRetiredPlayerOfferMarket(m)&&!isRetiredPlayerOfferMarket({name:family.name})&&!catalog.has(family.key))catalog.set(family.key,{...family,categories:marketCategories(family.name)});return family;}
 const scopeBlocks=[];
 const normScope=v=>String(v??'').trim().toLowerCase().replace(/\s+/g,' ');
 function scopeBlocked(f,match,rules=scopeBlocks){
@@ -91,8 +92,8 @@ export function marketScopeBlocked(m,match,rules){
  return scopeBlocked(family,match,(rules??[]).map(r=>({country:normScope(r.country),league:normScope(r.league),categories:(r.categories??[]).map(normScope),families:(r.families??[]).map(normScope)})));
 }
 export function marketIsEnabled(m,match){const f=observeMarket(m);if(!f)return true;return !disabled.has(f.key)&&!nativeMarketPolicyKeys(m,match).some(k=>disabled.has(k))&&!marketCategories(f.name).some(c=>disabledCategories.has(c))&&!scopeBlocked(f,match);}
-export function setCatalogRows(rows){disabled.clear();for(const r of rows){if(!isFootballMarketName(r.name))continue;catalog.set(r.key,{key:r.key,name:r.name,sortOrder:Number(r.sort_order??r.sortOrder??1000000),categories:marketCategories(r.name)});if(r.enabled===false)disabled.add(r.key);}}
-export const catalogRows=()=>[...catalog.values()].filter(r=>isFootballMarketName(r.name)).map(r=>{const blockedBy=r.categories.filter(c=>disabledCategories.has(c));return {...r,sortOrder:r.sortOrder??1000000,manualEnabled:!disabled.has(r.key),blockedBy,enabled:!disabled.has(r.key)&&!blockedBy.length};}).sort((a,b)=>a.sortOrder-b.sortOrder||a.name.localeCompare(b.name)).map((r,i)=>({...r,position:i+1}));
+export function setCatalogRows(rows){disabled.clear();for(const r of rows){if(!isFootballMarketName(r.name)||isRetiredPlayerOfferMarket({name:r.name}))continue;catalog.set(r.key,{key:r.key,name:r.name,sortOrder:Number(r.sort_order??r.sortOrder??1000000),categories:marketCategories(r.name)});if(r.enabled===false)disabled.add(r.key);}}
+export const catalogRows=()=>[...catalog.values()].filter(r=>isFootballMarketName(r.name)&&!isRetiredPlayerOfferMarket({name:r.name})).map(r=>{const blockedBy=r.categories.filter(c=>disabledCategories.has(c));return {...r,sortOrder:r.sortOrder??1000000,manualEnabled:!disabled.has(r.key),blockedBy,enabled:!disabled.has(r.key)&&!blockedBy.length};}).sort((a,b)=>a.sortOrder-b.sortOrder||a.name.localeCompare(b.name)).map((r,i)=>({...r,position:i+1}));
 export function setCategoryPolicies(rows){disabledCategories.clear();for(const r of rows??[])if(r.enabled===false&&MARKET_CATEGORY_IDS.includes(r.category))disabledCategories.add(r.category);}
 export const categoryPolicies=()=>MARKET_CATEGORY_IDS.map(category=>({category,enabled:!disabledCategories.has(category)}));
 export function marketRank(m){const f=marketFamily(m);return f?catalog.get(f.key)?.sortOrder??1000000:1000000;}
