@@ -52,5 +52,15 @@ const quarterTotals=oddsOf({match_id:55},[
 ],totalMeta,false,true);
 assert.deepEqual(quarterTotals.map(row=>row.line),['0.25','0.25','0.75','0.75'],
  'valid native quarter goal-total lines must not be discarded by a generic IsOverUnder filter');
+
+const incompleteDictionaryQuote=oddsOf({match_id:56},[
+ {mid:902,id:5,pos:99,pn:'Over',coef:1.95}
+],{positions:new Map(),liveMarkets:new Map(),
+ preMarkets:new Map([[902,{Name:'Total [total]',IsOverUnder:true}]])},false,true);
+assert.equal(incompleteDictionaryQuote.length,1,
+ 'a quoted offer with a missing dictionary position must use its own native label');
+assert.equal(incompleteDictionaryQuote[0].marketName,'Total [total]',
+ 'an unresolved native template remains visible under its exact provider title');
+assert.equal(incompleteDictionaryQuote[0].outcomeName,'Over');
 }finally{await db.close();}
 console.log('PASS complete native market catalog, LIVE/PREMATCH scoping, wager preflight and optional table migration');
