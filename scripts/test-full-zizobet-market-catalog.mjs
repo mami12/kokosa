@@ -114,5 +114,12 @@ assert.equal(incompleteDictionaryQuote.length,1,
 assert.equal(incompleteDictionaryQuote[0].marketName,'Total [total]',
  'an unresolved native template remains visible under its exact provider title');
 assert.equal(incompleteDictionaryQuote[0].outcomeName,'Over');
+const nmDictionaryQuote=oddsOf({match_id:58},[
+ {mid:903,id:6,pos:1,pn:'Over',coef:1.95}
+],{positions:new Map(),liveMarkets:new Map(),
+ preMarkets:new Map([[903,{nm:'Total Goals',pos:[{id:1,nm:'Over'}]}]])},false,true);
+assert.equal(nmDictionaryQuote.length,1,
+ 'native market definitions using the provider nm field must not be dropped');
+assert.equal(nmDictionaryQuote[0].marketName,'Total Goals');
 }finally{await db.close();}
 console.log('PASS complete native market catalog, LIVE/PREMATCH scoping, wager preflight and optional table migration');
