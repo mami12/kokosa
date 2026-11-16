@@ -4,6 +4,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {marketIsEnabled,nativeMarketPolicyKeys} from '../server/market-catalog.mjs';
 import {refreshMarketCatalog,seedNativeMarketCatalog,assertMarketEnabled} from '../server/ledger/market-catalog-store.mjs';
 import {LEDGER_SQL} from '../server/ledger/schema.mjs';
+import {oddsOf} from '../server/zizobet/normalize.mjs';
 
 assert.match(LEDGER_SQL,/create table if not exists app_supplemental_match_incident/i,
  'Supplemental incidents must be created on ledger boot even with STATS_PROVIDERS_ENABLED=false');
@@ -38,5 +39,18 @@ try{
  await db.query("update app_market_catalog set enabled=false where key='zizobet:prematch:800'");
  await refreshMarketCatalog({database});
  assert.equal(marketIsEnabled(quoted,prematch),false,'Prematch native ID block applies');
+
+const totalDefinition={Name:'Total Goals',IsOverUnder:true,N:1,
+ pos:[{id:1,nm:'Over'},{id:2,nm:'Under'}]};
+const totalMeta={positions:new Map(),liveMarkets:new Map(),
+ preMarkets:new Map([[901,totalDefinition]])};
+const quarterTotals=oddsOf({match_id:55},[
+ {mid:901,id:1,pos:1,h:0.25,coef:1.91},
+ {mid:901,id:2,pos:2,h:0.25,coef:1.91},
+ {mid:901,id:3,pos:1,h:0.75,coef:2.1},
+ {mid:901,id:4,pos:2,h:0.75,coef:1.72}
+],totalMeta,false,true);
+assert.deepEqual(quarterTotals.map(row=>row.line),['0.25','0.25','0.75','0.75'],
+ 'valid native quarter goal-total lines must not be discarded by a generic IsOverUnder filter');
 }finally{await db.close();}
 console.log('PASS complete native market catalog, LIVE/PREMATCH scoping, wager preflight and optional table migration');
