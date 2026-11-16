@@ -172,7 +172,12 @@ export function dedupeMarketRows(rows){
  const accepted=[],signatures=new Set(),correctScores=new Map();
  const norm=s=>String(s).trim().toLowerCase().replace(/\s+/g,' ');
  for(const group of [...groups.values()].sort((a,b)=>a[0].marketKey.localeCompare(b[0].marketKey,undefined,{numeric:true}))){
-  const r=group[0],base=[norm(r.marketName),r.period,r.line].join('|');
+  const r=group[0];
+  // Native market IDs are separate provider contracts even when their
+  // translated titles, line and outcome labels happen to be identical.
+  // Keep IDs distinct while still merging duplicate grids within one ID.
+  const nativeId=String(r.marketKey).match(/^zz(\d+)@/)?.[1]??String(r.marketKey);
+  const base=[norm(r.marketName),r.period,r.line,nativeId].join('|');
   const labels=[...new Set(group.map(q=>norm(q.outcomeName)))].sort();
   if(/^(?:(?:1st|2nd) half - )?correct score$/i.test(r.marketName)){
    const existing=correctScores.get(base);
