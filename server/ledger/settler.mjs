@@ -25,6 +25,7 @@ import {isWinningMarginMarket,gradeWinningMargin} from './winning-margin.mjs';
 import {isDcHalfBttsMarket,gradeDcHalfBtts} from './dc-half-btts.mjs';
 import {isHtFtComboMarket,isCornersHtFtMarket,gradeHtFtCombo} from './htft-combo.mjs';
 import {isMultiscoresMarket,gradeMultiscores,isMatchbetFirstGoalMarket,gradeMatchbetFirstGoal} from './multiscores.mjs';
+import {isQualificationMarket,gradeQualification} from './qualification.mjs';
 import { systemColumnPayout } from './system-columns.mjs';
 import { eventMarketRequirement } from './event-market-policy.mjs';
 import { isStatisticMarket, hasStatisticEvidence, gradeStatisticLine } from './statistic-markets.mjs';
@@ -480,6 +481,7 @@ export function classify(marketName = '') {
   if (isWinningMarginMarket({market_name:marketName})) return 'WINNING_MARGIN';
   if (isMultiscoresMarket(marketName)) return 'MULTISCORES';
   if (isMatchbetFirstGoalMarket(marketName)) return 'MATCHBET_FIRST_GOAL';
+  if (isQualificationMarket(marketName)) return 'TO_QUALIFY';
   const s = String(marketName).toLowerCase();
   if (isHtFtMarket(marketName)) return 'HT_FT';
   if (/correct score|exact score/i.test(s)) return 'CORRECT_SCORE';
@@ -574,6 +576,7 @@ export function hasRequiredSettlementEvidence(line, result) {
   if(isDcHalfBttsMarket(String(line.market_name??'')))return gradeDcHalfBtts(line,result)!==null;
   if(isHtFtComboMarket(String(line.market_name??'')))return gradeHtFtCombo(line,result)!==null;
   if(isMultiscoresMarket(String(line.market_name??'')))return gradeMultiscores(line,result)!==null;
+  if(isQualificationMarket(String(line.market_name??'')))return gradeQualification(line,result)!==null;
   if(isPeriodGoalTotal(line))return gradePeriodGoalTotal(parsePeriodGoalTotal(line,result),result)!==null;
   if(isScoringPropMarket(line))return gradeScoringPropMarket(line,result)!==null;
   if(isHalfExactMarketFamily(line))return false; // FT counts are not 1H/2H corner/card facts
@@ -674,6 +677,8 @@ export function gradeLine(line, result) {
     return gradeHtFtCombo(line,result);
   if(!Array.isArray(line.builder_legs)&&isMultiscoresMarket(String(line.market_name??'')))
     return gradeMultiscores(line,result);
+  if(!Array.isArray(line.builder_legs)&&isQualificationMarket(String(line.market_name??'')))
+    return gradeQualification(line,result);
   if(!Array.isArray(line.builder_legs)&&isPeriodGoalTotal(line))
     return gradePeriodGoalTotal(parsePeriodGoalTotal(line,result),result);
   if(!Array.isArray(line.builder_legs)&&isScoringPropMarket(line))
@@ -994,6 +999,9 @@ export function gradeLine(line, result) {
 
     case 'MULTISCORES':
       return gradeMultiscores(line, result);
+
+    case 'TO_QUALIFY':
+      return gradeQualification(line, result);
 
     default:
       // anything we cannot judge (player props, halves, unknown markets) is voided

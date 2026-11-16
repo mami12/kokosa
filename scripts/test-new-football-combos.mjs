@@ -4,6 +4,7 @@ import { isWinningMarginMarket, gradeWinningMargin } from '../server/ledger/winn
 import { isDcHalfBttsMarket, gradeDcHalfBtts } from '../server/ledger/dc-half-btts.mjs';
 import { isHtFtComboMarket, gradeHtFtCombo } from '../server/ledger/htft-combo.mjs';
 import { isMultiscoresMarket, gradeMultiscores } from '../server/ledger/multiscores.mjs';
+import { isQualificationMarket, gradeQualification } from '../server/ledger/qualification.mjs';
 import { 
   isWinnerTotalMarket, isTeamNotToLoseTotalMarket, isBttsTotalAndMarket,
   parseWinnerTotal, parseTeamNotToLoseTotal, parseBttsTotal,
@@ -196,4 +197,37 @@ const drawMatch = { ...match, home_score: 1, away_score: 1 };
 assert.equal(gradeLine({ market_name: 'Will there be a tie', outcome_name: 'Yes' }, drawMatch), 'WON');
 assert.equal(gradeLine({ market_name: 'Will there be a tie', outcome_name: 'No' }, drawMatch), 'LOST');
 
-console.log('PASS new football combos: Winning Margin, DC+Half BTTS, HT/FT Combos, Multiscores, Winner+Total, Team not to lose+Total, BTTS+Total, Will there be a tie');
+// ==========================================
+// 7. QUALIFICATION / ADVANCEMENT / REACH FINAL
+// ==========================================
+assert.equal(isQualificationMarket('To Qualify'), true);
+assert.equal(isQualificationMarket('Who advances to the next round'), true);
+assert.equal(isQualificationMarket('To reach the final:'), true);
+assert.equal(isQualificationMarket('To reach the semifinal:'), true);
+
+// Regular time 2-1 (Arsenal wins over Chelsea)
+assert.equal(gradeQualification({ market_name: 'To Qualify', outcome_name: '1' }, match), 'WON');
+assert.equal(gradeQualification({ market_name: 'To Qualify', outcome_name: 'Arsenal' }, match), 'WON');
+assert.equal(gradeQualification({ market_name: 'To Qualify', outcome_name: '2' }, match), 'LOST');
+assert.equal(gradeQualification({ market_name: 'To Qualify', outcome_name: 'Chelsea' }, match), 'LOST');
+
+assert.equal(gradeQualification({ market_name: 'Who advances to the next round', outcome_name: 'Arsenal' }, match), 'WON');
+assert.equal(gradeQualification({ market_name: 'Who advances to the next round', outcome_name: 'Chelsea' }, match), 'LOST');
+
+assert.equal(gradeQualification({ market_name: 'To reach the final:', outcome_name: 'Arsenal' }, match), 'WON');
+assert.equal(gradeQualification({ market_name: 'To reach the final:', outcome_name: 'Chelsea' }, match), 'LOST');
+
+// Via gradeLine:
+assert.equal(gradeLine({ market_name: 'To Qualify', outcome_name: 'Arsenal' }, match), 'WON');
+assert.equal(gradeLine({ market_name: 'Who advances to the next round', outcome_name: 'Chelsea' }, match), 'LOST');
+assert.equal(gradeLine({ market_name: 'To reach the final:', outcome_name: '1' }, match), 'WON');
+
+// Draw in 90 min: pending if no extra-time winner
+assert.equal(gradeQualification({ market_name: 'To Qualify', outcome_name: 'Arsenal' }, drawMatch), null);
+
+// Draw with penalty shootout winner
+const penMatch = { ...drawMatch, qualifying_team: 'away' };
+assert.equal(gradeQualification({ market_name: 'To Qualify', outcome_name: 'Arsenal' }, penMatch), 'LOST');
+assert.equal(gradeQualification({ market_name: 'To Qualify', outcome_name: 'Chelsea' }, penMatch), 'WON');
+
+console.log('PASS new football combos: Winning Margin, DC+Half BTTS, HT/FT Combos, Multiscores, Winner+Total, Team not to lose+Total, BTTS+Total, Will there be a tie, Qualification');

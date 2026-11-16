@@ -20,6 +20,7 @@ import { isWinningMarginMarket } from '../server/ledger/winning-margin.mjs';
 import { isDcHalfBttsMarket } from '../server/ledger/dc-half-btts.mjs';
 import { isHtFtComboMarket } from '../server/ledger/htft-combo.mjs';
 import { isMultiscoresMarket, isMatchbetFirstGoalMarket } from '../server/ledger/multiscores.mjs';
+import { isQualificationMarket } from '../server/ledger/qualification.mjs';
 
 const raw = fs.readFileSync('scripts/user-raw-input.txt', 'utf8');
 const blocks = raw.split(/\bOrder\s*\n/);
@@ -133,6 +134,7 @@ function checkSupported(title) {
   if (isHtFtComboMarket(normTitle)) return true;
   if (isMultiscoresMarket(normTitle)) return true;
   if (isMatchbetFirstGoalMarket(normTitle)) return true;
+  if (isQualificationMarket(normTitle)) return true;
   if (isHalfComboFamily(dummyLine)) return true;
   if (isPeriodGoalTotal(dummyLine)) return true;
   if (isScoringPropMarket(dummyLine)) return true;
@@ -145,7 +147,7 @@ function checkSupported(title) {
   if (['1X2', 'TOTAL', 'BTTS', 'DC', 'DNB', 'CORRECT_SCORE', 'ODD_EVEN', 'CLEAN_SHEET', 'BANDS_EXACT',
        'ANY_TEAM_WIN', 'REST_OF_MATCH', 'TEAM_TO_SCORE_2ND_HALF', 'CORNERS', 'CORNER_1X2',
        'WILL_TIE', 'WINNING_MARGIN', 'WINNER_TOTAL', 'TEAM_NOT_TO_LOSE_TOTAL', 'BTTS_TOTAL_AND',
-       'DC_HALF_BTTS', 'HTFT_COMBO', 'MULTISCORES', 'MATCHBET_FIRST_GOAL'].includes(fam)) {
+       'DC_HALF_BTTS', 'HTFT_COMBO', 'MULTISCORES', 'MATCHBET_FIRST_GOAL', 'TO_QUALIFY'].includes(fam)) {
     return true;
   }
 

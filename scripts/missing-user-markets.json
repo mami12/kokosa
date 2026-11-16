@@ -65,15 +65,6 @@
     "supported": false
   },
   {
-    "title": "To Qualify",
-    "orders": [
-      844,
-      845,
-      1313
-    ],
-    "supported": false
-  },
-  {
     "title": "Top second value",
     "orders": [
       846
@@ -92,13 +83,6 @@
     "orders": [
       931,
       932
-    ],
-    "supported": false
-  },
-  {
-    "title": "Who advances to the next round",
-    "orders": [
-      945
     ],
     "supported": false
   },
@@ -150,20 +134,6 @@
     "title": "Short term free text market",
     "orders": [
       1305
-    ],
-    "supported": false
-  },
-  {
-    "title": "To reach the final:",
-    "orders": [
-      1314
-    ],
-    "supported": false
-  },
-  {
-    "title": "To reach the semifinal:",
-    "orders": [
-      1315
     ],
     "supported": false
   },
