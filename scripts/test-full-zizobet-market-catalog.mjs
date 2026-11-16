@@ -82,6 +82,19 @@ const quarterTotals=oddsOf({match_id:55},[
 ],totalMeta,false,true);
 assert.deepEqual(quarterTotals.map(row=>row.line),['0.25','0.25','0.75','0.75'],
  'valid native quarter goal-total lines must not be discarded by a generic IsOverUnder filter');
+const flagMeta={positions:new Map(),liveMarkets:new Map(),preMarkets:new Map(
+ [920,921,922,923].map(id=>[id,totalDefinition]))};
+const flagRows=oddsOf({match_id:57},[
+ {mid:920,id:1,pos:1,coef:1.95,visible:1,lock:0,res:'0'},
+ {mid:921,id:2,pos:1,coef:1.95,visible:0,lock:0,res:'0'},
+ {mid:922,id:3,pos:1,coef:1.95,visible:1,lock:1,res:'0'},
+ {mid:923,id:4,pos:1,coef:1.95,visible:1,lock:0,res:'1'}
+],flagMeta,false,true);
+assert.equal(flagRows.find(row=>row.nativeMarketId==='920')?.suspended,false,
+ 'numeric visible/lock and string zero result flags must preserve an open quote');
+for(const id of ['921','922','923'])assert.equal(
+ flagRows.find(row=>row.nativeMarketId===id)?.suspended,true,
+ 'numeric hidden/locked/resolved quote flags must suspend native market '+id);
 
 const incompleteDictionaryQuote=oddsOf({match_id:56},[
  {mid:902,id:5,pos:99,pn:'Over',coef:1.95}
