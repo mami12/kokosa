@@ -41,6 +41,16 @@ assert.equal(sent[0].body.markets[0].outcomes[0].key,'Over');
 
 sent.length=0;
 rooms.clear();
+rooms.set('feed:board:101',new Set(['board']));
+rooms.set('feed:detail:101:all',new Set(['detail']));
+rooms.set('feed:slip:101',new Set(['slip']));
+sockets.set('slip',{data:{feedScope:{selectionIds:['101|corners|8.5|Over']}},emit(event,body){sent.push({room:'slip',event,body});}});
+payload.markets=[];payload.metadataChanged=true;
+emit();
+assert.deepEqual(sent.map(x=>x.room),['feed:board:101','feed:detail:101:all','slip'],
+ 'metadata-only changes notify scoped views even when the old market is no longer offered');
+assert.ok(sent.every(x=>x.body.metadataChanged===true&&x.body.markets.length===0));
+sent.length=0;payload.markets=markets;delete payload.metadataChanged;rooms.clear();sockets.clear();
 emit();
 assert.deepEqual(sent,[],'Market feed stops work as soon as last socket leaves');
 console.log('PASS odds broadcast avoids inactive board/detail/slip rooms while preserving active prices');
