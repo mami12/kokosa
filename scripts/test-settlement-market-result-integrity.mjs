@@ -78,8 +78,10 @@ params=finishedResultParameters({...raw,stats:{home:{yellow:3,red:0,corners:5},
  away:{yellow:1,red:0,corners:4}}});
 assert.equal(params[7],3);
 assert.equal(params[8],1);
-const finishedFrame={feed_status:'FT',score_at:'2026-11-11T20:00:00Z',home_score:1,away_score:1};
+const finishedFrame={raw:{provider:'ZIZOBET'},feed_status:'FT',score_at:'2026-11-11T20:00:00Z',home_score:1,away_score:1};
 assert.equal(isFinished(finishedFrame),true);
+assert.equal(isFinished({...finishedFrame,raw:{provider:'FOTMOB'}}),false,
+ 'A secondary final-score frame must never qualify for settlement');
 for(const status of ['After penalties','Penalties','Extra time','After match','Penalty shootout']){
  assert.equal(isFinished({...finishedFrame,feed_status:status}),false,
   status+' score could be non-regulation and must not settle 90m bets');
