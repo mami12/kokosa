@@ -5,13 +5,26 @@ import {marketIsEnabled,nativeMarketPolicyKeys} from '../server/market-catalog.m
 import {refreshMarketCatalog,seedNativeMarketCatalog,assertMarketEnabled} from '../server/ledger/market-catalog-store.mjs';
 import {LEDGER_SQL} from '../server/ledger/schema.mjs';
 import {hasFinalSettlementRule} from '../server/ledger/market-settlement-preflight.mjs';
-import {oddsOf} from '../server/zizobet/normalize.mjs';
+import {oddsOf,dedupeMarketRows} from '../server/zizobet/normalize.mjs';
 
 assert.match(LEDGER_SQL,/create table if not exists app_supplemental_match_incident/i,
  'Supplemental incidents must be created on ledger boot even with STATS_PROVIDERS_ENABLED=false');
 assert.match(LEDGER_SQL,/create table if not exists app_supplemental_match_snapshot/i);
 
 const db=new PGlite(),database={query:(...args)=>db.query(...args)};
+// Two native IDs remain separate even when their display labels and lines match.
+const sameLabelDifferentIds=dedupeMarketRows([
+ {marketKey:'zz910@e30',marketName:'Total Goals',line:'2.5',period:0,outcomeName:'Over',outcomeKey:'z1'},
+ {marketKey:'zz911@e30',marketName:'Total Goals',line:'2.5',period:0,outcomeName:'Over',outcomeKey:'z1'}
+]);
+assert.equal(sameLabelDifferentIds.length,2,
+ 'different native market IDs must never be collapsed by display-name deduplication');
+const separateCorrectScores=dedupeMarketRows([
+ {marketKey:'zz912@e30',marketName:'Correct score',line:'',period:0,outcomeName:'1:0',outcomeKey:'z1'},
+ {marketKey:'zz913@e30',marketName:'Correct score',line:'',period:0,outcomeName:'1:0',outcomeKey:'z1'}
+]);
+assert.equal(separateCorrectScores.length,2,
+ 'correct-score grids from different native IDs must remain separate contracts');
 // Native quarter-line totals must remain placeable but cannot use the
 // ordinary full-win/full-loss grader until split-stake settlement is added.
 for(const line of ['0.25','0.75','1.25','1.75']){
