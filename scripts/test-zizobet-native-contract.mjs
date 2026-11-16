@@ -19,6 +19,9 @@ const race=offer(9002,'Which team wins race to X corners?',{},'7');
 assert.equal(nativeZizobetContractRow(race).market_name,'Which team wins race to 7 corners');
 const score=offer(18639,'Correct score [{score}]',{p3:'1:0'});
 assert.equal(nativeZizobetContractRow(score).market_name,'Correct score rest of match (from 1:0)');
+const extended=offer(9003,'Total Goals [p4]',{p4:42});
+assert.equal(nativeZizobetContractRow(extended).market_name,'Total Goals 42',
+ 'native contracts must decode parameters beyond p1-p3');
 assert.throws(()=>nativeZizobetContractRow({...home,native_parameters:{p1:16,p2:21}}),
  e=>e.code==='MARKET_EVIDENCE_UNSUPPORTED');
 assert.throws(()=>nativeZizobetContractRow({...home,line:'0.5',native_market_id:'9002'}),
