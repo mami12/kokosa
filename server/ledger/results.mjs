@@ -85,7 +85,7 @@ export const FINISHED_RESULT_INSERT = `
     source = 'ZIZOBET'
   -- A verified admin correction or already-settled result must not be
   -- overwritten by a later stale or conflicting provider frame.
-  where app_match_result.source in ('FEED','ZIZOBET','RECOVERY') and app_match_result.settled_at is null
+  where app_match_result.source in ('FEED','ZIZOBET','RECOVERY','UNVERIFIED_LEGACY') and app_match_result.settled_at is null
   returning (xmax = 0) as inserted
 `;
 
