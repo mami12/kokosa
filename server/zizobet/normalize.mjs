@@ -132,7 +132,10 @@ export function oddsOf(row,quotes,meta,live,open=true){
   // Keep every quoted total line, including quarter thresholds (0.25/0.75).
   // Unsupported split-settlement contracts are held for review after placement;
   // they must not disappear from the native Zizobet offer at ingestion.
-  const params=Object.fromEntries(['p1','p2','p3','pl','comp','seq'].filter(k=>q[k]!=null).map(k=>[k,q[k]]));
+  // Preserve every numbered native parameter. Zizobet can add p4/p5/etc. to
+  // market templates; dropping them aliases distinct offers to one market key.
+  const params=Object.fromEntries(Object.entries(q).filter(([k,v])=>v!=null&&
+    (/^p\d+$/i.test(k)||/^(?:pl|comp|seq)$/i.test(k))));
   const key='zz'+id+'@'+Buffer.from(JSON.stringify(params)).toString('base64url'),line=q.h!=null?String(q.h):'';
   // Some dictionary snapshots omit a position entry even though the quote
   // itself carries its native label. Prefer the dictionary, then the quote's
@@ -157,9 +160,10 @@ export function oddsOf(row,quotes,meta,live,open=true){
   const price=Number(live?q.v:q.coef),suspended=!open||flagFalse(q.visible)||flagTrue(q.lock)||resolvedQuote(q.res)||!Number.isFinite(price)||price<=1;
   // Preserve the untouched public API name/selection and quote parameters
   // for the durable PostgreSQL archive. Browser labels are a separate layer.
-  const nativeQuote=Object.fromEntries(
-   ['mid','id','pid','pos','pn','h','p1','p2','p3','pl','comp','seq','v','coef','visible','lock','res']
-    .filter(k=>q[k]!==undefined).map(k=>[k,q[k]]));
+  const nativeFields=new Set(['mid','id','pid','pos','pn','h','pl','comp','seq',
+   'v','coef','visible','lock','res']);
+  const nativeQuote=Object.fromEntries(Object.entries(q).filter(([k,v])=>
+   v!==undefined&&(/^p\d+$/i.test(k)||nativeFields.has(k.toLowerCase()))));
   rows.push({matchId:row.match_id,marketKey:key,marketName:name,line,outcomeKey:'z'+String(q.id),
    outcomeName:label,price:Number.isFinite(price)&&price>1?price:null,suspended,
    providerId:'ZIZOBET',nativeMarketId:String(id),nativeOutcomeId:String(q.id),
