@@ -10,7 +10,7 @@ import {isComboMarket} from './comboPolicy';
  * Translation is applied only when rendering; IDs, lines, prices and saved
  * selection data remain unchanged.
  */
-export type MarketCategory = 'main' | 'goals' | 'mixed' | 'corners' | 'cards' | 'htft' | 'players' | 'other';
+export type MarketCategory = 'main' | 'goals' | 'mixed' | 'corners' | 'htft' | 'other';
 export type MarketLanguage = 'al' | 'en';
 
 const normalized = (value: unknown): string =>
@@ -24,10 +24,7 @@ export function isHandicapMarket(market: Pick<Market, 'name' | 'marketType'>): b
   const name = normalized(market.name);
   const type = normalized(market.marketType);
   return type === 'handicap'
-    || /\b(?:asian|aziatik\w*)\b/i.test(name)
-    || /\b(handicap|handicaps|fora|spread|spreads)\b/i.test(name)
-    || /^asian (?:corners?|cards?)\b/.test(name)
-    || /^(?:corners?|cards?)\.\s*asian\b/.test(name);
+    || /\b(handicap|handicaps|fora|spread|spreads)\b/i.test(name);
 }
 
 /** Hide unnamed/generated placeholders, not real short provider names.
@@ -136,8 +133,8 @@ export function marketCategoryOf(market: Market): MarketCategory {
   const type = normalized(market.marketType);
   if (isComboMarket(market)) return 'mixed';
   if (type === 'corners' || /\bcorners?\b|\bcorner kicks?\b/.test(name)) return 'corners';
-  if (type === 'cards' || /\bcards?\b|\bbookings?\b|yellow card|red card|disciplin/.test(name)) return 'cards';
-  if (/\bplayers?\b|goalscorer|scorer|to be booked|player shots?/.test(name)) return 'players';
+  if (type === 'cards' || /\bcards?\b|\bbookings?\b|yellow card|red card|disciplin/.test(name)) return 'other';
+  if (/\bplayers?\b|goalscorer|scorer|to be booked|player shots?/.test(name)) return 'other';
   if (/\b(?:result|winner|1x2)\b.*\b(?:total|goals|btts|both teams)\b|\b(?:total|goals|btts)\b.*\b(?:both teams|btts)\b/.test(name)) return 'mixed';
   if (/halftime\s*\/?\s*fulltime|half\s*time\s*\/\s*full\s*time|ht\s*\/\s*ft|\b(?:1st|2nd|first|second)\s+half\b|\bperiod\b/.test(name) ||
       Number(market.period ?? 0) === 1 || Number(market.period ?? 0) === 2) return 'htft';
@@ -184,11 +181,11 @@ export function marketSelectionLabel(raw: string, lang: MarketLanguage, marketNa
 
 const EN_CATEGORY_LABELS: Record<MarketCategory, string> = {
   main: 'Main', goals: 'Goals', mixed: 'Combos', corners: 'Corners',
-  cards: 'Cards', htft: 'Halves / Periods', players: 'Players', other: 'Other',
+  htft: 'Halves / Periods', other: 'Other',
 };
 const AL_CATEGORY_LABELS: Record<MarketCategory, string> = {
   main: 'Kryesore', goals: 'Golat', mixed: 'Kombinime', corners: 'Kornet',
-  cards: 'Kartonët', htft: 'Pjesët / Periudhat', players: 'Lojtarët', other: 'Të tjera',
+  htft: 'Pjesët / Periudhat', other: 'Të tjera',
 };
 export function marketCategoryLabel(category: MarketCategory, lang: MarketLanguage): string {
   return (lang === 'al' ? AL_CATEGORY_LABELS : EN_CATEGORY_LABELS)[category];
