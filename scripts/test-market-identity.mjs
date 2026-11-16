@@ -103,6 +103,7 @@ assert.equal(distinct.length, 2, 'retain distinct provider market IDs sharing th
 
 const require = createRequire(import.meta.url);
 const ts = require('typescript');
+const marketPolicy = await import('../server/market-policy.mjs');
 const moduleCache = new Map();
 function loadUiModule(url) {
   if (moduleCache.has(url.href)) return moduleCache.get(url.href).exports;
@@ -111,13 +112,14 @@ function loadUiModule(url) {
   const compiled = ts.transpileModule(readFileSync(url, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText;
-  const localRequire = id => id.startsWith('.')
+  const localRequire = id => id === '../../../server/market-policy.mjs' ? marketPolicy : id.startsWith('.')
     ? (/\.mjs$/.test(id) ? require(fileURLToPath(new URL(id,url))) : loadUiModule(new URL(id + '.ts', url)))
     : require(id);
   new Function('exports', 'require', 'module', compiled)(mod.exports, localRequire, mod);
   return mod.exports;
 }
 const ui = loadUiModule(new URL('../web/src/utils/marketCatalog.ts', import.meta.url));
+const sportsbookFilters = loadUiModule(new URL('../web/src/utils/sportsbookFilters.ts', import.meta.url));
 const mk = (name, line = '', period = 0, marketType = 'OTHER', extId = '') =>
   ({ id: 'test-' + extId + name + line, name, line, period, marketType, extId });
 
@@ -127,6 +129,12 @@ for (const [name, translated] of [['Total', 'Total'], ['Correct score', 'Correct
   assert.equal(ui.marketDisplayTitle(mk(name), 'en'), name, 'raw provider title remains available unchanged');
 }
 assert.equal(ui.isIdentifiedMarket(mk('Unverified market')), false);
+assert.equal(ui.isIdentifiedMarket(mk('Total [total] Goals','','0','OTHER','zz910@e30')),true,
+ 'unresolved but valid native Zizobet titles remain visible');
+assert.equal(ui.isIdentifiedMarket(mk('Total Goals {pl}','','0','OTHER','zz911@eyJwbCI6InBsYXllciJ9')),false,
+ 'native player placeholders remain excluded even when their title is unresolved');
+assert.equal(ui.isIdentifiedMarket(mk('Special Offer','','0','OTHER','zz27073@e30')),false,
+ 'native early-payout IDs remain excluded in the UI');
 assert.equal(ui.marketDisplayTitle(mk('Total', '4.5', 0, 'OVER_UNDER', 'g6379'), 'al', true), 'Total (4.5)');
 
 const providerFirst=mk('Next Goal 1st','',0,'OTHER','zz75001@eyJzZXEiOjF9');
@@ -147,6 +155,12 @@ assert.equal(ui.marketCategoryOf(mk('Result and total')), 'mixed');
 assert.equal(ui.marketSelectionLabel('Over 9.5', 'al'), 'Over 9.5');
 assert.equal(ui.marketSelectionLabel('Draw', 'al'), 'Draw');
 assert.equal(ui.marketCategoryLabel('corners', 'en'), 'Corners');
+const nativeResultPairs=[
+ mk('Full Time Result','','0','1X2','zz100@e30'),
+ mk('Match Result','','0','1X2','zz101@e30'),
+];
+assert.equal(sportsbookFilters.filterRedundantMatchResultMarkets(nativeResultPairs).length,2,
+ 'different native result IDs remain distinct even when one is generically labelled');
 
 // Synthetic Bet Builder offers are visually grouped by the market contracts,
 // not by admin naming, selection codes or prices. All distinct bets survive.
