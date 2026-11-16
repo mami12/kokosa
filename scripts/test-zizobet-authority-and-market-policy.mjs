@@ -98,6 +98,8 @@ for(const name of [
 assert.equal(isExcludedOfferMarket({market_name:'Total Goals'}),false);
 assert.equal(isExcludedOfferMarket({market_name:'Total Corners'}),false);
 assert.equal(isExcludedOfferMarket({market_name:'Full Time Result'}),false);
+assert.equal(isExcludedOfferMarket({market_name:'Early Payout'}),true,
+ 'early payout is excluded at publication and must also be rejected at native placement');
 assert.equal(isExcludedOfferMarket({market_name:'Total Goals',pl:'player-42'}),true,
  'a native player parameter retires the market even if the display title hides the player');
 
