@@ -29,7 +29,13 @@ const hasPlayerParameter=market=>{
 const PLAYER_WORDS=/\b(?:player|players|goalscorer|goal scorer|top scorer|scorer|assist|assists|goalkeeper|goal keeper)\b/;
 const UNSUPPORTED_STATS=/\b(?:fouls?|cards?|bookings?|tackles?|throw[ -]?ins?|saves?)\b/;
 export function isPlayerOfferMarket(market){
- return hasPlayerParameter(market)||titlesOf(market).some(title=>PLAYER_WORDS.test(title));
+ if(!market)return false;
+ const builder=market?.builder_legs??market?.builderLegs??
+  market?.accepted_contract?.builderLegs??market?.accepted_contract?.builder_legs;
+ if(Array.isArray(builder)&&builder.some(isPlayerOfferMarket))return true;
+ const type=clean(market?.marketType??market?.market_type??market?.category??'');
+ return /^(?:player|players|player prop|player props|scorer)$/.test(type)||
+  hasPlayerParameter(market)||titlesOf(market).some(title=>PLAYER_WORDS.test(title));
 }
 export function isRetiredPlayerOfferMarket(market){
  return isPlayerOfferMarket(market)||titlesOf(market).some(title=>UNSUPPORTED_STATS.test(title));
