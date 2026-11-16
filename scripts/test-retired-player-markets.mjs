@@ -32,7 +32,7 @@ const retired=[
  'Player - red cards',
  'Player - yellow cards',
  'Total yellow cards','Total red cards','Away team to be carded',
- 'Team fouls','Total Fouls','Asian Handicap','Total Tackles','Total Saves','Total Throw-ins',
+ 'Team fouls','Total Fouls','Asian Handicap','Total Tackles','Total Saves','Total Throw-ins','Anytime Goalscorer',
 ];
 const kept=[
  'Total corners','1st half - Total corners','Race to 7 corners',
