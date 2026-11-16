@@ -141,8 +141,9 @@ export function parseOrdinalGoalTime(line){
  if(/^(no goal|no more goals?|none)$/i.test(label))
   return {version:1,kind:'nth-time',event:'goal',target,choice:'none'};
  const range=label.match(/^(?:min(?:ute)?s?\s*)?(\d{1,3})(?::\d{2})?\s*[-–]\s*(\d{1,3})(?::\d{2})?(?:\s*(?:mins?|minutes?))?$/i);
- if(!range)return null;
- const from=Number(range[1]),to=Number(range[2]);
+ const plus=label.match(/^(?:min(?:ute)?s?\s*)?(\d{1,3})\s*\+$/i);
+ if(!range&&!plus)return null;
+ const from=Number(range?.[1]??plus[1]),to=range?Number(range[2]):130;
  if(from<0||to>130||from>to)return null;
  return {version:1,kind:'nth-time',event:'goal',target,choice:'range',from,to};
 }
