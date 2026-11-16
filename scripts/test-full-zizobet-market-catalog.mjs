@@ -4,6 +4,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {marketIsEnabled,nativeMarketPolicyKeys} from '../server/market-catalog.mjs';
 import {refreshMarketCatalog,seedNativeMarketCatalog,assertMarketEnabled} from '../server/ledger/market-catalog-store.mjs';
 import {LEDGER_SQL} from '../server/ledger/schema.mjs';
+import {hasFinalSettlementRule} from '../server/ledger/market-settlement-preflight.mjs';
 import {oddsOf} from '../server/zizobet/normalize.mjs';
 
 assert.match(LEDGER_SQL,/create table if not exists app_supplemental_match_incident/i,
@@ -11,6 +12,17 @@ assert.match(LEDGER_SQL,/create table if not exists app_supplemental_match_incid
 assert.match(LEDGER_SQL,/create table if not exists app_supplemental_match_snapshot/i);
 
 const db=new PGlite(),database={query:(...args)=>db.query(...args)};
+// Native quarter-line totals must remain placeable but cannot use the
+// ordinary full-win/full-loss grader until split-stake settlement is added.
+for(const line of ['0.25','0.75','1.25','1.75']){
+ const offer={provider_id:'ZIZOBET',market_name:'Total Goals',outcome_name:'Over',
+  outcome_key:'Over',line};
+ assert.equal(hasFinalSettlementRule(offer),false,
+  'quarter total '+line+' must remain pending rather than be settled as a full result');
+}
+assert.equal(hasFinalSettlementRule({provider_id:'ZIZOBET',market_name:'Total Goals',
+ outcome_name:'Over',outcome_key:'Over',line:'2.5'}),true,
+ 'ordinary half-goal totals retain their existing settlement rule');
 try{
  await db.exec(`create table app_provider_market_definition(
     provider_id text not null,scope text not null,native_market_id text not null,
