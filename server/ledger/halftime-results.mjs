@@ -24,8 +24,10 @@ const phaseOf=v=>{
 };
 export function extractConfirmedHalfTimeCandidate(row){
  if(!row||!Number.isSafeInteger(Number(row.match_id))||Number(row.match_id)<=0)return null;
+ // A half-time scoreboard is financial evidence only when it came from Zizobet.
+ if(String(row.raw?.provider??'').toUpperCase()!=='ZIZOBET')return null;
  const phase=phaseOf(row.feed_status);
- if(!phase||row.raw?.provider==='YBETS')return null;
+ if(!phase)return null;
  let periods=row.periods_score;
  if(typeof periods==='string'){try{periods=JSON.parse(periods);}catch{return null;}}
  if(!Array.isArray(periods)||periods.length===0)return null;
