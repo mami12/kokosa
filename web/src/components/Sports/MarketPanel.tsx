@@ -1,6 +1,6 @@
 ﻿import { marketDiagnosticAll } from '../../utils/marketExpiry';
 import { useMemo, useState } from 'react';
-import { Trophy, Target, Flag, Clock, ShieldAlert, ListOrdered, Layers, Search, UserRound } from 'lucide-react';
+import { Trophy, Target, Flag, Clock, ListOrdered, Layers, Search } from 'lucide-react';
 import { Match, Market } from '../../types';
 import OddsButton from './OddsButton';
 import MarketInfoButton from './MarketInfoButton';
@@ -36,9 +36,7 @@ const CATEGORIES: CategoryDef[] = [
   { key: 'goals', label: 'Goals', icon: Target },
   { key: 'mixed', label: 'Combos', icon: Layers },
   { key: 'corners', label: 'Corners', icon: Flag },
-  { key: 'cards', label: 'Cards', icon: ShieldAlert },
   { key: 'htft', label: 'Halves / Periods', icon: Clock },
-  { key: 'players', label: 'Players', icon: UserRound },
   { key: 'other', label: 'Other', icon: ListOrdered },
 ];
 
@@ -167,10 +165,10 @@ export default function MarketPanel({ match }: { match: Match }) {
 
   const { categorized, counts } = useMemo(() => {
     const result: Record<Category, Market[]> = {
-      main: [], goals: [], mixed: [], corners: [], cards: [], htft: [], players: [], other: [],
+      main: [], goals: [], mixed: [], corners: [], htft: [], other: [],
     };
     const c: Record<Category, number> = {
-      main: 0, goals: 0, mixed: 0, corners: 0, cards: 0, htft: 0, players: 0, other: 0,
+      main: 0, goals: 0, mixed: 0, corners: 0, htft: 0, other: 0,
     };
 
     const query = marketSearch.trim().toLowerCase();
