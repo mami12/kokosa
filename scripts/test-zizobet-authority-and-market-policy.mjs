@@ -7,6 +7,7 @@ import {isFinished,getResult,FINISHED_RESULT_INSERT} from '../server/ledger/resu
 import {extractConfirmedHalfTimeCandidate} from '../server/ledger/halftime-results.mjs';
 import {toDbOddsShape,buildMarkets} from '../server/collector.mjs';
 import {SCHEMA_SQL} from '../server/schema.mjs';
+import {snapshotRow} from '../server/ledger/match-snapshots.mjs';
 import {createEventEvidenceStore,gradeEventLine} from '../server/ledger/event-evidence.mjs';
 
 const interval=liveContract({
@@ -99,6 +100,10 @@ assert.equal(isExcludedOfferMarket({market_name:'Full Time Result'}),false);
 assert.equal(isExcludedOfferMarket({market_name:'Total Goals',pl:'player-42'}),true,
  'a native player parameter retires the market even if the display title hides the player');
 
+
+// Durable restart snapshots must retain the provider identity used by
+// isFinished(), otherwise verified Zizobet results disappear after a restart.
+assert.equal(snapshotRow({...finishedRow,match_id:700,home:'A',away:'B'}).raw.provider,'ZIZOBET');
 
 // All final-score paths require the primary feed identity, not merely an FT label.
 const finishedRow={
