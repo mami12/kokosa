@@ -7,6 +7,7 @@ import {isFinished,getResult,FINISHED_RESULT_INSERT} from '../server/ledger/resu
 import {extractConfirmedHalfTimeCandidate} from '../server/ledger/halftime-results.mjs';
 import {toDbOddsShape,buildMarkets} from '../server/collector.mjs';
 import {SCHEMA_SQL} from '../server/schema.mjs';
+import {MARKET_CATEGORY_IDS,catalogRows,setCatalogRows} from '../server/market-catalog.mjs';
 import {snapshotRow} from '../server/ledger/match-snapshots.mjs';
 import {createEventEvidenceStore,gradeEventLine} from '../server/ledger/event-evidence.mjs';
 
@@ -166,6 +167,17 @@ for(const market of ['Home team to score','Away team to win','Manchester United 
  'Total Goals','Total Shots On Target','Full Time Result','Total Corners'])
  assert.equal(isRetiredPlayerOfferMarket({market_name:market}),false,market+' must not be misclassified');
 
+
+// The admin market catalog must not reintroduce markets removed from the board.
+setCatalogRows([
+ {key:'player-market',name:'Anytime Goalscorer',enabled:true},
+ {key:'cards-market',name:'Total Cards',enabled:true},
+ {key:'handicap-market',name:'Asian Handicap',enabled:true},
+ {key:'goals-market',name:'Total Goals',enabled:true}
+]);
+assert.deepEqual(catalogRows().map(row=>row.key),['goals-market']);
+for(const category of ['players','cards','fouls'])
+ assert.equal(MARKET_CATEGORY_IDS.includes(category),false,category+' category must not be offered');
 
 // DB odds mode must retain the same native identity as memory mode. Otherwise
 // placement silently stops recognizing a verified Zizobet quote.
