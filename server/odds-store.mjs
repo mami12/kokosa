@@ -289,7 +289,7 @@ export function applyRows(rows) {
     if (!priceChanged && !suspendedChanged && !metadataChanged) continue;
     counters.changed++;
     counters.lastChangeAt = at;
-    changed.push(row); // camelCase: broadcastOdds() -> toDbOddsShape() expects this
+    changed.push(metadataChanged ? { ...row, metadataChanged:true } : row); // camelCase rows are serialized by broadcastOdds()
     if (priceChanged) pushHistory(matchId, stored);
   }
 
