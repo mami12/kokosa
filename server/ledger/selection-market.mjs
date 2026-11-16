@@ -3,6 +3,10 @@ const marketGroupKey=value=>{
   const raw=String(value??'');
   return raw.match(/^(zz\d+)@/i)?.[1]??raw;
 };
+const identity=(match,key,selection)=>JSON.stringify([
+  String(match),marketGroupKey(key),
+  selection?.period??selection?.providerPeriod??''
+]);
 
 export function selectionMarketIdentity(selection) {
   const outcome = String(selection?.outcomeId ?? '').split('|');
@@ -24,24 +28,24 @@ export function selectionMarketIdentity(selection) {
   }
   // Before server resolution the only trusted evidence is the saved template.
   if (outcome[0] === 'BB' && outcome.length >= 3 && outcome[1] && outcome[2]) {
-    return JSON.stringify([outcome[1], `BB:${outcome[2]}`, '']);
+    return JSON.stringify([outcome[1], `BB:${outcome[2]}`, '',selection?.period??'']);
   }
   if (outcome.length >= 4 && outcome[0] && outcome[1]) {
-    return JSON.stringify([outcome[0],marketGroupKey(outcome[1])]);
+    return identity(outcome[0],outcome[1],selection);
   }
   // The resolver supplies authoritative fields, rather than browser metadata.
   const matchId = selection?.matchId ?? selection?.match_id;
   if (matchId != null && marketKey != null) {
-    return JSON.stringify([String(matchId), marketGroupKey(marketKey)]);
+    return identity(matchId,marketKey,selection);
   }
   if (market[0] === 'BB' && market.length >= 3 && market[1] && market[2]) {
-    return JSON.stringify([market[1], `BB:${market[2]}`, '']);
+    return JSON.stringify([market[1], `BB:${market[2]}`, '',selection?.period??'']);
   }
   if (market.length >= 3 && market[0] && market[1]) {
-    return JSON.stringify([market[0],marketGroupKey(market[1])]);
+    return identity(market[0],market[1],selection);
   }
   if (selection?.matchId != null && selection?.marketId) {
-    return JSON.stringify([String(selection.matchId), marketGroupKey(selection.marketId)]);
+    return identity(selection.matchId,selection.marketId,selection);
   }
   return null;
 }
