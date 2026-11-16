@@ -290,7 +290,7 @@ export function LiveFeedProvider({ children }: { children: ReactNode }) {
     socket.on('feed:state', useMode);
 
     socket.on('odds:update', (payload: { matchId: string | number; markets?: any[] }) => {
-      if((payload as any).boardChanged)refresh();
+      if((payload as any).boardChanged||((payload as any).metadataChanged&&hasDetailFeedInterest(String(payload.matchId))))refresh();
       const incomingAt = Date.parse((payload as any).at) || Date.now();
       const deltas: Record<string, OddsDelta> = {};
       const outcomeLocks: Record<string, boolean> = {};
