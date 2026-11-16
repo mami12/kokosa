@@ -1,32 +1,37 @@
 /**
- * Global offer policy. These exclusions apply to NEW provider offers and
- * browser/socket projections, never to the immutable terms of past tickets.
- *
- * Zizobet's full-match API is an indivisible payload. We can discard unwanted
- * markets immediately on ingest, before normalization/storage/broadcast, but
- * cannot make its upstream getprematchgamefull/gamenew response omit them.
+ * Global offer policy. Exclusions apply before publication and at acceptance.
+ * Historical ticket terms remain immutable; player contracts are never auto-settled.
  */
-const marketTitle=market=>String(
-  market?.marketName??market?.market_name??market?.name??
-  market?.nativeMarketName??market?.native_market_name??''
-).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
- .replace(/[_–—]+/g,' ').replace(/\s+/g,' ').trim();
-
-/** No player propositions or unsupported statistic families are offered. */
-export function isRetiredPlayerOfferMarket(market){
- const title=marketTitle(market);
- const hasPlayerParameter=!!String(
-   market?.player??market?.pl??market?.nativeParameters?.pl??market?.parameters?.pl??''
- ).trim();
- if(!title)return hasPlayerParameter;
- const playerMarket=hasPlayerParameter||
-   /\b(?:player|goalscorer|goal scorer|goalkeeper|goal keeper|scorer|assist|assists)\b/.test(title)||
-   /^(?!\d)(?!total\b)[\p{L}][\p{L}'., -]{1,95}\s+(?:to\s+|-\s+|will\s+)/u.test(title);
- const unsupportedStatistic=/\b(?:asian\s+handicap|handicap|fouls?|cards?|bookings?|tackles?|throw[ -]?ins?|saves?|goalkeeper\s+saves?)\b/.test(title);
- return playerMarket||unsupportedStatistic;
+const clean=value=>String(value??'').normalize('NFD')
+ .replace(/[\\u0300-\\u036f]/g,'').toLowerCase()
+ .replace(/[_–—]+/g,' ').replace(/\\s+/g,' ').trim();
+const titlesOf=market=>[
+ market?.marketName,market?.market_name,market?.name,
+ market?.nativeMarketName,market?.native_market_name,
+ market?.accepted_contract?.providerMarketName,
+ market?.accepted_contract?.nativeMarketName
+].map(clean).filter(Boolean);
+const nativeParams=market=>market?.nativeParameters??market?.native_parameters??
+ market?.accepted_contract?.nativeParameters??market?.accepted_contract?.native_parameters??
+ market?.parameters??{};
+const hasPlayerParameter=market=>{
+ const params=nativeParams(market);
+ return [market?.player,market?.pl,params?.pl,params?.player,
+  market?.accepted_contract?.nativeParameters?.pl].some(v=>v!=null&&String(v).trim()!=='');
+};
+const PLAYER_WORDS=/\\b(?:player|players|goalscorer|goal scorer|top scorer|scorer|assist|assists|goalkeeper|goal keeper)\\b/;
+const UNSUPPORTED_STATS=/\\b(?:fouls?|cards?|bookings?|tackles?|throw[ -]?ins?|saves?)\\b/;
+export function isPlayerOfferMarket(market){
+ return hasPlayerParameter(market)||titlesOf(market).some(title=>PLAYER_WORDS.test(title));
 }
-export const isHandicapOfferMarket = market =>
- market?.explicitlyExcluded === true || /\bhandicap\b/i.test(marketTitle(market));
-export const isEarlyPayoutOfferMarket = market => /1x2\s*\(xup\)|early\s*payout/i.test(String(market?.name ?? market?.market_name ?? '')) || String(market?.native_market_id ?? market?.nativeMarketId ?? '') === '27073';
-export const isExcludedOfferMarket = market =>
- isHandicapOfferMarket(market) || isEarlyPayoutOfferMarket(market) || isRetiredPlayerOfferMarket(market);
+export function isRetiredPlayerOfferMarket(market){
+ return isPlayerOfferMarket(market)||titlesOf(market).some(title=>UNSUPPORTED_STATS.test(title));
+}
+export const isHandicapOfferMarket=market=>
+ titlesOf(market).some(title=>/\\b(?:asian\\s+)?handicap\\b/.test(title));
+export const isEarlyPayoutOfferMarket=market=>
+ titlesOf(market).some(title=>/1x2\\s*\\(xup\\)|early\\s*payout/.test(title))||
+ String(market?.native_market_id??market?.nativeMarketId??'')==='27073';
+export const isExcludedOfferMarket=market=>
+ isHandicapOfferMarket(market)||isEarlyPayoutOfferMarket(market)||
+ isRetiredPlayerOfferMarket(market);
