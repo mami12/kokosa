@@ -14,7 +14,7 @@ import * as overrides from './overrides.mjs';
 import { isResultBttsMarket } from './result-btts.mjs';
 import { liveRiskReason } from '../live-risk.mjs';
 import { frozenSelectionPrice } from './system-columns.mjs';
-import { isDecidedLiveOutcome, isYbetsNativeOffer } from './decided-markets.mjs';
+import { isDecidedLiveOutcome, isYbetsNativeOffer, isZizobetNativeOffer } from './decided-markets.mjs';
 import {isExcludedOfferMarket} from '../market-policy.mjs';
 import {marketDiagnosticAll} from '../market-diagnostic.mjs';
 import {trackerTeamStatistics} from '../match-statistics.mjs';
@@ -104,6 +104,7 @@ export function toClientMatch(m) {
     const diagnostic=marketDiagnosticAll();
     if((!diagnostic&&isExcludedOfferMarket(mk))||!marketIsEnabled(mk,m))continue;
     const nativeOffer=isYbetsNativeOffer(mk,m);
+    const nativeZizobet=isZizobetNativeOffer(mk,m);
     const line = mk.line ?? '';
     const isResultMarket = mk.column === 'result' || /1x2|match result|full time result|\bwinner\b|moneyline/i.test(mk.name ?? '');
     const mType = isResultMarket ? '1X2' : (MARKET_TYPE_BY_COLUMN[mk.column] ?? 'OTHER');
@@ -127,7 +128,7 @@ export function toClientMatch(m) {
           outcomeKey: o.key,
           price,
         }) !== null;
-        const decided = isDecidedLiveOutcome(m, {
+        const decided = !nativeZizobet&&isDecidedLiveOutcome(m, {
           name: mk.name, line, period: mk.period ?? 0,
           outcomeName: o.name, outcomeCode: o.key,
         });
@@ -150,7 +151,7 @@ export function toClientMatch(m) {
           decided,
           status: providerSuspended || riskSuspended || decided || quoteSuspended ? 'SUSPENDED' : 'ACTIVE',
         };
-      }).filter(o=>!nativeOffer||!o.decided);
+      }).filter(o=>nativeZizobet||!nativeOffer||!o.decided);
 
     // Sort outcomes in canonical sportsbook order: 1 always first, X second, 2 third
     const OUTCOME_RANK = (code, name) => {
