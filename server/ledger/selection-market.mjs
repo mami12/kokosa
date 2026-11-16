@@ -1,4 +1,9 @@
 /** Stable market GROUP identity. Quoted lines are alternatives within one provider market key.\n * Never group by translated names or generic marketType: those may describe different contracts. */
+const marketGroupKey=value=>{
+  const raw=String(value??'');
+  return raw.match(/^(zz\\d+)@/i)?.[1]??raw;
+};
+
 export function selectionMarketIdentity(selection) {
   const outcome = String(selection?.outcomeId ?? '').split('|');
   const market = String(selection?.marketId ?? '').split('|');
@@ -22,21 +27,21 @@ export function selectionMarketIdentity(selection) {
     return JSON.stringify([outcome[1], `BB:${outcome[2]}`, '']);
   }
   if (outcome.length >= 4 && outcome[0] && outcome[1]) {
-    return JSON.stringify(outcome.slice(0, 2));
+    return JSON.stringify([outcome[0],marketGroupKey(outcome[1])]);
   }
   // The resolver supplies authoritative fields, rather than browser metadata.
   const matchId = selection?.matchId ?? selection?.match_id;
   if (matchId != null && marketKey != null) {
-    return JSON.stringify([String(matchId), String(marketKey)]);
+    return JSON.stringify([String(matchId), marketGroupKey(marketKey)]);
   }
   if (market[0] === 'BB' && market.length >= 3 && market[1] && market[2]) {
     return JSON.stringify([market[1], `BB:${market[2]}`, '']);
   }
   if (market.length >= 3 && market[0] && market[1]) {
-    return JSON.stringify(market.slice(0, 2));
+    return JSON.stringify([market[0],marketGroupKey(market[1])]);
   }
   if (selection?.matchId != null && selection?.marketId) {
-    return JSON.stringify([String(selection.matchId), String(selection.marketId)]);
+    return JSON.stringify([String(selection.matchId), marketGroupKey(selection.marketId)]);
   }
   return null;
 }
