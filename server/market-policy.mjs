@@ -21,7 +21,7 @@ const hasPlayerParameter=market=>{
  if(direct.some(v=>v!=null&&String(v).trim()!==''))return true;
  // Older odds rows may have retained the native parameter only in the
  // provider-key payload. Decode that exact Zizobet identity as a final guard.
- const encoded=String(market?.market_key??market?.marketKey??'').match(/^zz\\d+@([A-Za-z0-9_-]+)$/)?.[1];
+ const encoded=String(market?.market_key??market?.marketKey??'').match(/^zz\d+@([A-Za-z0-9_-]+)$/)?.[1];
  if(!encoded)return false;
  try{return !!JSON.parse(Buffer.from(encoded,'base64url').toString('utf8'))?.pl;}
  catch{return false;}
