@@ -125,17 +125,25 @@ export function oddsOf(row,quotes,meta,live,open=true){
   // they must not disappear from the native Zizobet offer at ingestion.
   const params=Object.fromEntries(['p1','p2','p3','pl','comp','seq'].filter(k=>q[k]!=null).map(k=>[k,q[k]]));
   const key='zz'+id+'@'+Buffer.from(JSON.stringify(params)).toString('base64url'),line=q.h!=null?String(q.h):'';
-  const position=live?(meta.positions.get(String(q.pid))??q.pn??q.pname):def.pos?.find(p=>Number(p.id)===Number(q.pos))?.nm;
-  if(!position)continue;
+  // Some dictionary snapshots omit a position entry even though the quote
+  // itself carries its native label. Prefer the dictionary, then the quote's
+  // own label; do not silently drop a valid provider selection.
+  const position=live
+   ?(meta.positions.get(String(q.pid))??q.pn??q.pname)
+   :(def.pos?.find(p=>Number(p.id)===Number(q.pos))?.nm??meta.positions.get(String(q.pid))??q.pn??q.pname);
+  if(position==null||String(position).trim()==='')continue;
   const measuredWidth=[...(widths.get(id)??[])].sort((a,b)=>b[1]-a[1]||a[0]-b[0])[0]?.[0];
-  let name=resolveMarketTitle(live&&id===18639?'Correct score [{score}]':rawName,q,{intervalWidth:measuredWidth});if(!name)continue;
+  // Keep the exact provider title if a dynamic placeholder cannot be expanded.
+  // Its native parameters are still frozen and the ticket is held for review
+  // rather than making the quoted offer vanish from the market list.
+  let name=resolveMarketTitle(live&&id===18639?'Correct score [{score}]':rawName,q,{intervalWidth:measuredWidth})??rawName;
   if(live&&id===602)name='1X2';
   name=name.replace(/\bHometeam\b/gi,'Home team').replace(/\bAwayteam\b/gi,'Away team');
   if(isRetiredPlayerOfferMarket({name,pl:q.pl}))continue;
   if(q.pl&&!name.includes(String(q.pl)))name+=' · '+q.pl;
   const fullResult=(live&&id===602)||(!live&&id===448);
   const fullTotal=(live&&id===603)||(!live&&id===537);
-  const label=resolveMarketTitle(position,q);if(!label)continue;
+  const label=resolveMarketTitle(position,q)??String(position);
   const canonical=/^(?:1|x|2|1x|12|x2)$/i.test(label)?label.toUpperCase():/^(?:over|o)$/i.test(label)?'Over':/^(?:under|u)$/i.test(label)?'Under':/^(?:yes|no)$/i.test(label)?label[0].toUpperCase()+label.slice(1).toLowerCase():null;
   const price=Number(live?q.v:q.coef),suspended=!open||q.visible===false||q.lock===true||q.res!=null&&q.res!==0||!Number.isFinite(price)||price<=1;
   // Preserve the untouched public API name/selection and quote parameters
