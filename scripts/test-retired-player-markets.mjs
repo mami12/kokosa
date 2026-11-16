@@ -44,7 +44,6 @@ const kept=[
  'Halftime/Fulltime & exact goals',
  'Halftime/Fulltime correct score',
  'Home team to score in 1st half',
-  'Anytime Goalscorer',
  'Next Goal','First Goal','Last Goal',
  'First corner','Last corner',
  '1st half - First corner',
