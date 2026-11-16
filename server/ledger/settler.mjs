@@ -195,6 +195,167 @@ export function gradeHeldNativeCombo(line,result){
    return null;
  }
 
+ const h2 = (hh !== null) ? home - hh : null;
+ const a2 = (ha !== null) ? away - ha : null;
+ const total = home + away;
+ const total1h = (hh !== null && ha !== null) ? hh + ha : null;
+ const total2h = (h2 !== null && a2 !== null) ? h2 + a2 : null;
+ const lineVal = num(saved.line);
+
+ if (/^home\s+team\s+wins\s+both\s+halves$/i.test(m)) {
+   if (hh === null || ha === null || h2 === null || a2 === null) return null;
+   const won = (hh > ha) && (h2 > a2);
+   if (['yes', 'po'].includes(key)) return won ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !won ? 'WON' : 'LOST';
+   return null;
+ }
+ if (/^away\s+team\s+wins\s+both\s+halves$/i.test(m)) {
+   if (hh === null || ha === null || h2 === null || a2 === null) return null;
+   const won = (ha > hh) && (a2 > h2);
+   if (['yes', 'po'].includes(key)) return won ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !won ? 'WON' : 'LOST';
+   return null;
+ }
+
+ if (/^home\s+team\s+wins\s+any\s+of\s+the\s+halves$/i.test(m)) {
+   if (hh === null || ha === null || h2 === null || a2 === null) return null;
+   const won = (hh > ha) || (h2 > a2);
+   if (['yes', 'po'].includes(key)) return won ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !won ? 'WON' : 'LOST';
+   return null;
+ }
+ if (/^away\s+team\s+wins\s+any\s+of\s+the\s+halves$/i.test(m)) {
+   if (hh === null || ha === null || h2 === null || a2 === null) return null;
+   const won = (ha > hh) || (a2 > h2);
+   if (['yes', 'po'].includes(key)) return won ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !won ? 'WON' : 'LOST';
+   return null;
+ }
+
+ if (/^home\s+team\s+wins\s+to\s+nil$/i.test(m)) {
+   const won = (home > away) && (away === 0);
+   if (['yes', 'po'].includes(key)) return won ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !won ? 'WON' : 'LOST';
+   return null;
+ }
+ if (/^away\s+team\s+wins\s+to\s+nil$/i.test(m)) {
+   const won = (away > home) && (home === 0);
+   if (['yes', 'po'].includes(key)) return won ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !won ? 'WON' : 'LOST';
+   return null;
+ }
+
+ if (/^both\s+half\s+goals\s+over\s+1\.5$/i.test(m)) {
+   if (total1h === null || total2h === null) return null;
+   const won = (total1h > 1.5) && (total2h > 1.5);
+   if (['yes', 'po'].includes(key)) return won ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !won ? 'WON' : 'LOST';
+   return null;
+ }
+ if (/^both\s+half\s+goals\s+under\s+1\.5$/i.test(m)) {
+   if (total1h === null || total2h === null) return null;
+   const won = (total1h < 1.5) && (total2h < 1.5);
+   if (['yes', 'po'].includes(key)) return won ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !won ? 'WON' : 'LOST';
+   return null;
+ }
+
+ if (/^1st\s*\/\s*2nd\s+half\s+both\s+teams?\s+to\s+score$/i.test(m)) {
+   if (hh === null || ha === null || h2 === null || a2 === null) return null;
+   const b1 = hh > 0 && ha > 0;
+   const b2 = h2 > 0 && a2 > 0;
+   const pair = `${b1 ? 'yes' : 'no'} / ${b2 ? 'yes' : 'no'}`;
+   const cleanOutcome = String(saved.providerOutcomeName ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+   return cleanOutcome === pair ? 'WON' : 'LOST';
+ }
+
+ if (/^draw\s+or\s+total\s+goals\s+over$/i.test(m)) {
+   if (lineVal === null) return null;
+   const won = (home === away) || (total > lineVal);
+   if (['yes', 'po'].includes(key)) return won ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !won ? 'WON' : 'LOST';
+   return null;
+ }
+ if (/^draw\s+or\s+total\s+goals\s+under$/i.test(m)) {
+   if (lineVal === null) return null;
+   const won = (home === away) || (total < lineVal);
+   if (['yes', 'po'].includes(key)) return won ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !won ? 'WON' : 'LOST';
+   return null;
+ }
+
+ if (/^home\s+team\s+win(?:s)?\s+or\s+total\s+over$/i.test(m)) {
+   if (lineVal === null) return null;
+   const won = (home > away) || (total > lineVal);
+   if (['yes', 'po'].includes(key)) return won ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !won ? 'WON' : 'LOST';
+   return null;
+ }
+ if (/^home\s+team\s+win(?:s)?\s+or\s+total\s+under$/i.test(m)) {
+   if (lineVal === null) return null;
+   const won = (home > away) || (total < lineVal);
+   if (['yes', 'po'].includes(key)) return won ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !won ? 'WON' : 'LOST';
+   return null;
+ }
+ if (/^away\s+team\s+win(?:s)?\s+or\s+total\s+over$/i.test(m)) {
+   if (lineVal === null) return null;
+   const won = (away > home) || (total > lineVal);
+   if (['yes', 'po'].includes(key)) return won ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !won ? 'WON' : 'LOST';
+   return null;
+ }
+ if (/^away\s+team\s+win(?:s)?\s+or\s+total\s+under$/i.test(m)) {
+   if (lineVal === null) return null;
+   const won = (away > home) || (total < lineVal);
+   if (['yes', 'po'].includes(key)) return won ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !won ? 'WON' : 'LOST';
+   return null;
+ }
+
+ if (/^home\s+team\s+to\s+win$/i.test(m)) {
+   const won = home > away;
+   if (['yes', 'po'].includes(key)) return won ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !won ? 'WON' : 'LOST';
+   return null;
+ }
+ if (/^away\s+team\s+to\s+win$/i.test(m)) {
+   const won = away > home;
+   if (['yes', 'po'].includes(key)) return won ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !won ? 'WON' : 'LOST';
+   return null;
+ }
+
+ if (/^last\s+team\s+to\s+score$/i.test(m)) {
+   let last = null;
+   if (home === 0 && away === 0) last = 'none';
+   else if (home > 0 && away === 0) last = 'home';
+   else if (home === 0 && away > 0) last = 'away';
+   else if (result?.last_team_to_score) last = result.last_team_to_score;
+   if (!last) return null;
+   if (last === 'home') return (key === '1' || key === 'home') ? 'WON' : 'LOST';
+   if (last === 'away') return (key === '2' || key === 'away') ? 'WON' : 'LOST';
+   if (last === 'none') return (key === 'none' || key === 'no goal') ? 'WON' : 'LOST';
+   return null;
+ }
+
+ if (/^(?:1st\s+half\s*-\s*)?first\s+team\s+to\s+score$/i.test(m)) {
+   const is1H = /1st\s+half/i.test(m);
+   const targetH = is1H ? hh : home;
+   const targetA = is1H ? ha : away;
+   if (targetH === null || targetA === null) return null;
+   let first = null;
+   if (targetH === 0 && targetA === 0) first = 'none';
+   else if (targetH > 0 && targetA === 0) first = 'home';
+   else if (targetH === 0 && targetA > 0) first = 'away';
+   else if (!is1H && result?.first_team_to_score) first = result.first_team_to_score;
+   if (!first) return null;
+   if (first === 'home') return (key === '1' || key === 'home') ? 'WON' : 'LOST';
+   if (first === 'away') return (key === '2' || key === 'away') ? 'WON' : 'LOST';
+   if (first === 'none') return (key === 'none' || key === 'no goal') ? 'WON' : 'LOST';
+   return null;
+ }
+
  return null;
 }
 /** Keyset round-robin for PENDING work, not OFFSET (which shifts as tickets
@@ -980,6 +1141,34 @@ async function recordPendingReasons(items,runQuery=query){
 export async function settleMatch(matchId) {
   const result = await getResult(matchId);
   if (!result) return { matchId: String(matchId), settled: 0, reason: 'no result stored yet' };
+
+  if (result.home_score != null && result.away_score != null) {
+    if (!result.first_team_to_score || !result.last_team_to_score) {
+      try {
+        const facts = (await query(`
+          select team, coalesce(seconds, minute*60) as sec
+          from app_match_event_fact
+          where match_id = $1 and kind = 'goal' and active
+          order by sec asc
+        `, [Number(matchId)])).rows;
+        if (facts.length) {
+          result.first_team_to_score = facts[0].team;
+          result.last_team_to_score = facts[facts.length - 1].team;
+        } else {
+          const zizo = (await query(`
+            select team, minute
+            from app_zizobet_match_incident
+            where match_id = $1 and kind = 'goal' and active
+            order by minute asc
+          `, [Number(matchId)])).rows;
+          if (zizo.length) {
+            result.first_team_to_score = zizo[0].team;
+            result.last_team_to_score = zizo[zizo.length - 1].team;
+          }
+        }
+      } catch (_) {}
+    }
+  }
 
   const lines = (
     await query(`select l.* from app_ticket_line l where match_id = $1 and l.status = 'PENDING' and not exists(select 1 from app_settlement_override o where o.line_id=l.id)`, [Number(matchId)])
