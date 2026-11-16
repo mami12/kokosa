@@ -23,13 +23,13 @@ export function isRetiredPlayerOfferMarket(market){
    market?.player??market?.pl??market?.nativeParameters?.pl??market?.parameters?.pl??''
  ).trim();
  const playerMarket=hasPlayerParameter||
-   /\\b(?:player|goalscorer|goal scorer|goalkeeper|goal keeper|scorer|assist|assists)\\b/.test(title)||
-   /^(?!\\d)(?!total\\b)[\\p{L}][\\p{L}'., -]{1,95}\\s+(?:to\\s+|-\\s+|will\\s+)/u.test(title);
- const unsupportedStatistic=/\\b(?:asian\\s+handicap|handicap|fouls?|cards?|bookings?|tackles?|throw[ -]?ins?|saves?|goalkeeper\\s+saves?)\\b/.test(title);
+   /\b(?:player|goalscorer|goal scorer|goalkeeper|goal keeper|scorer|assist|assists)\b/.test(title)||
+   /^(?!\d)(?!total\b)[\p{L}][\p{L}'., -]{1,95}\s+(?:to\s+|-\s+|will\s+)/u.test(title);
+ const unsupportedStatistic=/\b(?:asian\s+handicap|handicap|fouls?|cards?|bookings?|tackles?|throw[ -]?ins?|saves?|goalkeeper\s+saves?)\b/.test(title);
  return playerMarket||unsupportedStatistic;
 }
 export const isHandicapOfferMarket = market =>
- market?.explicitlyExcluded === true || /\\bhandicap\\b/i.test(marketTitle(market));
+ market?.explicitlyExcluded === true || /\bhandicap\b/i.test(marketTitle(market));
 export const isEarlyPayoutOfferMarket = market => /1x2\s*\(xup\)|early\s*payout/i.test(String(market?.name ?? market?.market_name ?? '')) || String(market?.native_market_id ?? market?.nativeMarketId ?? '') === '27073';
 export const isExcludedOfferMarket = market =>
  isHandicapOfferMarket(market) || isEarlyPayoutOfferMarket(market) || isRetiredPlayerOfferMarket(market);
