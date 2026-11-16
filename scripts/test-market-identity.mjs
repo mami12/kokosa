@@ -66,13 +66,11 @@ for (const name of ['Market', 'Unknown', 'cols-2', 'Unverified market (g999)']) 
 for (const name of ['Total', 'Correct score', 'Corners', 'Cards', 'Result', 'Match Result (2-way)']) {
   assert.equal(isIdentifiedMarketName(name), true, name);
 }
-// Provider and admin state, not market names, decide which offers are excluded.
-for (const name of ['Handicap', 'Asian Handicap', 'Corners. Handicap', 'Asian Corners', 'European Handicap']) {
-  assert.equal(isHandicapOfferMarket({ name }), false, name + ' remains provider-controlled');
-  assert.equal(isHandicapOfferMarket({ name, explicitlyExcluded: true }), true,
-    name + ' is blocked when explicitly excluded');
+// The operator does not use any Asian/European handicap market.
+for (const name of ['Handicap', 'Asian Handicap', 'Corners. Handicap', 'European Handicap']) {
+  assert.equal(isHandicapOfferMarket({ name }), true, name + ' is excluded globally');
 }
-for (const name of ['Asian Total', 'Total', 'Corners. Result', 'Yellow cards. Total', 'Correct score']) {
+for (const name of ['Asian Corners','Asian Total', 'Total', 'Corners. Result', 'Yellow cards. Total', 'Correct score']) {
   assert.equal(isHandicapOfferMarket({ name }), false, name + ' is not a handicap');
 }
 
@@ -94,7 +92,7 @@ const rows = [
 }));
 const named = buildMarkets(rows).map(x => x.name);
 assert.deepEqual(new Set(named),
-  new Set(['Total', 'Correct score', 'Corners', 'Corners. Result', 'Yellow cards. Total', 'Handicap', 'Asian Corners', 'Asian Total']));
+  new Set(['Total', 'Correct score', 'Corners', 'Corners. Result', 'Asian Corners', 'Asian Total']));
 
 // Identical text is not proof that two provider group IDs describe one bet.
 const distinct = buildMarkets(['g11111', 'g22222'].map(id => ({
