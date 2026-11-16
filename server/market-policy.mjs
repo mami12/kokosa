@@ -51,9 +51,12 @@ export function isRetiredPlayerOfferMarket(market){
 }
 export const isHandicapOfferMarket=market=>
  titlesOf(market).some(title=>/\b(?:asian\s+)?handicap\b/.test(title));
-export const isEarlyPayoutOfferMarket=market=>
- titlesOf(market).some(title=>/1x2\s*\(xup\)|early\s*payout/.test(title))||
- String(market?.native_market_id??market?.nativeMarketId??'')==='27073';
+export const isEarlyPayoutOfferMarket=market=>{
+ const key=String(market?.market_key??market?.marketKey??market?.key??'');
+ const nativeId=String(market?.native_market_id??market?.nativeMarketId??
+  key.match(/^zz(\d+)@/)?.[1]??key.match(/^zizobet:(?:live|prematch):(\d+)$/i)?.[1]??'');
+ return titlesOf(market).some(title=>/1x2\s*\(xup\)|early\s*payout/.test(title))||nativeId==='27073';
+};
 export const isExcludedOfferMarket=market=>
  isHandicapOfferMarket(market)||isEarlyPayoutOfferMarket(market)||
  isRetiredPlayerOfferMarket(market);
