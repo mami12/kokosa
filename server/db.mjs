@@ -270,7 +270,21 @@ export async function saveOdds(rows) {
     const prev = beforeMap.get(key);
     const priceChanged = !prev || Number(prev.price) !== Number(row.price);
     const suspChanged = !prev || prev.suspended !== (row.suspended === true);
-    if (!priceChanged && !suspChanged) continue;
+    const metadataChanged = !prev ||
+      prev.market_name !== row.marketName || prev.outcome_name !== row.outcomeName ||
+      prev.provider_id !== (row.providerId ?? row.provider_id ?? null) ||
+      prev.native_market_id !== (row.nativeMarketId ?? row.native_market_id ?? null) ||
+      prev.native_outcome_id !== (row.nativeOutcomeId ?? row.native_outcome_id ?? null) ||
+      prev.native_market_name !== (row.nativeMarketName ?? row.native_market_name ?? null) ||
+      prev.native_outcome_name !== (row.nativeOutcomeName ?? row.native_outcome_name ?? null) ||
+      prev.period !== (Number.isFinite(Number(row.period)) ? Number(row.period) : 0) ||
+      prev.is_base !== (row.isBase === true) ||
+      prev.grp_order !== (Number.isFinite(Number(row.order)) ? Number(row.order) : 0) ||
+      prev.render_type !== (row.renderType ?? null) ||
+      prev.board_column !== (row.column ?? null) ||
+      JSON.stringify(prev.native_parameters ?? null) !== JSON.stringify(row.nativeParameters ?? row.native_parameters ?? null) ||
+      JSON.stringify(prev.native_quote ?? null) !== JSON.stringify(row.nativeQuote ?? row.native_quote ?? null);
+    if (!priceChanged && !suspChanged && !metadataChanged) continue;
     changed.push(row);
     if (priceChanged) {
       history.push([row.matchId, row.marketKey, row.line ?? '', row.outcomeKey, row.price ?? null, row.suspended === true]);
