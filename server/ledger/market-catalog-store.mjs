@@ -1,4 +1,5 @@
 import {pool,query} from '../db.mjs';
+import {isRetiredPlayerOfferMarket} from '../market-policy.mjs';
 import {catalogRows,setCatalogRows,marketFamily,nativeMarketPolicyKeys,marketCategories,MARKET_CATEGORY_IDS,setCategoryPolicies,categoryPolicies,setScopeBlocks,scopeBlockRows,marketScopeBlocked,isFootballMarketName} from '../market-catalog.mjs';
 const listeners=new Set();export const onMarketPolicy=fn=>listeners.add(fn);
 let flight,saving=0;
@@ -13,7 +14,7 @@ export async function seedNativeMarketCatalog({database=pool}={}){
      from app_provider_market_definition
     where provider_id='ZIZOBET' and scope in ('LIVE','PREMATCH')
       and native_market_name is not null and trim(native_market_name)<>''
- `)).rows.filter(r=>isFootballMarketName(r.name));
+ `)).rows.filter(r=>isFootballMarketName(r.name)&&!isRetiredPlayerOfferMarket({name:r.name}));
 
  if(rows.length){
    await database.query(`insert into app_market_catalog(key,name)
