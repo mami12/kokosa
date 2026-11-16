@@ -416,6 +416,7 @@ export function gradeHalfTotalFacts(contract,facts,{complete=false,cardColorsVer
  * Do not infer a loss from an absent row or an incomplete timeline.
  */
 async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}={}){
+ if(provider!=='zizobet')return null;
  const c=line?.live_contract;
  if(!c||!SUPPORTED_FACT_KINDS.has(c.kind)||!validKind.has(c.event)||typeof execute!=='function')return null;
  const {rows}=await execute(`with covered as (
@@ -546,24 +547,15 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  const finalCounts=expectedTotals.every(x=>x!=null&&Number.isSafeInteger(Number(x))&&Number(x)>=0);
  const full=!!(result&&data.complete===true&&finalCounts&&
    Number(data.home)===Number(expectedTotals[0])&&Number(data.away)===Number(expectedTotals[1]));
- // Primary Zizobet facts need a later identical poll and a cursor update.
- // Historical facts instead need a complete FT score-matched timeline
- // persisted atomically under their real source. They never authorize
- // partial live grading or corner/card totals inferred from aggregate stats.
+ // Only the confirmed Zizobet timeline and its own second-poll/archive
+ // cursor can authorize a settlement decision.
  if(data.confirmed_at==null||data.observed_at==null)return null;
  const confirmed=new Date(data.confirmed_at).getTime();
  const stored=new Date(data.observed_at).getTime();
  if(![confirmed,stored].every(Number.isFinite)||confirmed>stored)return null;
- if(provider==='zizobet'){
-   const watcher=data.second_poll_at==null?NaN:new Date(data.second_poll_at).getTime();
-   const archive=data.archive_poll_at==null?NaN:new Date(data.archive_poll_at).getTime();
-   if(stored!==watcher&&stored!==archive)return null;
- }else if(!['fotmob','apifootball','sportapi','goalapi','bsd','worldcup26'].includes(provider)||
-   !['goal','corner','card'].includes(c.event)||!full)return null;
- // No exact-second interval or rolling window may use a minute-only timestamp
- // as though it were a true second. Fixed inclusive minute bands remain valid.
- if(provider!=='zizobet'&&data.minute_only===true&&
-   (c.kind==='interval-result'||(c.kind==='window'&&c.startExclusive===true)))return null;
+ const watcher=data.second_poll_at==null?NaN:new Date(data.second_poll_at).getTime();
+ const archive=data.archive_poll_at==null?NaN:new Date(data.archive_poll_at).getTime();
+ if(stored!==watcher&&stored!==archive)return null;
  if(c.cardColor!=null&&
    (c.event!=='card'||!['yellow','red'].includes(c.cardColor)||
     data.card_colors_verified!==true))return null;
