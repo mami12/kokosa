@@ -9,10 +9,11 @@
  */
 import {query} from '../db.mjs';
 import {gradeLiveContract,gradeFromAcceptedCounters} from './live-contract-rules.mjs';
+import {isPlayerOfferMarket} from '../market-policy.mjs';
 
 export const VERIFIED_LIVE_PROPOSALS_SQL=String.raw`
 select p.line_id,p.match_id,p.proposed_status,p.payload,p.updated_at as preview_at,
-       l.ticket_id,l.live_contract,t.placed_at,
+       l.ticket_id,l.live_contract,l.market_name,l.accepted_contract,t.placed_at,
        f.payload as provider_frame,f.observed_at as frame_at,
        c.last_seen_at as second_seen_at,
        exists(select 1 from app_live_event_recovery g
@@ -55,7 +56,7 @@ export function primaryLiveDecision(contract,frame){
 
 /** Return a financial-grade decision only after a separate later provider poll. */
 export function verifiedSecondLiveDecision(row,{now=Date.now()}={}){
- if(row?.open_recovery_gap===true||!row)return null;
+ if(row?.open_recovery_gap===true||!row||isPlayerOfferMarket(row))return null;
  const old=obj(row.payload),contract=obj(row.live_contract),current=obj(row.provider_frame);
  const oldFrame=old?.frame;
  if(!contract||!oldFrame||!current||!old?.contract||
