@@ -128,6 +128,7 @@ function toStored(row, at) {
     native_market_name: row.nativeMarketName ?? row.native_market_name ?? null,
     native_outcome_name: row.nativeOutcomeName ?? row.native_outcome_name ?? null,
     native_parameters: row.nativeParameters ?? row.native_parameters ?? null,
+    native_quote: row.nativeQuote ?? row.native_quote ?? null,
     updated_at: at,
   };
 }
