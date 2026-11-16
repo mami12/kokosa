@@ -140,5 +140,14 @@ assert.equal(p4Quote.nativeParameters.p4,42,
  'numbered native parameters beyond p1-p3 must be preserved');
 assert.equal(p4Quote.nativeQuote.p4,42,
  'the complete native quote snapshot must retain p4');
+const excludedNativeRows=oddsOf({match_id:60},[
+ {mid:27073,id:8,pos:1,coef:1.9},
+ {mid:905,id:9,pos:1,coef:1.9}
+],{positions:new Map(),liveMarkets:new Map(),preMarkets:new Map([
+ [27073,{Name:'Special Offer',pos:[{id:1,nm:'Yes'}]}],
+ [905,{Name:'Early Payout',pos:[{id:1,nm:'Yes'}]}]
+])},false,true);
+assert.equal(excludedNativeRows.length,0,
+ 'early-payout offers must be excluded by both native ID and title at ingestion');
 }finally{await db.close();}
 console.log('PASS complete native market catalog, LIVE/PREMATCH scoping, wager preflight and optional table migration');
