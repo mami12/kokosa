@@ -11,6 +11,7 @@
  * corners and cards, those markets can be graded instead of always being voided.
  */
 import { pool, query } from '../db.mjs';
+import {isPlayerOfferMarket} from '../market-policy.mjs';
 import {gradeEventLine,needsEvents,gradeClosedCornerWindow,loadEventEvidence} from './event-evidence.mjs';
 import { getMatchById } from '../matches.mjs';
 import { getResult, captureFinishedMatches, unsettledMatchIds } from './results.mjs';
@@ -1197,7 +1198,7 @@ export function firstHalfScoreOnly(line){
   'ODD_EVEN','CLEAN_SHEET','HALF_RESULT_BTTS','BANDS_EXACT'].includes(family);
 }
 export function gradeAtVerifiedHalfTime(line,half){
- if(line?.accepted_contract?.settlementHold)return null;
+ if(isPlayerOfferMarket(line)||line?.accepted_contract?.settlementHold)return null;
  if(!firstHalfScoreOnly(line)||half?.confirmed_at==null)return null;
  // A live half-time quote taken AFTER the HT result was already archived
  // must never receive an automatic payout from that known past result.
@@ -1238,7 +1239,7 @@ export async function settleVerifiedHalftimes({
   'from app_ticket_line l',
   'join app_ticket t on t.id=l.ticket_id',
   'join app_match_half_result h on h.match_id=l.match_id',
-  "where l.status='PENDING' and t.status='PENDING' and h.confirmed_at is not null and t.placed_at < h.first_seen_at",
+  "where l.status='PENDING' and t.status='PENDING' and h.source='ZIZOBET' and h.confirmed_at is not null and t.placed_at < h.first_seen_at",
   'and not exists(select 1 from app_settlement_override o where o.line_id=l.id)'
  ].join(' '),5000);
  const tickets=new Set();let graded=0,held=0;
@@ -1347,6 +1348,12 @@ export async function settleMatch(matchId) {
   const unresolved=[];
   let graded = 0;
   for (const line of lines) {
+    // Player propositions are not part of this sportsbook. Never auto-grade
+    // an old or malformed player ticket through any fallback settlement path.
+    if(isPlayerOfferMarket(line)){
+      unresolved.push({line,result});
+      continue;
+    }
     if(line?.accepted_contract?.settlementHold&&
        gradeHeldNativeCombo(line,result)===null){
       unresolved.push({line,result});
@@ -1416,11 +1423,11 @@ export async function settleVerifiedEventFacts({
          and e.provider='zizobet')`,cap);
  if(!rows.length)return {examined:0,graded:0,closed:[]};
  const ids=[...new Set(rows.map(l=>l.match_id))];
- const finals=(await runQuery('select match_id,home_score,away_score,corners_home,corners_away,cards_home,cards_away from app_match_result where match_id=any($1::bigint[])',[ids])).rows;
+ const finals=(await runQuery("select match_id,home_score,away_score,corners_home,corners_away,cards_home,cards_away from app_match_result where source='ZIZOBET' and match_id=any($1::bigint[])",[ids])).rows;
  const results=new Map(finals.map(r=>[String(r.match_id),r]));
  const tickets=new Set(),unresolved=[];let graded=0;
  for(const line of rows){
-  if(!SUPPORTED_FACT_KINDS.has(line.live_contract?.kind))continue;
+  if(isPlayerOfferMarket(line)||!SUPPORTED_FACT_KINDS.has(line.live_contract?.kind))continue;
   const status=await grade(line,results.get(String(line.match_id))??null,{execute:runQuery});
   if(!['WON','LOST','VOID'].includes(status)){
     unresolved.push({line,result:results.get(String(line.match_id))??null});
