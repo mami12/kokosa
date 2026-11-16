@@ -56,14 +56,20 @@ const isCanonicalFullTime1X2 = (market: { name: string; period?: number }) => {
   return /^(?:full time result|rezultati i ndeshjes me kohe te plote)(?:\s*\(1x2\))?$/.test(normalize(market.name));
 };
 
-export function filterRedundantMatchResultMarkets<T extends { name: string; period?: number }>(
+export function filterRedundantMatchResultMarkets<T extends { name: string; period?: number; extId?:string }>(
   markets: T[],
 ): T[] {
-  // When the full provider snapshot contains the canonical contract, it wins.
-  // Some providers send only a generic 1X2 contract, so retain exactly one of
-  // those instead of leaving the opened match without a result market.
-  if (markets.some(isCanonicalFullTime1X2)) return markets.filter(m => !isGenericFullTime1X2(m));
+  // Native Zizobet IDs are separate provider contracts. Never collapse two
+  // different native offers just because both are labelled as generic 1X2.
+  const native = (market:T) => /^zz\d+@/.test(String(market.extId??''));
+  const canonical = markets.filter(isCanonicalFullTime1X2);
+  if (canonical.length) {
+    const canonicalIds=new Set(canonical.map(m=>m.extId).filter(Boolean));
+    return markets.filter(m=>!isGenericFullTime1X2(m)||
+      (native(m)&&!canonicalIds.has(m.extId)));
+  }
   const generic = markets.filter(isGenericFullTime1X2);
-  const retained = generic.find(m => normalize(m.name) === '1x2') ?? generic[0];
-  return markets.filter(m => !isGenericFullTime1X2(m) || m === retained);
+  const nonNative=generic.filter(m=>!native(m));
+  const retained = nonNative.find(m => normalize(m.name) === '1x2') ?? nonNative[0];
+  return markets.filter(m => !isGenericFullTime1X2(m)||native(m)||m===retained);
 }
