@@ -1240,6 +1240,7 @@ export async function settleVerifiedHalftimes({
   'join app_ticket t on t.id=l.ticket_id',
   'join app_match_half_result h on h.match_id=l.match_id',
   "where l.status='PENDING' and t.status='PENDING' and h.source='ZIZOBET' and h.confirmed_at is not null and t.placed_at < h.first_seen_at",
+  "and exists(select 1 from app_match_snapshot s where s.match_id=h.match_id and s.snapshot->'raw'->>'provider'='ZIZOBET' and s.snapshot->'periods_score'->0->>'t1'=h.half_home_score::text and s.snapshot->'periods_score'->0->>'t2'=h.half_away_score::text)",
   'and not exists(select 1 from app_settlement_override o where o.line_id=l.id)'
  ].join(' '),5000);
  const tickets=new Set();let graded=0,held=0;
