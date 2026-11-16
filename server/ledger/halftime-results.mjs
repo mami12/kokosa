@@ -42,19 +42,19 @@ export function extractConfirmedHalfTimeCandidate(row){
  const at=Math.max(scoreAt,phaseAt);
  const primaryHome=String(row.home??'').trim(),primaryAway=String(row.away??'').trim();
  if(!primaryHome||!primaryAway||primaryHome===primaryAway)return null;
- return {matchId:Number(row.match_id),homeTeam:primaryHome,awayTeam:primaryAway,
+ return {source:'ZIZOBET',matchId:Number(row.match_id),homeTeam:primaryHome,awayTeam:primaryAway,
   home,away,observedAt:new Date(at).toISOString(),
   signature:JSON.stringify([primaryHome,primaryAway,home,away])};
 }
 export async function persistHalfTimeCandidate(candidate,{execute=query}={}){
- if(!candidate)return {stored:false,confirmed:false};
+ if(!candidate||candidate.source!=='ZIZOBET')return {stored:false,confirmed:false};
  const statement=[
- 'insert into app_match_half_result (match_id,home_team,away_team,half_home_score,half_away_score,signature,observed_at)',
- 'values ($1,$2,$3,$4,$5,$6,$7::timestamptz)',
+ 'insert into app_match_half_result (match_id,home_team,away_team,half_home_score,half_away_score,signature,observed_at,source)',
+ "values ($1,$2,$3,$4,$5,$6,$7::timestamptz,'ZIZOBET')",
  'on conflict(match_id) do update set',
  'home_team=excluded.home_team, away_team=excluded.away_team,',
  'half_home_score=excluded.half_home_score,half_away_score=excluded.half_away_score,',
- 'signature=excluded.signature,',
+ 'signature=excluded.signature,source=excluded.source,',
  'correction_count=app_match_half_result.correction_count+case when app_match_half_result.signature<>excluded.signature then 1 else 0 end,',
  'first_seen_at=case when app_match_half_result.signature=excluded.signature then app_match_half_result.first_seen_at else now() end,',
  'confirmed_at=case',
