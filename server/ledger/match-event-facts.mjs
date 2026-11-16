@@ -567,7 +567,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  let firstHalfComplete=false;
  if(!full&&provider==='zizobet'&&c.half===1&&Number.isFinite(through)&&through>=45){
   const ht=(await execute(
-   'select confirmed_at from app_match_half_result where match_id=$1 and confirmed_at is not null',
+   "select h.confirmed_at from app_match_half_result h where h.match_id=$1 and h.source='ZIZOBET' and h.confirmed_at is not null and exists(select 1 from app_match_snapshot s where s.match_id=h.match_id and s.snapshot->'raw'->>'provider'='ZIZOBET' and s.snapshot->'periods_score'->0->>'t1'=h.half_home_score::text and s.snapshot->'periods_score'->0->>'t2'=h.half_away_score::text)",
    [line.match_id])).rows[0];
   const at=ht?.confirmed_at==null?NaN:new Date(ht.confirmed_at).getTime();
   firstHalfComplete=Number.isFinite(at)&&stored>=at;
