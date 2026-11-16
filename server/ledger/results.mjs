@@ -191,7 +191,7 @@ export async function getResult(matchId,{execute=query,readEvidence=loadEventEvi
   const source=String(result.source??'FEED').toUpperCase();
   if(source==='RECOVERY')return null;
   if(source==='FEED'){
-    const current=getMatchById(Number(matchId));
+    const current=await getMatchById(Number(matchId));
     const snapshot=current?.raw?.provider?current:
       (await matchSnapshots.load([Number(matchId)]))[0]??null;
     if(String(snapshot?.raw?.provider??'').toUpperCase()!=='ZIZOBET')return null;
