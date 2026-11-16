@@ -37,7 +37,7 @@ export function isIdentifiedMarket(market: Market): boolean {
   // Native Zizobet templates can contain unresolved provider placeholders.
   // Keep the exact quoted title visible; the server retains the frozen native
   // parameters and holds unsupported settlement contracts instead of hiding them.
-  const nativeZizobet = /^zz\d+@/.test(String(market.extId ?? market.key ?? ''));
+  const nativeZizobet = /^zz\d+@/.test(String(market.extId ?? ''));
   if (/[{}]|\[[^\[\]]*[a-z!_][^\[\]]*\]/i.test(name) && !nativeZizobet) return false;
   return !/^(?:market|unknown|unverified market(?:\b.*)?|cols-?\d+|total-2|fora-2|match market)$/i.test(name);
 }
