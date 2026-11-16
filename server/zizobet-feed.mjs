@@ -83,12 +83,12 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
    // Header prices remain live after a detail viewer leaves. Preserve a full
    // snapshot's suspension until a new full snapshot confirms reopening.
    if(hadLive&&fullObserved.has(id)&&r.status!=='ended'){
-    const open=entry.pricesSuspended!==true&&g.LiveBetStatus!==false;
+    const open=entry.pricesSuspended!==true&&infoOf(r,g,meta).hasOpenOdds!==false&&r.status!=='ended';
     await publish(r,open?g:{...g,LiveBetStatus:false},oddsOf(r,mainQuotes(g.hprs,true),meta,true,open),{complete:'board',startedAt});
     continue;
    }
    // LIVE phase evidence outranks an overlapping newer PREMATCH request.
-    await publish(r,g,oddsOf(r,g.hprs,meta,true,g.LiveBetStatus!==false&&r.status!=='ended'),{complete:!hadLive,startedAt:hadLive?startedAt:++revision});}
+    await publish(r,g,oddsOf(r,g.hprs,meta,true,infoOf(r,g,meta).hasOpenOdds!==false&&r.status!=='ended'),{complete:!hadLive,startedAt:hadLive?startedAt:++revision});}
    const present=new Set(rows.map(r=>Number(r.raw.nativeId)));for(const[id,e]of games)if(e.live&&!present.has(id)&&e.row.status!=='ended'){
     // A missing page is not FT. Retain the subscription and verify directly;
     // only close prices once their authoritative snapshot is no longer fresh.
@@ -137,7 +137,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   const wanted=new Set(ids);
   await queue(async()=>{for(const game of list){const id=Number(game.id),entry=games.get(id);if(!wanted.has(id)||!entry||entry.live)continue;
    const quotes=[];for(const[mid,values]of Object.entries(game.ev??{}))for(const[key,value]of Object.entries(values??{}))quotes.push({...value,id:key,mid});
-   await publish(entry.row,game,oddsOf(entry.row,mainQuotes(quotes,false),meta,false,game.s===0),{complete:'board',startedAt});
+   await publish(entry.row,game,oddsOf(entry.row,mainQuotes(quotes,false),meta,false,infoOf(entry.row,game,meta).hasOpenOdds!==false),{complete:'board',startedAt});
   }});
  }
  async function refresh(id,{probeLive=false,full=false,historyOnly=false}={}){
@@ -198,7 +198,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
      void collectEventEvidence(row,{...data,Match:game},{
        observedAt:sampledAt,factsPersisted:archiveFactsPersisted
      }).catch(()=>{});
-    await queue(async()=>{const published=await publish(row,game,historyOnly?[]:oddsOf(row,full?data.gmk:mainQuotes(data.gmk,true),meta,true,game.LiveBetStatus!==false&&row.status!=='ended'),{complete:historyOnly?false:full,startedAt});if(startedAt>=(versions.get(row.match_id)??0)){const promoted=!entry.live;entry.live=true;entry.row=published??row;entry.raw=game;entry.verifiedAt=now();transitions.delete(Number(id));delete entry.transitionAt;if(full&&!historyOnly&&Array.isArray(data.gmk))fullObserved.set(Number(id),now());if(promoted){const ids=liveIds();state.live=ids.length;mqtt?.setLiveIds(ids);await onCycle?.(state);}}});
+    await queue(async()=>{const published=await publish(row,game,historyOnly?[]:oddsOf(row,full?data.gmk:mainQuotes(data.gmk,true),meta,true,infoOf(row,game,meta).hasOpenOdds!==false&&row.status!=='ended'),{complete:historyOnly?false:full,startedAt});if(startedAt>=(versions.get(row.match_id)??0)){const promoted=!entry.live;entry.live=true;entry.row=published??row;entry.raw=game;entry.verifiedAt=now();transitions.delete(Number(id));delete entry.transitionAt;if(full&&!historyOnly&&Array.isArray(data.gmk))fullObserved.set(Number(id),now());if(promoted){const ids=liveIds();state.live=ids.length;mqtt?.setLiveIds(ids);await onCycle?.(state);}}});
    }else{const result=await request(META+'prematch/getprematchgamefull/319/'+Number(id));const g=decode(result?.game);if(Number(g?.id)!==Number(id))throw Error('Zizobet prematch identity mismatch');
     const quotes=[];for(const[mid,list]of Object.entries(g.ev??{}))for(const[id,q]of Object.entries(list??{}))quotes.push({...q,id,mid});const disabled=new Set((Array.isArray(result.disableMarkets)?result.disableMarkets:[]).map(Number));
     await queue(async()=>{const current=games.get(Number(id));if(current?.live||transitions.has(Number(id)))return;await publish(current?.row??entry.row,g,oddsOf(current?.row??entry.row,(full?quotes:mainQuotes(quotes,false)).filter(q=>!disabled.has(Number(q.mid))),meta,false,g.s===0),{complete:full,startedAt});if(full)fullObserved.set(Number(id),now());});
