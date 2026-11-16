@@ -1,4 +1,4 @@
-import {isRetiredPlayerOfferMarket} from '../market-policy.mjs';
+import {isExcludedOfferMarket} from '../market-policy.mjs';
 import {competitionDecision,isSyntheticFootballMatch} from '../football-competitions.mjs';
 export const OFFSET=8_000_000_000_000;
 export const zId=id=>{if(!Number.isSafeInteger(Number(id))||Number(id)<=0||Number(id)>100000000000)throw Error('Invalid Zizobet ID');return OFFSET+Number(id);};
@@ -133,10 +133,10 @@ export function oddsOf(row,quotes,meta,live,open=true){
  const rows=[];
  const widths=new Map();for(const q of quotes??[]){const p=text(meta.positions?.get(String(q.pid))??q.pn).match(/^min\s+(\d+)-(\d+)$/i);if(!p)continue;const width=Number(p[2])-Number(p[1])+1;if(width<=0)continue;const counts=widths.get(Number(q.mid))??new Map();counts.set(width,(counts.get(width)??0)+1);widths.set(Number(q.mid),counts);}
  for(const q of quotes??[]){const id=Number(q.mid),def=(live?meta.liveMarkets:meta.preMarkets).get(id);if(!def)continue;
-  if(id===27073)continue;
   const rawName=def.Name??def.name??def.nm;if(!rawName)continue;
-  // Skip retirements before title expansion, key generation or odds storage.
-  if(isRetiredPlayerOfferMarket({name:rawName}))continue;
+  // Apply the same explicit exclusion policy before key generation and again
+  // after native parameters have expanded the provider's title.
+  if(isExcludedOfferMarket({name:rawName,nativeMarketId:String(id)}))continue;
   // Keep every quoted total line, including quarter thresholds (0.25/0.75).
   // Unsupported split-settlement contracts are held for review after placement;
   // they must not disappear from the native Zizobet offer at ingestion.
@@ -159,7 +159,7 @@ export function oddsOf(row,quotes,meta,live,open=true){
   let name=resolveMarketTitle(live&&id===18639?'Correct score [{score}]':rawName,q,{intervalWidth:measuredWidth})??rawName;
   if(live&&id===602)name='1X2';
   name=name.replace(/\bHometeam\b/gi,'Home team').replace(/\bAwayteam\b/gi,'Away team');
-  if(isRetiredPlayerOfferMarket({name,pl:q.pl}))continue;
+  if(isExcludedOfferMarket({name,pl:q.pl,nativeMarketId:String(id),marketKey:key}))continue;
   if(q.pl&&!name.includes(String(q.pl)))name+=' · '+q.pl;
   const fullResult=(live&&id===602)||(!live&&id===448);
   const fullTotal=(live&&id===603)||(!live&&id===537);
