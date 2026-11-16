@@ -42,6 +42,8 @@ export function createEventEvidenceStore({runQuery=query,now=Date.now,cacheMs=10
          (select count(*)::int from expired_snapshots) as snapshots`);
  },async saveEventEvidence(id,payload){
   if(!payload||!Array.isArray(payload.events)||payload.events.length>20000)throw new Error('Invalid event evidence');
+  // Secondary feeds are display/enrichment only, never settlement evidence.
+  if(payload.source!=='zizobet')return false;
   if(!(await acceptedBetWatchIds()).has(String(id)))return false;
   await init();
   const saved=await runQuery(`insert into app_match_event_evidence(match_id,payload)
@@ -168,13 +170,13 @@ const completeByTeam=(events,home,away)=>confirmedPair(home,away)&&events.every(
 export function gradeEventLine(line,result){
  if(!needsEvents(line))return undefined;
  const evidence=result?.event_evidence;
- const candidates=[evidence,...(evidence?.alternatives??[])].filter(Boolean);
+ const candidates=[evidence,...(evidence?.alternatives??[])].filter(ev=>ev?.source==='zizobet');
  const statuses=new Set(candidates.map(event_evidence=>gradeSingleEventLine(line,{...result,event_evidence})).filter(x=>['WON','LOST','VOID'].includes(x)));
  return statuses.size===1?[...statuses][0]:null;
 }
 function gradeSingleEventLine(line,result){
  if(!needsEvents(line))return undefined;
- const ev=result?.event_evidence;if(!ev?.events||ev.complete!==true)return null;
+ const ev=result?.event_evidence;if(ev?.source!=='zizobet'||!ev.events||ev.complete!==true)return null;
  const contract=eventContract(line),name=contract.name??'',label=String(line.outcome_name??''),key=String(line.outcome_key??'').toLowerCase();
  if(!supportedContract(line))return null;
  if(/extra time|overtime|shootout|early payout|scoring type|scoring method|shots?|fouls?/i.test(name))return null;
