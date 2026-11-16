@@ -5,7 +5,7 @@ import {eventMarketRequirement} from './event-market-policy.mjs';
 import {parseTeamGoalMarket} from './live-contract-rules.mjs';
 export const needsEvents=m=>!!eventMarketRequirement(m)||/header|headed|own goal|scoring method|method of.*goal/i.test(m.market_name??m.name??'');
 /** One bounded snapshot per fixture, only while a matching ticket needs it.
- * An empty/error fallback cannot replace already complete event evidence. */
+ * Only Zizobet event evidence is eligible for financial settlement. */
 export function createEventEvidenceStore({runQuery=query,now=Date.now,cacheMs=10000}={}){
  let ready,pendingAt=-Infinity,pending=new Set(),watchFlight;
  let acceptedAt=-Infinity,accepted=new Set(),acceptedFlight;
