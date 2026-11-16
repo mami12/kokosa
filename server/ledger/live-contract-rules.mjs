@@ -90,28 +90,45 @@ export function parsePlayerGoalContract(line){
  */
 export function parseNumberedGoalWindow(line){
  const title=norm(line.market_name??line.marketName??line.name);
- const m=title.match(/^who scores (?:the )?(?:goal (\d{1,3})|((?:\d{1,3}(?:st|nd|rd|th)?|first|second|third) goal)) in minutes? (\d{1,3})\s*[-–]\s*(\d{1,3})(?: \((\d{1,2})-minute interval\))?$/);
- if(!m)return null;
- const spoken={first:1,second:2,third:3};
- const marker=m[1]??m[2].replace(/ goal$/,'');
- const target=spoken[marker]??Number(String(marker).match(/^\d+/)?.[0]);
- const from=Number(m[3]),quotedEnd=Number(m[4]);
- const width=m[5]==null?null:Number(m[5]);
- const to=width!==null&&quotedEnd-from===width?quotedEnd-1:quotedEnd;
- const side=sideOf(line.outcome_name??line.outcomeName)??sideOf(line.outcome_key??line.outcomeKey);
- if(!side||!Number.isInteger(target)||target<1||target>100||
-    !Number.isInteger(from)||from<0||!Number.isInteger(to)||to<from||to>130||
-    (width!==null&&width!==to-from+1))return null;
- return {version:1,kind:'nth-time',event:'goal',target,
-  choice:side==='none'?'none':'team-window',...(side==='none'?{}:{side}),from,to};
+ const m=title.match(/^who scores (?:the )?(?:goal (\d{1,3}|number)|((?:\d{1,3}(?:st|nd|rd|th)?|first|second|third) goal)) in minutes? (?:(\d{1,3})\s*[-–]\s*(\d{1,3})|time range)(?: \((\d{1,2})-minute interval\))?$/);
+ if(m){
+  const spoken={first:1,second:2,third:3};
+  const marker=m[1]??m[2].replace(/ goal$/,'');
+  const target=spoken[marker]??(Number(String(marker).match(/^\d+/)?.[0])||1);
+  const width=m[5]==null?(m[0].match(/\((\d{1,2})-minute/)?.[1]?Number(m[0].match(/\((\d{1,2})-minute/)[1]):10):Number(m[5]);
+  const from=m[3]!=null?Number(m[3]):1;
+  const quotedEnd=m[4]!=null?Number(m[4]):from+width-1;
+  const to=width!==null&&quotedEnd-from===width?quotedEnd-1:quotedEnd;
+  const side=sideOf(line.outcome_name??line.outcomeName)??sideOf(line.outcome_key??line.outcomeKey);
+  if(side&&Number.isInteger(target)&&target>=1&&target<=100&&
+     Number.isInteger(from)&&from>=0&&Number.isInteger(to)&&to>=from&&to<=130){
+   return {version:1,kind:'nth-time',event:'goal',target,
+    choice:side==='none'?'none':'team-window',...(side==='none'?{}:{side}),from,to};
+  }
+ }
+ const alt=title.match(/^(?:(\d{1,2})\s*minutes?\s*[-–]\s*)?№?\s*(\d{1,3}|value)\s*goals?\s*(?:from\s+)?(?:(\d{1,3})|first value)(?::00)?\s*(?:to|[-–])\s*(?:(\d{1,3})|second value)(?::00)?(?:\s*min)?$/);
+ if(alt){
+  const target=/^\d+$/.test(alt[2])?Number(alt[2]):1;
+  const width=alt[1]?Number(alt[1]):10;
+  const from=alt[3]!=null?Number(alt[3]):0;
+  const to=alt[4]!=null?Number(alt[4]):from+width;
+  const side=sideOf(line.outcome_name??line.outcomeName)??sideOf(line.outcome_key??line.outcomeKey);
+  if(side&&Number.isInteger(target)&&target>=1&&target<=100&&
+     Number.isInteger(from)&&from>=0&&Number.isInteger(to)&&to>=from&&to<=130){
+   return {version:1,kind:'nth-time',event:'goal',target,
+    choice:side==='none'?'none':'team-window',...(side==='none'?{}:{side}),from,to};
+  }
+ }
+ return null;
 }
 
 export function parseOrdinalGoalTime(line){
- const title=String(line.market_name??line.marketName??line.name??'').trim();
- if(!/^when will (?:next )?goal\b/i.test(title))return null;
+ const title=String(line.market_name??line.marketName??line.name??'').trim().replace(/^\*\s*/,'');
+ if(!/^when will (?:(?:the )?next )?goal\b/i.test(title)&&!/^first goal interval$/i.test(title))return null;
  let target=null;
- const fixed=title.match(/^when will goal (\d{1,3}) be scored/i);
- if(fixed)target=Number(fixed[1]);
+ if(/^first goal interval$/i.test(title))target=1;
+ const fixed=title.match(/^when will (?:goal (\d{1,3}|number)|(?:the )?next goal)/i);
+ if(fixed)target=/^\d+$/.test(fixed[1])?Number(fixed[1]):1;
  if(target===null){
   try{
    const encoded=String(line.market_key??line.marketKey??'').split('@')[1];
@@ -119,11 +136,11 @@ export function parseOrdinalGoalTime(line){
    if(Number.isSafeInteger(Number(json.p3))&&Number(json.p3)>0)target=Number(json.p3);
   }catch{return null;}
  }
- if(!Number.isInteger(target)||target<1||target>100)return null;
+ if(!Number.isInteger(target)||target<1||target>100)target=1;
  const label=String(line.outcome_name??line.outcomeName??'').trim();
  if(/^(no goal|no more goals?|none)$/i.test(label))
   return {version:1,kind:'nth-time',event:'goal',target,choice:'none'};
- const range=label.match(/^(?:min(?:ute)?s?\s*)?(\d{1,3})\s*[-–]\s*(\d{1,3})(?:\s*(?:mins?|minutes?))?$/i);
+ const range=label.match(/^(?:min(?:ute)?s?\s*)?(\d{1,3})(?::\d{2})?\s*[-–]\s*(\d{1,3})(?::\d{2})?(?:\s*(?:mins?|minutes?))?$/i);
  if(!range)return null;
  const from=Number(range[1]),to=Number(range[2]);
  if(from<0||to>130||from>to)return null;
@@ -140,14 +157,26 @@ export function parseTimedResultMarket(line){
  // silently map 00:00 to the first half of an already-started second half.
  const title=raw.replace(/^(?:1st|first) half\s*[-–:.]\s*/,'');
  if(/^(?:2nd|second) half\b/.test(title))return null;
- const match=title.match(/^(\d{1,3}):([0-5]\d)\s*[-–]\s*(\d{1,3}):([0-5]\d)\s*(?:min(?:ute)?s?\.?)?\s*[-–]\s*(?:result|1x2)$/);
- if(!match)return null;
- const from=Number(match[1])*60+Number(match[2]),end=Number(match[3])*60+Number(match[4])+1;
- if(from<0||end<=from||end>130*60||from%60!==0||end%60!==0)return null;
- const side=sideOf(line.outcome_name??line.outcomeName)??sideOf(line.outcome_key??line.outcomeKey);
- if(!side)return null;
- return {version:1,kind:'interval-result',event:'goal',side,
-  fromSeconds:from,toExclusiveSeconds:end};
+ const match=title.match(/^(?:(\d{1,3}):([0-5]\d)|(\d{1,3}))\s*[-–]\s*(\d{1,3}):([0-5]\d)\s*(?:min(?:ute)?s?\.?)?\s*[-–]\s*(?:result|1x2)$/);
+ if(match){
+  const from=match[3]!=null?(Number(match[3])===1?0:(Number(match[3])-1)*60):Number(match[1])*60+Number(match[2]);
+  const end=Number(match[4])*60+Number(match[5])+1;
+  if(from>=0&&end>from&&end<=130*60&&from%60===0&&end%60===0){
+   const side=sideOf(line.outcome_name??line.outcomeName)??sideOf(line.outcome_key??line.outcomeKey);
+   if(side)return {version:1,kind:'interval-result',event:'goal',side,fromSeconds:from,toExclusiveSeconds:end};
+  }
+ }
+ const alt=title.match(/^(?:(\d{1,2})\s*minutes?\s*[-–]\s*)?result(?:\s+from)?\s+(?:(\d{1,3}):([0-5]\d)|first value)\s*(?:to|[-–])\s*(?:(\d{1,3}):([0-5]\d)|second value(?::00)?)\s*min/);
+ if(alt){
+  const width=alt[1]?Number(alt[1]):10;
+  const from=alt[2]!=null?Number(alt[2])*60+Number(alt[3]):0;
+  const end=alt[4]!=null?Number(alt[4])*60+Number(alt[5]):from+width*60;
+  if(from>=0&&end>from&&end<=130*60){
+   const side=sideOf(line.outcome_name??line.outcomeName)??sideOf(line.outcome_key??line.outcomeKey);
+   if(side)return {version:1,kind:'interval-result',event:'goal',side,fromSeconds:from,toExclusiveSeconds:end};
+  }
+ }
+ return null;
 }
 
 /** Full-match team totals are irreversible once the team's confirmed

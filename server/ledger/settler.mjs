@@ -17,7 +17,14 @@ import { getResult, captureFinishedMatches, unsettledMatchIds } from './results.
 import {captureHalfTimeResults} from './halftime-results.mjs';
 import { chargeManagerCommission, refundManagerCommission } from './manager-finance.mjs';
 import { isResultBttsMarket, parseResultBttsOutcome, gradeResultBtts } from './result-btts.mjs';
-import { isResultTotalMarket, isTotalBttsMarket, isFirstHalfResultBtts, parseResultTotal, parseTotalBtts, gradeMixedTotal } from './mixed-combos.mjs';
+import { isResultTotalMarket, isTotalBttsMarket, isFirstHalfResultBtts, parseResultTotal, parseTotalBtts, gradeMixedTotal,
+  isWinnerTotalMarket, isTeamNotToLoseTotalMarket, isBttsTotalAndMarket,
+  parseWinnerTotal, parseTeamNotToLoseTotal, parseBttsTotal,
+  gradeTeamNotToLoseTotal, gradeBttsTotal } from './mixed-combos.mjs';
+import {isWinningMarginMarket,gradeWinningMargin} from './winning-margin.mjs';
+import {isDcHalfBttsMarket,gradeDcHalfBtts} from './dc-half-btts.mjs';
+import {isHtFtComboMarket,isCornersHtFtMarket,gradeHtFtCombo} from './htft-combo.mjs';
+import {isMultiscoresMarket,gradeMultiscores,isMatchbetFirstGoalMarket,gradeMatchbetFirstGoal} from './multiscores.mjs';
 import { systemColumnPayout } from './system-columns.mjs';
 import { eventMarketRequirement } from './event-market-policy.mjs';
 import { isStatisticMarket, hasStatisticEvidence, gradeStatisticLine } from './statistic-markets.mjs';
@@ -60,16 +67,18 @@ export function unverifiedCompositeLine(line={},result={}){
  // These three correlated families have incompatible periods or a third
  // condition. They must NEVER fall into generic FT DC/BTTS or HT/FT grading
  // just because one familiar phrase appears in the title.
- if(/^double\s*chance\b.*\b(?:1st|first|2nd|second)\s+half\b/i.test(name)||
-    /^(?:1st|first)\s*\/\s*(?:2nd|second)\s+half\s+both\s+teams?\s+to\s+score/i.test(name)||
-    /\bcorners?\b.*\bhalf[\s-]*time\s*\/?\s*full[\s-]*time\b/i.test(name)||
-    (isHtFtMarket(name)&&/\b(?:correct score|exact goals?|total goals?|total corners?|both teams?|btts)\b/i.test(name)))
+ if((/^double\s*chance\b.*\b(?:1st|first|2nd|second)\s+half\b/i.test(name)&&!isDcHalfBttsMarket(name))||
+    (/^(?:1st|first)\s*\/\s*(?:2nd|second)\s+half\s+both\s+teams?\s+to\s+score/i.test(name)&&!isScoringPropMarket({market_name:name}))||
+    (/\bcorners?\b.*\bhalf[\s-]*time\s*\/?\s*full[\s-]*time\b/i.test(name)&&!isCornersHtFtMarket(name))||
+    (isHtFtMarket(name)&&!isHtFtComboMarket(name)&&/\b(?:correct score|exact goals?|total goals?|total corners?|both teams?|btts)\b/i.test(name)))
   return true;
  if(!/\b(?:and|with)\b|&|(?<!\d)\+|\+(?=[a-z])/i.test(name))return false;
  if(!/\b(?:result|winner|goals?|total|double chance|both teams?|btts|1x2|corners?|cards?|shots?|fouls?|score)\b/i.test(name))
   return false;
  if(isHalfComboFamily(line)||isResultTotalMarket(name)||isTotalBttsMarket(name)||
-    isFirstHalfResultBtts(name)||isResultBttsMarket(name)||isDcBttsMarket(name))
+    isFirstHalfResultBtts(name)||isResultBttsMarket(name)||isDcBttsMarket(name)||
+    isWinnerTotalMarket(name)||isTeamNotToLoseTotalMarket(name)||isBttsTotalAndMarket(name)||
+    isDcHalfBttsMarket(name)||isHtFtComboMarket(name)||isMatchbetFirstGoalMarket(name)||isMultiscoresMarket(name))
   return false;
  // Named team totals are one condition, not two unrelated outcomes.
  if(goalTotalContract(line,result)||cornerTotalContract(line,result))return false;
@@ -356,6 +365,73 @@ export function gradeHeldNativeCombo(line,result){
    return null;
  }
 
+ // "Will there be a tie"
+ if (/^will\s+there\s+be\s+a\s+tie$/i.test(m)) {
+   const isDraw = home === away;
+   if (['yes', 'po'].includes(key)) return isDraw ? 'WON' : 'LOST';
+   if (['no', 'jo'].includes(key)) return !isDraw ? 'WON' : 'LOST';
+   return null;
+ }
+
+ // "Hometeam/Awayteam no bet" (DNB)
+ if (/^(?:home|away)\s*team\s+no\s+bet$/i.test(m)) {
+   const pickedHome = /^home/i.test(m);
+   if (home === away) return 'WON';
+   return (home > away) === pickedHome ? 'WON' : 'LOST';
+ }
+
+ // Winning margin
+ if (/(?:^|\s)winning\s+margins?/i.test(m)) {
+   const wm_margin = Math.abs(home - away);
+   const wm_winner = home > away ? 'home' : away > home ? 'away' : 'draw';
+   if (/^(?:draw|tie|0)$/.test(key)) return wm_winner === 'draw' ? 'WON' : 'LOST';
+   const wm_plus = key.match(/^(\d+)\+$/);
+   if (wm_plus) return wm_winner !== 'draw' && wm_margin >= Number(wm_plus[1]) ? 'WON' : 'LOST';
+   const wm_plain = key.match(/^(\d+)$/);
+   if (wm_plain) return wm_margin === Number(wm_plain[1]) ? 'WON' : 'LOST';
+   return null;
+ }
+
+ // "Hometeam/Awayteam not to lose & total over/under"
+ if (/^(?:home|away)team\s+not\s+to\s+lose\s*&\s*total\s+(?:over|under)$/i.test(m)) {
+   const ntl_isHome = /^home/i.test(m);
+   const ntl_isOver = /over$/i.test(m);
+   const ntl_notLost = ntl_isHome ? home >= away : away >= home;
+   if (lineVal === null) return null;
+   if (total === lineVal) return 'LOST';
+   const ntl_totalWins = ntl_isOver ? total > lineVal : total < lineVal;
+   return ntl_notLost && ntl_totalWins ? 'WON' : 'LOST';
+ }
+
+ // "Both teams to score and total over/under"
+ if (/^both\s+teams?\s+to\s+score\s+and\s+[Тт]?otal\s+(?:over|under)$/i.test(m)) {
+   const bt_isOver = /over$/i.test(m);
+   const bt_btts = home > 0 && away > 0;
+   if (lineVal === null) return null;
+   if (total === lineVal) return 'LOST';
+   const bt_totalWins = bt_isOver ? total > lineVal : total < lineVal;
+   return bt_btts && bt_totalWins ? 'WON' : 'LOST';
+ }
+
+ // "Winner & total" / "goal & result"
+ if (/^winner\s*&\s*total$/i.test(m) || /goal\s*&\s*result$/i.test(m)) {
+   const wt_parts = String(saved.providerOutcomeName ?? '').trim().match(/^(.+?)\s+and\s+(.+)$/i);
+   if (!wt_parts) return null;
+   const wt_res = wt_parts[1].toLowerCase().trim();
+   const wt_tot = wt_parts[2].toLowerCase().trim();
+   let wt_resWins;
+   if (/^(?:1|home|home win)$/.test(wt_res)) wt_resWins = home > away;
+   else if (/^(?:x|draw|tie)$/.test(wt_res)) wt_resWins = home === away;
+   else if (/^(?:2|away|away win)$/.test(wt_res)) wt_resWins = away > home;
+   else return null;
+   const wt_tMatch = wt_tot.match(/^(over|under)\s*(\d+(?:[.,]\d+)?)$/);
+   if (!wt_tMatch) return null;
+   const wt_line = Number(wt_tMatch[2].replace(',', '.'));
+   if (total === wt_line) return 'LOST';
+   const wt_totalWins = wt_tMatch[1] === 'over' ? total > wt_line : total < wt_line;
+   return wt_resWins && wt_totalWins ? 'WON' : 'LOST';
+ }
+
  return null;
 }
 /** Keyset round-robin for PENDING work, not OFFSET (which shifts as tickets
@@ -393,15 +469,25 @@ const norm = (s) =>
 export function classify(marketName = '') {
   if (isFirstHalfResultBtts(marketName)) return 'HALF_RESULT_BTTS';
   if (isDcBttsMarket(marketName)) return 'DC_BTTS';
+  if (isDcHalfBttsMarket(marketName)) return 'DC_HALF_BTTS';
+  if (isHtFtComboMarket(marketName)) return 'HTFT_COMBO';
+  if (isWinnerTotalMarket(marketName)) return 'WINNER_TOTAL';
+  if (isTeamNotToLoseTotalMarket(marketName)) return 'TEAM_NOT_TO_LOSE_TOTAL';
+  if (isBttsTotalAndMarket(marketName)) return 'BTTS_TOTAL_AND';
   if (isResultTotalMarket(marketName)) return 'RESULT_TOTAL';
   if (isTotalBttsMarket(marketName)) return 'TOTAL_BTTS';
   if (isResultBttsMarket(marketName)) return 'RESULT_BTTS';
+  if (isWinningMarginMarket({market_name:marketName})) return 'WINNING_MARGIN';
+  if (isMultiscoresMarket(marketName)) return 'MULTISCORES';
+  if (isMatchbetFirstGoalMarket(marketName)) return 'MATCHBET_FIRST_GOAL';
   const s = String(marketName).toLowerCase();
   if (isHtFtMarket(marketName)) return 'HT_FT';
   if (/correct score|exact score/i.test(s)) return 'CORRECT_SCORE';
   if (/^\s*(?:half\s*time|halftime)\s*[-:.]?\s*(?:3[\s-]*way|1x2)\s*$/i.test(s))return '1X2';
   if (/odd[\s/]*even|tek[\s/]*cift/i.test(s)) return 'ODD_EVEN';
   if (/draw no bet|\bdnb\b/i.test(s)) return 'DNB';
+  if (/^(?:home|away)team\s+no\s+bet\s*$/i.test(s.trim())) return 'DNB';
+  if (/^(?:home|away)\s+team\s+no\s+bet\s*$/i.test(s.trim())) return 'DNB';
   if (/clean sheet/i.test(s)) return 'CLEAN_SHEET';
   if (/total goals?\s*\(?(?:exact|bands)\)?|exact goals|multigoals|number of goals|exact corners|corners?\s*\(?(?:exact|bands)\)?/i.test(s)) return 'BANDS_EXACT';
   if (/corner.*(?:result|winner|1x2)|(?:result|winner|1x2).*corner/i.test(s)) return 'CORNER_1X2';
@@ -410,12 +496,17 @@ export function classify(marketName = '') {
   if (/both teams to score|\bbtts\b|goal[\s/]*no\s*goal|gol[\s/]*pa\s*gol/i.test(s)) return 'BTTS';
   if ((isFirstHalfLine(s) || isSecondHalfLine(s)) && /\b(?:result|winner|1x2|3[\s-]*way)\b/.test(s)) return '1X2';
   if (/^any team to win$/i.test(s.trim())) return 'ANY_TEAM_WIN';
-  if (/^who wins the rest of the match\?/i.test(s.trim())) return 'REST_OF_MATCH';
+  if (/^will\s+there\s+be\s+a\s+tie\s*$/i.test(s.trim())) return 'WILL_TIE';
+  if (/(?:who|which team)\s+wins?\s+the\s+rest/i.test(s)||
+      /rest\s+of\s+the\s+(?:match|half)/i.test(s)||
+      /halftime\s*-?\s*who\s+wins\s+the\s+rest/i.test(s)) return 'REST_OF_MATCH';
   if (/^(?:home|away)\s+team\s+to\s+score\s+(?:in\s+)?2nd\s+half$/i.test(s.trim())) return 'TEAM_TO_SCORE_2ND_HALF';
+  if (/^(?:home|away)\s*(?:team\s+)?to\s+win\s*$/i.test(s.trim())) return '1X2';
   if (/double chance/.test(s)) return 'DC';
   if (/handicap|fora|asian/.test(s)) return 'HANDICAP';
-  if (/full time result|1 ?x ?2|match result|winner|moneyline/.test(s)) return '1X2';
-  if (/total|over\/?under|goals/.test(s)) return 'TOTAL';
+  if (/final result|full time result|1 ?x ?2|match result|winner|moneyline/.test(s)) return '1X2';
+  if (/^(?:next goal|next goal \S+|1st half\s*-?\s*next goal \S+)$/i.test(s.trim())) return 'REST_OF_MATCH';
+  if (/total|over\/?under|over\s*\/\s*(?:exact(?:ly)?\s*\/\s*)?under|goals/.test(s)) return 'TOTAL';
   return 'OTHER';
 }
 
@@ -479,6 +570,10 @@ export function hasRequiredSettlementEvidence(line, result) {
   // Exact team/period goal quotes overlap the broad historical scoring
   // property recognizer. They must use their numerical HT/FT count rule.
   if(isHalfComboFamily(line))return gradeHalfCombination(parseHalfCombination(line,result),result)!==null;
+  if(isWinningMarginMarket(line))return gradeWinningMargin(line,result)!==null;
+  if(isDcHalfBttsMarket(String(line.market_name??'')))return gradeDcHalfBtts(line,result)!==null;
+  if(isHtFtComboMarket(String(line.market_name??'')))return gradeHtFtCombo(line,result)!==null;
+  if(isMultiscoresMarket(String(line.market_name??'')))return gradeMultiscores(line,result)!==null;
   if(isPeriodGoalTotal(line))return gradePeriodGoalTotal(parsePeriodGoalTotal(line,result),result)!==null;
   if(isScoringPropMarket(line))return gradeScoringPropMarket(line,result)!==null;
   if(isHalfExactMarketFamily(line))return false; // FT counts are not 1H/2H corner/card facts
@@ -571,6 +666,14 @@ export function gradeLine(line, result) {
     return gradeParityMarket(line,result);
   if(!Array.isArray(line.builder_legs)&&isHalfComboFamily(line))
     return gradeHalfCombination(parseHalfCombination(line,result),result);
+  if(!Array.isArray(line.builder_legs)&&isWinningMarginMarket(line))
+    return gradeWinningMargin(line,result);
+  if(!Array.isArray(line.builder_legs)&&isDcHalfBttsMarket(String(line.market_name??'')))
+    return gradeDcHalfBtts(line,result);
+  if(!Array.isArray(line.builder_legs)&&isHtFtComboMarket(String(line.market_name??'')))
+    return gradeHtFtCombo(line,result);
+  if(!Array.isArray(line.builder_legs)&&isMultiscoresMarket(String(line.market_name??'')))
+    return gradeMultiscores(line,result);
   if(!Array.isArray(line.builder_legs)&&isPeriodGoalTotal(line))
     return gradePeriodGoalTotal(parsePeriodGoalTotal(line,result),result);
   if(!Array.isArray(line.builder_legs)&&isScoringPropMarket(line))
@@ -854,6 +957,43 @@ export function gradeLine(line, result) {
       if (key === 'no' || /^no|^jo\b/i.test(name)) return decide(!scored);
       return null;
     }
+
+    case 'WILL_TIE': {
+      const isDraw = home === away;
+      if (key === 'yes' || /^yes|^po\b/i.test(name)) return decide(isDraw);
+      if (key === 'no' || /^no|^jo\b/i.test(name)) return decide(!isDraw);
+      return null;
+    }
+
+    case 'WINNING_MARGIN':
+      return gradeWinningMargin(line, result);
+
+    case 'WINNER_TOTAL': {
+      const sel = parseWinnerTotal(line.outcome_key, result.home_team, result.away_team)
+        ?? parseWinnerTotal(line.outcome_name, result.home_team, result.away_team);
+      return gradeMixedTotal(line.market_name, sel, home, away);
+    }
+
+    case 'TEAM_NOT_TO_LOSE_TOTAL': {
+      const sel = parseTeamNotToLoseTotal(line.market_name, line.outcome_key)
+        ?? parseTeamNotToLoseTotal(line.market_name, line.outcome_name);
+      return gradeTeamNotToLoseTotal(sel, home, away);
+    }
+
+    case 'BTTS_TOTAL_AND': {
+      const sel = parseBttsTotal(line.market_name, line.outcome_key)
+        ?? parseBttsTotal(line.market_name, line.outcome_name);
+      return gradeBttsTotal(sel, home, away);
+    }
+
+    case 'DC_HALF_BTTS':
+      return gradeDcHalfBtts(line, result);
+
+    case 'HTFT_COMBO':
+      return gradeHtFtCombo(line, result);
+
+    case 'MULTISCORES':
+      return gradeMultiscores(line, result);
 
     default:
       // anything we cannot judge (player props, halves, unknown markets) is voided

@@ -34,6 +34,11 @@ const subject=(name,result)=>{
 };
 const titleOf=line=>{
  let s=norm(line?.market_name??line?.marketName??line?.name);
+ s=s.replace(/\bhometeam\b/g,'home team').replace(/\bawayteam\b/g,'away team');
+ s=s.replace(/\bwins to nil\b/g,'win to nil');
+ s=s.replace(/\bwins both halves\b/g,'to win both halves');
+ s=s.replace(/\b(?:wins|win) any of the halves\b/g,'to win either half');
+ s=s.replace(/\b1st\s*\/\s*2nd\s*half\s*both\s*teams?\s*to\s*score\b/g,'both teams to score in both halves');
  // The native feed uses both "1st half - Home Team to score" and
  // "Home Team to score in 1st half". They are equivalent only here.
  const pref=s.match(/^(1st|first|2nd|second) half (.+)$/);
@@ -46,6 +51,7 @@ export function scoringPropFamily(line){
  if(/^both teams to score in both halves$/.test(name))return 'both-teams-both';
  if(/^(?:a |at least one )?goals? in both halves$|^score in both halves$/.test(name))return 'goal-both';
  if(/^highest scoring half$|^half with (?:the )?most goals$/.test(name))return 'high-half';
+ if(/^highest scoring team in either half$/.test(name))return 'high-team-either';
  if(/^win both halves$|^to win both halves$/.test(name))return 'win-both';
  if(/^win either half$|^to win either half$/.test(name))return 'win-either';
  if(/^win to nil$/.test(name))return 'win-nil';
@@ -89,6 +95,14 @@ export function gradeScoringPropMarket(line,result){
  const namedOnly=(v)=>side?yesNo(v):null;
  if(family==='both-teams-both')
   return halvesKnown?yesNo(halfHome>0&&halfAway>0&&secondHome>0&&secondAway>0):null;
+ if(family==='high-team-either'){
+  if(!halvesKnown)return null;
+  const maxHome=Math.max(halfHome,secondHome);
+  const maxAway=Math.max(halfAway,secondAway);
+  const expected=maxHome>maxAway?'home':maxAway>maxHome?'away':'none';
+  const s=pickSide();
+  return s?(s===expected?'WON':'LOST'):null;
+ }
  if(family==='goal-both')
   return halvesKnown?yesNo(halfHome+halfAway>0&&secondHome+secondAway>0):null;
  if(family==='high-half'||family==='team-high-half'||/highest scoring half$/.test(title)){

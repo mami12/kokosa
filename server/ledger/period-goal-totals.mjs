@@ -19,7 +19,7 @@ export function isPeriodGoalTotal(line){
  // A correlated offer is never a simple goal total. Otherwise a native
  // Double Chance + Totals quote is held as "unmapped goal total" before
  // its complete two-leg settlement contract can be frozen.
- if(/\b(?:match\s*bet|double chance|result|winner|both teams?|btts|1x2)\b/.test(name)&&
+ if(/\b(?:match\s*bet|double chance|result|winner|both teams?|btts|1x2|ht[\s/]*ft|half[\s-]*time)\b/.test(name)&&
     /\b(?:and|with)\b|&|(?<!\d)\+|\+(?=[a-z])/.test(name))return false;
  // A word-prefix like "goal" must never turn "Goalscorer" into a team
  // goal-total contract: it is an individual-player proposition.
