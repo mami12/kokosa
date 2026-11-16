@@ -1458,6 +1458,7 @@ export async function settleClosedCornerWindows({runQuery=query,loadEvidence=loa
    order by l.match_id,l.id`);
  const cache=new Map(),tickets=new Set();let graded=0;
  for(const line of rows){
+  if(isPlayerOfferMarket(line))continue;
   const id=String(line.match_id);
   if(!cache.has(id))cache.set(id,await loadEvidence(id).catch(()=>null));
   const status=gradeClosedCornerWindow(line,cache.get(id));
