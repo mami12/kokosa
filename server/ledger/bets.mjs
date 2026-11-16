@@ -130,7 +130,7 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
     throw badRequest('Ndeshja ka përfunduar ose është anuluar.');
   // Zizobet itself decides which native markets are offered. A local
   // category/name exclusion is not a provider suspension.
-  if(isRetiredPlayerOfferMarket(row)||(!nativeQuoteVerified&&isExcludedOfferMarket(row)))
+  if(isExcludedOfferMarket(row))
     throw Object.assign(badRequest('Ky treg nuk ofrohet.'),{code:'MARKET_NOT_OFFERED',outcomeId:selection.outcomeId});
   await assertMarketEnabled(row,executor,match);
   const nativeOffer=isYbetsNativeOffer(row,match);
