@@ -100,6 +100,8 @@ assert.equal(isExcludedOfferMarket({market_name:'Total Corners'}),false);
 assert.equal(isExcludedOfferMarket({market_name:'Full Time Result'}),false);
 assert.equal(isExcludedOfferMarket({market_name:'Early Payout'}),true,
  'early payout is excluded at publication and must also be rejected at native placement');
+assert.equal(isExcludedOfferMarket({key:'zizobet:live:27073',name:'Special Offer'}),true,
+ 'the native early-payout ID stays excluded even when its display title is generic');
 assert.equal(isExcludedOfferMarket({market_name:'Total Goals',pl:'player-42'}),true,
  'a native player parameter retires the market even if the display title hides the player');
 
@@ -175,6 +177,7 @@ setCatalogRows([
  {key:'player-market',name:'Anytime Goalscorer',enabled:true},
  {key:'cards-market',name:'Total Cards',enabled:true},
  {key:'handicap-market',name:'Asian Handicap',enabled:true},
+ {key:'early-payout-market',name:'Early Payout',enabled:true},
  {key:'goals-market',name:'Total Goals',enabled:true}
 ]);
 assert.deepEqual(catalogRows().map(row=>row.key),['goals-market']);
