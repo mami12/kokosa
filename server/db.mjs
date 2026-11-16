@@ -213,24 +213,33 @@ export async function saveOdds(rows) {
     before.map((b) => [`${b.match_id}|${b.market_key}|${b.line}|${b.outcome_key}`, b]),
   );
 
-  for (const part of chunkRows(rows, 14)) {
+  for (const part of chunkRows(rows, 21)) {
     const values = [];
     const tuples = part.map((row, i) => {
-      const base = i * 14;
+      const base = i * 21;
       values.push(
         row.matchId, row.marketKey, row.marketName, row.line ?? '', row.outcomeKey,
         row.outcomeName, row.price ?? null, row.suspended === true,
         row.isBase === true, Number.isFinite(Number(row.order)) ? Number(row.order) : 0,
         row.renderType ?? null, Number.isFinite(Number(row.period)) ? Number(row.period) : 0,
         row.column ?? null, row.subgames ?? null,
+        row.providerId ?? row.provider_id ?? null,
+        row.nativeMarketId ?? row.native_market_id ?? null,
+        row.nativeOutcomeId ?? row.native_outcome_id ?? null,
+        row.nativeMarketName ?? row.native_market_name ?? null,
+        row.nativeOutcomeName ?? row.native_outcome_name ?? null,
+        row.nativeParameters ?? row.native_parameters ?? null,
+        row.nativeQuote ?? row.native_quote ?? null,
       );
-      return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9},$${base + 10},$${base + 11},$${base + 12},$${base + 13},$${base + 14}, now())`;
+      return `(${base + 1},${base + 2},${base + 3},${base + 4},${base + 5},${base + 6},${base + 7},${base + 8},${base + 9},${base + 10},${base + 11},${base + 12},${base + 13},${base + 14},${base + 15},${base + 16},${base + 17},${base + 18},${base + 19},${base + 20},${base + 21}, now())`;
     });
 
     await query(
       `insert into odds_current
          (match_id, market_key, market_name, line, outcome_key, outcome_name, price, suspended,
-          is_base, grp_order, render_type, period, board_column, subgames, updated_at)
+          is_base, grp_order, render_type, period, board_column, subgames,
+          provider_id, native_market_id, native_outcome_id, native_market_name,
+          native_outcome_name, native_parameters, native_quote, updated_at)
        values ${tuples.join(',')}
        on conflict (match_id, market_key, line, outcome_key) do update set
          market_name  = excluded.market_name,
@@ -242,6 +251,13 @@ export async function saveOdds(rows) {
          render_type  = excluded.render_type,
          board_column = excluded.board_column,
          subgames     = excluded.subgames,
+         provider_id = excluded.provider_id,
+         native_market_id = excluded.native_market_id,
+         native_outcome_id = excluded.native_outcome_id,
+         native_market_name = excluded.native_market_name,
+         native_outcome_name = excluded.native_outcome_name,
+         native_parameters = excluded.native_parameters,
+         native_quote = excluded.native_quote,
          updated_at   = now()`,
       values,
     );
