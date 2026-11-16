@@ -121,5 +121,14 @@ const nmDictionaryQuote=oddsOf({match_id:58},[
 assert.equal(nmDictionaryQuote.length,1,
  'native market definitions using the provider nm field must not be dropped');
 assert.equal(nmDictionaryQuote[0].marketName,'Total Goals');
+const p4Quote=oddsOf({match_id:59},[
+ {mid:904,id:7,pos:1,p4:42,coef:1.95}
+],{positions:new Map(),liveMarkets:new Map(),
+ preMarkets:new Map([[904,{Name:'Total Goals [p4]',pos:[{id:1,nm:'Over'}]}]])},false,true)[0];
+assert.equal(p4Quote.marketName,'Total Goals 42');
+assert.equal(p4Quote.nativeParameters.p4,42,
+ 'numbered native parameters beyond p1-p3 must be preserved');
+assert.equal(p4Quote.nativeQuote.p4,42,
+ 'the complete native quote snapshot must retain p4');
 }finally{await db.close();}
 console.log('PASS complete native market catalog, LIVE/PREMATCH scoping, wager preflight and optional table migration');
