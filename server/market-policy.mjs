@@ -12,16 +12,13 @@ const marketTitle=market=>String(
 ).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
  .replace(/[_–—]+/g,' ').replace(/\s+/g,' ').trim();
 
-/** Retire incident/discipline prop markets about a NAMED player. Do not
- * retire aggregate shots/fouls/cards/corners, team goal markets or anonymous
- * first/next goal selections. Retain plain anytime goal scorer as requested. */
 /** No player propositions or unsupported statistic families are offered. */
 export function isRetiredPlayerOfferMarket(market){
  const title=marketTitle(market);
- if(!title)return false;
  const hasPlayerParameter=!!String(
    market?.player??market?.pl??market?.nativeParameters?.pl??market?.parameters?.pl??''
  ).trim();
+ if(!title)return hasPlayerParameter;
  const playerMarket=hasPlayerParameter||
    /\b(?:player|goalscorer|goal scorer|goalkeeper|goal keeper|scorer|assist|assists)\b/.test(title)||
    /^(?!\d)(?!total\b)[\p{L}][\p{L}'., -]{1,95}\s+(?:to\s+|-\s+|will\s+)/u.test(title);
