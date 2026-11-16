@@ -38,7 +38,7 @@ export function isPlayerOfferMarket(market){
   hasPlayerParameter(market)||titlesOf(market).some(title=>PLAYER_WORDS.test(title));
 }
 export function isRetiredPlayerOfferMarket(market){
- return isPlayerOfferMarket(market)||titlesOf(market).some(title=>UNSUPPORTED_STATS.test(title));
+ return isPlayerOfferMarket(market)||titlesOf(market).some(title=>UNSUPPORTED_STATS.test(title))||isHandicapOfferMarket(market);
 }
 export const isHandicapOfferMarket=market=>
  titlesOf(market).some(title=>/\b(?:asian\s+)?handicap\b/.test(title));
