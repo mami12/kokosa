@@ -589,10 +589,15 @@ async function broadcastOdds(changed) {
       phaseAt: row.feed_status_at ? new Date(row.feed_status_at).toISOString() : undefined,
       phase: row.phase ?? clock.phase ?? null,
       markets: projectOddsDelta(row,buildMarkets(toDbOddsShape(list.filter(o=>offeredMarket({market_name:o.marketName,market_key:o.marketKey},row))),{includeRemoved:true}),{matchOverride:overrides.matchOverride,marketOverride:overrides.marketOverride,outcomeOverride:overrides.outcomeOverride,prematchMaxAgeMs:config.prematchStaleMs,now}),
+      metadataChanged:list.some(o=>o.metadataChanged===true),
     };
     let boardKeys=new Set();
     const boardConsidered=io.sockets.adapter.rooms.get('feed:board:'+matchId)?.size&&list.some(o=>isBoardOddsRow({market_name:o.marketName,period:o.period}));if(boardConsidered){const [full]=await withOdds([row],Date.now(),{board:true});const [board]=projectClientBoardMatches(toClientMatches([full]));boardKeys=new Set((board.markets??[]).map(m=>m.extId+'|'+(m.line??'')));}
-    const before=publishedBoardKeys.get(String(matchId));if(boardConsidered){payload.boardChanged=!!before&&[...new Set([...before,...boardKeys])].some(key=>before.has(key)!==boardKeys.has(key));publishedBoardKeys.set(String(matchId),boardKeys);if(before)boardKeys=new Set([...boardKeys,...before]);}
+    const before=publishedBoardKeys.get(String(matchId));
+    const metadataChanged=list.some(o=>o.metadataChanged===true);
+    if(metadataChanged)payload.metadataChanged=true;else delete payload.metadataChanged;
+    if(boardConsidered){payload.boardChanged=(!!before&&[...new Set([...before,...boardKeys])].some(key=>before.has(key)!==boardKeys.has(key)))||
+      (metadataChanged&&list.some(o=>isBoardOddsRow({market_name:o.marketName,period:o.period})));publishedBoardKeys.set(String(matchId),boardKeys);if(before)boardKeys=new Set([...boardKeys,...before]);}
     emitScopedOdds(io,payload,boardKeys);
     await broadcastLiveRiskLocks(matchId, row);
   }
