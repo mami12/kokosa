@@ -258,6 +258,7 @@ alter table app_match_result add column if not exists half_away_score int;
 -- FEED snapshots can refresh ungraded results; verified manual corrections
 -- must never be replaced by a subsequent stale provider replay.
 alter table app_match_result add column if not exists source text not null default 'FEED';
+alter table app_match_result alter column source set default 'UNVERIFIED_LEGACY';
 
 -- admin overrides survive the next feed frame (suspend a match/market/outcome, pin a price)
 create table if not exists app_feed_override (
