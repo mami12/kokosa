@@ -1122,6 +1122,7 @@ export async function recalcTicket(ticketId, { database = pool } = {}) {
     // conflicting provider frame because the original match pass was aborted.
     await client.query(`update app_match_result r set settled_at=coalesce(r.settled_at,now())
       where r.match_id in (select match_id from app_ticket_line where ticket_id=$1)
+        and r.source in ('ZIZOBET','ADMIN')
         and not exists(select 1 from app_ticket_line l where l.match_id=r.match_id and l.status='PENDING')`, [ticketId]);
     await client.query('commit');
     return { ticketId, status, payout };
@@ -1394,7 +1395,7 @@ export async function settleMatch(matchId) {
   if (graded === lines.length) {
     await query(
       `update app_match_result set settled_at = now()
-        where match_id = $1 and not exists
+        where match_id = $1 and source in ('ZIZOBET','ADMIN') and not exists
           (select 1 from app_ticket_line
             where match_id = $1 and status = 'PENDING')`,
       [Number(matchId)],
