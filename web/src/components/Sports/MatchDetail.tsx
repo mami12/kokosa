@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Trophy, Sparkles, Flame, Clock, Flag, 
-  ShieldAlert, ChevronDown, ChevronUp, Star, Bell, BellRing, 
+  ChevronDown, ChevronUp, Star, Bell, BellRing, 
   Search, X, Layers, Layers2
 } from 'lucide-react';
 import { apiClient } from '../../api/client';
@@ -32,8 +32,7 @@ import {retainEventPlayerNames} from '../../utils/eventPlayers';
 // classification and localized labels as MarketPanel.
 const CATEGORY_KEY: Record<string, MarketCategory> = {
   Popular: 'main', Goals: 'goals', Mixed: 'mixed', Halves: 'htft',
-  Corners: 'corners', Cards: 'cards',
-  Players: 'players', Other: 'other',
+  Corners: 'corners', Other: 'other',
 };
 const getGroupCategory = (market: Market): string => {
   const category = marketCategoryOf(market);
@@ -41,7 +40,7 @@ const getGroupCategory = (market: Market): string => {
 };
 const categoryLabel = (category: string, lang: MarketLanguage): string =>
   marketCategoryLabel(CATEGORY_KEY[category] ?? 'other', lang);
-const CATEGORY_ORDER = ['Popular', 'Goals', 'Mixed', 'Halves', 'Corners', 'Cards', 'Players', 'Other'];
+const CATEGORY_ORDER = ['Popular', 'Goals', 'Mixed', 'Halves', 'Corners', 'Other'];
 
 const getCategoryIcon = (catId: string) => {
   switch (catId) {
@@ -50,7 +49,6 @@ const getCategoryIcon = (catId: string) => {
     case 'Mixed': return <Layers size={13} className="text-amber-300" />;
     case 'Halves': return <Clock size={13} className="text-purple-400" />;
     case 'Corners': return <Flag size={13} className="text-blue-400" />;
-    case 'Cards': return <ShieldAlert size={13} className="text-rose-400" />;
     default: return <Sparkles size={13} className="text-accent-green" />;
   }
 };
@@ -58,7 +56,6 @@ const getCategoryIcon = (catId: string) => {
 const getMarketIcon = (category: string, title: string) => {
   const t = title.toLowerCase();
   if (category === 'Mixed') return <Layers size={14} className="text-amber-300 shrink-0" />;
-  if (category === 'Cards' || /card|karton/i.test(t)) return <ShieldAlert size={14} className="text-rose-400 shrink-0" />;
   if (category === 'Corners' || /corner|kënd/i.test(t)) return <Flag size={14} className="text-blue-400 shrink-0" />;
   if (category === 'Halves' || /half|pjes/i.test(t)) return <Clock size={14} className="text-purple-400 shrink-0" />;
   if (category === 'Goals' || /goal|score|gola/i.test(t)) return <Flame size={14} className="text-orange-400 shrink-0" />;
