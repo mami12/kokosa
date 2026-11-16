@@ -21,7 +21,7 @@ const hasPlayerParameter=market=>{
  if(direct.some(v=>v!=null&&String(v).trim()!==''))return true;
  // Older odds rows may have retained the native parameter only in the
  // provider-key payload. Decode that exact Zizobet identity as a final guard.
- const encoded=String(market?.market_key??market?.marketKey??market?.accepted_contract?.providerMarketKey??'').match(/^zz\d+@([A-Za-z0-9_-]+)$/)?.[1];
+ const encoded=String(market?.market_key??market?.marketKey??market?.extId??market?.key??market?.accepted_contract?.providerMarketKey??'').match(/^zz\d+@([A-Za-z0-9_-]+)$/)?.[1];
  if(!encoded)return false;
  try{
   const base64=encoded.replace(/-/g,'+').replace(/_/g,'/').padEnd(Math.ceil(encoded.length/4)*4,'=');
@@ -52,7 +52,7 @@ export function isRetiredPlayerOfferMarket(market){
 export const isHandicapOfferMarket=market=>
  titlesOf(market).some(title=>/\b(?:asian\s+)?handicap\b/.test(title));
 export const isEarlyPayoutOfferMarket=market=>{
- const key=String(market?.market_key??market?.marketKey??market?.key??'');
+ const key=String(market?.market_key??market?.marketKey??market?.extId??market?.key??'');
  const nativeId=String(market?.native_market_id??market?.nativeMarketId??
   key.match(/^zz(\d+)@/)?.[1]??key.match(/^zizobet:(?:live|prematch):(\d+)$/i)?.[1]??'');
  return titlesOf(market).some(title=>/1x2\s*\(xup\)|early\s*payout/.test(title))||nativeId==='27073';
