@@ -12,7 +12,6 @@ import {matchSnapshots} from './match-snapshots.mjs';
 import {eventMarketRequirement} from './event-market-policy.mjs';
 import {teamStatisticsFromRow,verifiedFinalStatistics} from '../match-statistics.mjs';
 import {isStatisticMarket,hasStatisticEvidence} from './statistic-markets.mjs';
-import {recoverAllPendingMatches} from '../stats-providers/match-recovery.mjs';
 
 /**
  * Do not settle bets from a made-up 0-0 or a kickoff timer. A final score
@@ -22,16 +21,12 @@ import {recoverAllPendingMatches} from '../stats-providers/match-recovery.mjs';
  */
 export const isFinished = (row) => {
   if (!row) return false;
-  if(row.raw?.provider==='YBETS'&&row.raw.ybetsFinalScoreVerified!==true)return false;
+  if(String(row.raw?.provider??'').toUpperCase()!=='ZIZOBET')return false;
   if (!row.score_at || row.home_score == null || row.away_score == null) return false;
   const score = [Number(row.home_score), Number(row.away_score)];
   if (!score.every(n => Number.isInteger(n) && n >= 0)) return false;
   // Apply the same verification to live rows AND durable restart recovery.
   // A new FT-only flag must never turn an old partial score into a final result.
-  if(row.raw?.provider==='YBETS'&&row.feed_status_at!=null){
-    const scoreAt=new Date(row.score_at).getTime(),phaseAt=new Date(row.feed_status_at).getTime();
-    if(!Number.isFinite(scoreAt)||!Number.isFinite(phaseAt)||Math.abs(scoreAt-phaseAt)>120000)return false;
-  }
   // A penalty-shootout scoreboard is not necessarily the 90-minute result.
   // Without an independently identified regulation result, do not settle 1X2,
   // totals or correct-score wagers from it.
@@ -72,8 +67,8 @@ export const FINISHED_RESULT_INSERT = `
   insert into app_match_result
     (match_id, home_team, away_team, home_score, away_score,
      corners_home, corners_away, cards_home, cards_away,
-     half_home_score, half_away_score, statistics)
-  values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)
+     half_home_score, half_away_score, statistics, source)
+  values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,'ZIZOBET')
   on conflict (match_id) do update set
     home_score = excluded.home_score,
     away_score = excluded.away_score,
@@ -86,10 +81,11 @@ export const FINISHED_RESULT_INSERT = `
     statistics = coalesce(app_match_result.statistics,'{}'::jsonb) || jsonb_build_object(
       'shots',coalesce(app_match_result.statistics->'shots','{}'::jsonb)||coalesce(excluded.statistics->'shots','{}'::jsonb),
       'shotsOnTarget',coalesce(app_match_result.statistics->'shotsOnTarget','{}'::jsonb)||coalesce(excluded.statistics->'shotsOnTarget','{}'::jsonb),
-      'fouls',coalesce(app_match_result.statistics->'fouls','{}'::jsonb)||coalesce(excluded.statistics->'fouls','{}'::jsonb))
+      'fouls',coalesce(app_match_result.statistics->'fouls','{}'::jsonb)||coalesce(excluded.statistics->'fouls','{}'::jsonb)),
+    source = 'ZIZOBET'
   -- A verified admin correction or already-settled result must not be
   -- overwritten by a later stale or conflicting provider frame.
-  where app_match_result.source = 'FEED' and app_match_result.settled_at is null
+  where app_match_result.source in ('FEED','ZIZOBET','RECOVERY') and app_match_result.settled_at is null
   returning (xmax = 0) as inserted
 `;
 
@@ -184,14 +180,7 @@ export async function captureFinishedMatches() {
     }
   }
 
-  // Auto-recover any remaining pending ticket matches whose results were missed due to downtime
-  try {
-    const recoveryResult = await recoverAllPendingMatches();
-    if (recoveryResult?.recovered) stored += recoveryResult.recovered;
-  } catch (e) {
-    console.warn('[settle] external match recovery failed:', e.message);
-  }
-
+  // No secondary provider may manufacture a financial final result.
   return stored;
 }
 
@@ -199,18 +188,19 @@ let evidenceWarningAt=0;
 export async function getResult(matchId,{execute=query,readEvidence=loadEventEvidence,onEvidenceError}={}) {
   const res = await execute('select * from app_match_result where match_id = $1', [Number(matchId)]);
   const result=res.rows[0];if(!result)return null;
+  const source=String(result.source??'FEED').toUpperCase();
+  if(source==='RECOVERY')return null;
+  if(source==='FEED'){
+    const current=getMatchById(Number(matchId));
+    const snapshot=current?.raw?.provider?current:
+      (await matchSnapshots.load([Number(matchId)]))[0]??null;
+    if(String(snapshot?.raw?.provider??'').toUpperCase()!=='ZIZOBET')return null;
+  }else if(source!=='ZIZOBET'&&source!=='ADMIN')return null;
   const review=(await execute('select payload from app_stat_review where match_id=$1',[Number(matchId)])).rows[0]?.payload;
   result.statistics_review=review??null;
   result.statistics_review_pending=process.env.STATS_PROVIDERS_ENABLED==='true'&&!review;
-  if(review?.complete){
-    result.statistics={...(result.statistics??{})};
-    for(const field of ['shots','shotsOnTarget','fouls'])if(review.consensus?.[field]&&!review.conflicts?.[field]){
-      const pair=result.statistics[field]??{},verified=review.consensus[field];
-      result.statistics[field]={home:pair.home??verified.home,away:pair.away??verified.away};
-    }
-    // Secondary source consensus may help admin review, but must not
-    // manufacture a Zizobet corner/card total for financial settlement.
-  }
+  // Secondary consensus remains visible in statistics_review for admin
+  // diagnostics only. It is never merged into financial settlement facts.
   // Optional timeline storage must not stop ordinary result/statistics tickets.
   try{result.event_evidence=await readEvidence(matchId);}catch(error){
     result.event_evidence=null;
