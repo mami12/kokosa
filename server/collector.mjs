@@ -339,6 +339,13 @@ export const toDbOddsShape = (rows) =>
     period: Number(r.period ?? 0),
     board_column: r.column ?? null,
     subgames: r.subgames ?? null,
+    provider_id:r.providerId??r.provider_id??null,
+    native_market_id:r.nativeMarketId??r.native_market_id??null,
+    native_outcome_id:r.nativeOutcomeId??r.native_outcome_id??null,
+    native_market_name:r.nativeMarketName??r.native_market_name??null,
+    native_outcome_name:r.nativeOutcomeName??r.native_outcome_name??null,
+    native_parameters:r.nativeParameters??r.native_parameters??null,
+    native_quote:r.nativeQuote??r.native_quote??null,
     // This adapter receives newly ingested rows for socket publication only.
     // REST projections retain the actual stored updated_at instead.
     updated_at:r.updated_at??r.priceUpdatedAt??new Date(Date.now()-1000).toISOString(),
