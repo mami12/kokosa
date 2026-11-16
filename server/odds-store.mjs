@@ -263,12 +263,29 @@ export function applyRows(rows) {
     const prev = bucket.get(key);
     const priceChanged = !prev || Number(prev.price) !== Number(row.price);
     const suspendedChanged = !prev || prev.suspended !== (row.suspended === true);
+    // A provider can revise a market/outcome label or its native identity
+    // without moving the price. Persisting that row alone is not enough: the
+    // browser would keep the old label until a later price tick. Broadcast
+    // meaningful contract/display metadata changes as well.
+    const metadataChanged = !prev ||
+      prev.market_name !== row.marketName || prev.outcome_name !== row.outcomeName ||
+      prev.provider_id !== provider ||
+      prev.native_market_id !== (row.nativeMarketId ?? row.native_market_id ?? null) ||
+      prev.native_outcome_id !== (row.nativeOutcomeId ?? row.native_outcome_id ?? null) ||
+      prev.native_market_name !== (row.nativeMarketName ?? row.native_market_name ?? null) ||
+      prev.native_outcome_name !== (row.nativeOutcomeName ?? row.native_outcome_name ?? null) ||
+      prev.period !== (Number.isFinite(Number(row.period)) ? Number(row.period) : 0) ||
+      prev.is_base !== (row.isBase === true) ||
+      prev.grp_order !== (Number.isFinite(Number(row.order)) ? Number(row.order) : 0) ||
+      prev.render_type !== (row.renderType ?? null) ||
+      prev.board_column !== (row.column ?? null) ||
+      JSON.stringify(prev.native_parameters ?? null) !== JSON.stringify(row.nativeParameters ?? row.native_parameters ?? null);
 
     const stored = toStored(row, at);
     bucket.set(key, stored);
     counters.applied++;
 
-    if (!priceChanged && !suspendedChanged) continue;
+    if (!priceChanged && !suspendedChanged && !metadataChanged) continue;
     counters.changed++;
     counters.lastChangeAt = at;
     changed.push(row); // camelCase: broadcastOdds() -> toDbOddsShape() expects this
