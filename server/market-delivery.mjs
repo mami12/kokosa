@@ -58,11 +58,11 @@ export function emitScopedOdds(io,payload,boardKeys=new Set()){
  const markets=(payload.markets??[]).filter(m=>offeredMarket(m,payload));
  if(rooms.get(boardRoom)?.size){
   const board=markets.filter(m=>boardKeys.has(m.key+'|'+(m.line??'')));
-  if(board.length)io.to(boardRoom).emit('odds:update',{...payload,markets:board});
+  if(board.length||payload.metadataChanged)io.to(boardRoom).emit('odds:update',{...payload,markets:board});
  }
  for(const category of neededCategories){
   const selected=category==='all'?markets:markets.filter(m=>deliveryCategory(m)===category);
-  if(selected.length)io.to('feed:detail:'+payload.matchId+':'+category).emit('odds:update',{...payload,markets:selected});
+  if(selected.length||payload.metadataChanged)io.to('feed:detail:'+payload.matchId+':'+category).emit('odds:update',{...payload,markets:selected});
  }
- for(const socketId of rooms.get(slipRoom)??[]){const socket=io.sockets.sockets.get(socketId),ids=new Set(socket?.data.feedScope?.selectionIds??[]);const selected=markets.map(m=>({...m,outcomes:(m.outcomes??[]).filter(o=>ids.has(`${payload.matchId}|${m.key}|${m.line??''}|${o.key}`))})).filter(m=>m.outcomes.length);if(selected.length)socket.emit('odds:update',{...payload,markets:selected});}
+ for(const socketId of rooms.get(slipRoom)??[]){const socket=io.sockets.sockets.get(socketId),ids=new Set(socket?.data.feedScope?.selectionIds??[]);const selected=markets.map(m=>({...m,outcomes:(m.outcomes??[]).filter(o=>ids.has(`${payload.matchId}|${m.key}|${m.line??''}|${o.key}`))})).filter(m=>m.outcomes.length);if(selected.length||payload.metadataChanged)socket.emit('odds:update',{...payload,markets:selected});}
 }
