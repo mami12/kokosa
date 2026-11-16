@@ -51,10 +51,13 @@ try{
    (provider_id,scope,native_market_id,native_market_name,definition)
    values ('ZIZOBET','LIVE','800','Total Corners','{}'::jsonb),
           ('ZIZOBET','PREMATCH','448','Match result','{}'::jsonb),
-          ('ZIZOBET','PREMATCH','800','Total Corners','{}'::jsonb)`);
+          ('ZIZOBET','PREMATCH','800','Total Corners','{}'::jsonb),
+          ('ZIZOBET','LIVE','27073','1X2 (XUP)','{}'::jsonb)`);
  const list=await seedNativeMarketCatalog({database});
  const keys=['zizobet:live:800','zizobet:prematch:448','zizobet:prematch:800'];
  for(const key of keys)assert.ok(list.find(row=>row.key===key),'Dictionary market missing: '+key);
+ assert.equal(list.some(row=>row.key==='zizobet:live:27073'),false,
+  'the native early-payout ID must not re-enter the admin market catalog');
  const quoted={market_key:'zz800@e30',market_name:'Total Corners'};
  const live={service:'LIVE'},prematch={service:'PREMATCH'};
  assert.deepEqual(nativeMarketPolicyKeys(quoted,live),['zizobet:live:800']);
