@@ -5,7 +5,7 @@ import {marketIsEnabled,nativeMarketPolicyKeys} from '../server/market-catalog.m
 import {refreshMarketCatalog,seedNativeMarketCatalog,assertMarketEnabled} from '../server/ledger/market-catalog-store.mjs';
 import {LEDGER_SQL} from '../server/ledger/schema.mjs';
 import {hasFinalSettlementRule} from '../server/ledger/market-settlement-preflight.mjs';
-import {oddsOf,dedupeMarketRows} from '../server/zizobet/normalize.mjs';
+import {oddsOf,dedupeMarketRows,infoOf} from '../server/zizobet/normalize.mjs';
 
 assert.match(LEDGER_SQL,/create table if not exists app_supplemental_match_incident/i,
  'Supplemental incidents must be created on ledger boot even with STATS_PROVIDERS_ENABLED=false');
@@ -92,6 +92,15 @@ const flagRows=oddsOf({match_id:57},[
 ],flagMeta,false,true);
 assert.equal(flagRows.find(row=>row.nativeMarketId==='920')?.suspended,false,
  'numeric visible/lock and string zero result flags must preserve an open quote');
+const infoMeta={statuses:new Map(),teams:new Map(),regions:new Map(),champs:new Map()};
+assert.equal(infoOf({service:'LIVE'},{LiveBetStatus:1,EventStatus:10,Score:'0:0'},infoMeta).hasOpenOdds,true,
+ 'numeric live open flag must be treated as open');
+assert.equal(infoOf({service:'LIVE'},{LiveBetStatus:'0',EventStatus:10,Score:'0:0'},infoMeta).hasOpenOdds,false,
+ 'string zero live open flag must be treated as closed');
+assert.equal(infoOf({service:'PREMATCH'},{s:1},infoMeta).hasOpenOdds,true,
+ 'numeric prematch open flag must be treated as open');
+assert.equal(infoOf({service:'PREMATCH'},{s:0},infoMeta).hasOpenOdds,false,
+ 'numeric prematch zero flag must be treated as closed');
 for(const id of ['921','922','923'])assert.equal(
  flagRows.find(row=>row.nativeMarketId===id)?.suspended,true,
  'numeric hidden/locked/resolved quote flags must suspend native market '+id);
