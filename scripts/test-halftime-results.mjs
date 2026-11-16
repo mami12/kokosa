@@ -21,11 +21,13 @@ assert.equal(inPlay.periodsScore,undefined,
  'A single first-period value is not final before HT');
 const candidate=extractConfirmedHalfTimeCandidate(live);
 assert.deepEqual([candidate.home,candidate.away],[2,1]);
+assert.equal(candidate.source,'ZIZOBET');
 assert.ok(HALFTIME_RESULT_SQL.includes('app_match_half_result'));
 for(const phase of ['LIVE','PREMATCH','1H','']){
  assert.equal(extractConfirmedHalfTimeCandidate({...live,feed_status:phase}),null);
 }
 assert.equal(extractConfirmedHalfTimeCandidate({...live,raw:{provider:'YBETS'}}),null);
+assert.equal(extractConfirmedHalfTimeCandidate({...live,raw:{provider:'FOTMOB'}}),null);
 assert.equal(extractConfirmedHalfTimeCandidate({...live,home_score:3}),null,
  'At HT, current score and confirmed first period must agree');
 assert.equal(extractConfirmedHalfTimeCandidate({...live,
