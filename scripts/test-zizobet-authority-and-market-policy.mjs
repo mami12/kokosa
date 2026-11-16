@@ -2,7 +2,9 @@ import './fixtures/isolated-casino-env.mjs';
 import assert from 'node:assert/strict';
 import {liveContract} from '../server/ledger/live-contract-rules.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
-import {isExcludedOfferMarket} from '../server/market-policy.mjs';
+import {isExcludedOfferMarket,isPlayerOfferMarket,isRetiredPlayerOfferMarket} from '../server/market-policy.mjs';
+import {isFinished,getResult,FINISHED_RESULT_INSERT} from '../server/ledger/results.mjs';
+import {extractConfirmedHalfTimeCandidate} from '../server/ledger/halftime-results.mjs';
 import {createEventEvidenceStore,gradeEventLine} from '../server/ledger/event-evidence.mjs';
 
 const interval=liveContract({
@@ -94,5 +96,66 @@ assert.equal(isExcludedOfferMarket({market_name:'Total Corners'}),false);
 assert.equal(isExcludedOfferMarket({market_name:'Full Time Result'}),false);
 assert.equal(isExcludedOfferMarket({market_name:'Total Goals',pl:'player-42'}),true,
  'a native player parameter retires the market even if the display title hides the player');
+
+
+// All final-score paths require the primary feed identity, not merely an FT label.
+const finishedRow={
+ raw:{provider:'ZIZOBET'},feed_status:'Finished',
+ home_score:2,away_score:1,
+ score_at:'2026-11-16T18:00:00.000Z'
+};
+assert.equal(isFinished(finishedRow),true);
+for(const provider of ['FOTMOB','AISCORE','YBETS','SPORTRADAR'])
+ assert.equal(isFinished({...finishedRow,raw:{provider}}),false,
+  provider+' cannot supply a financial final result');
+assert.match(FINISHED_RESULT_INSERT,/source\\s*\\)\\s*values[^;]*'ZIZOBET'/s);
+
+// Half-time settlement also requires a positive Zizobet source identity.
+const halftimeRow={
+ ...finishedRow,feed_status:'HT',feed_status_at:'2026-11-16T18:00:00.000Z',
+ periods_score:[{t1:1,t2:0}]
+};
+assert.equal(extractConfirmedHalfTimeCandidate(halftimeRow)?.home,1);
+for(const provider of ['FOTMOB','AISCORE','YBETS'])
+ assert.equal(extractConfirmedHalfTimeCandidate({...halftimeRow,raw:{provider}}),null);
+
+// Secondary statistics can be shown to admins but cannot fill missing
+// Zizobet settlement statistics.
+let resultQuery=0;
+const stored=await getResult(700,{
+ execute:async sql=>{
+  resultQuery++;
+  if(sql.includes('app_match_result'))return {rows:[{
+   source:'ZIZOBET',home_score:1,away_score:0,
+   statistics:{shots:{home:2,away:3}}
+  }]};
+  if(sql.includes('app_stat_review'))return {rows:[{payload:{
+   complete:true,consensus:{shots:{home:99,away:99}},conflicts:{}
+  }}]};
+  return {rows:[]};
+ },
+ readEvidence:async()=>null
+});
+assert.deepEqual(stored.statistics,{shots:{home:2,away:3}});
+assert.equal(stored.statistics_review.consensus.shots.home,99);
+assert.equal(await getResult(701,{
+ execute:async()=>({rows:[{source:'RECOVERY',home_score:4,away_score:0}]})
+}),null,'secondary recovered score cannot enter settlement');
+
+// Player markets are blocked even if the display title was normalized and
+// the original native title/parameter still identifies the player quote.
+assert.equal(isPlayerOfferMarket({market_name:'Total Goals',native_parameters:{pl:'player-7'}}),true);
+assert.equal(isPlayerOfferMarket({market_name:'Total Goals',accepted_contract:{
+ nativeParameters:{pl:'player-7'}
+}}),true);
+assert.equal(isPlayerOfferMarket({market_name:'Total Goals',native_market_name:'Anytime Goalscorer'}),true);
+for(const market of [
+ 'Player Shots On Target','Anytime Goalscorer','First Goal Scorer',
+ 'Goalkeeper Saves','Total Fouls','Total Cards','Total Tackles','Throw-ins',
+ 'Asian Handicap'
+])assert.equal(isRetiredPlayerOfferMarket({market_name:market}),true,market);
+for(const market of ['Home team to score','Away team to win','Manchester United to win',
+ 'Total Goals','Total Shots On Target','Full Time Result','Total Corners'])
+ assert.equal(isRetiredPlayerOfferMarket({market_name:market}),false,market+' must not be misclassified');
 
 console.log('PASS Zizobet-only settlement, 50+ halftime protection, and excluded-market policy');
