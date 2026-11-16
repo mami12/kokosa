@@ -36,6 +36,9 @@ for(const line of ['0.25','0.75','1.25','1.75']){
 assert.equal(hasFinalSettlementRule({provider_id:'ZIZOBET',market_name:'Total Goals',
  outcome_name:'Over',outcome_key:'Over',line:'2.5'}),true,
  'ordinary half-goal totals retain their existing settlement rule');
+assert.equal(hasFinalSettlementRule({provider_id:'ZIZOBET',market_name:'Total Goals 1.25',
+ outcome_name:'Over',outcome_key:'Over',line:''}),false,
+ 'quarter thresholds embedded in provider market titles must also remain pending');
 for(const market of ['Total Corners','Home Team Total Corners']){
  assert.equal(hasFinalSettlementRule({provider_id:'ZIZOBET',market_name:market,
   outcome_name:'Over',outcome_key:'Over',line:'1.75'}),false,
