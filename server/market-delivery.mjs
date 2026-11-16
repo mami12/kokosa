@@ -1,7 +1,7 @@
 import {isSameGameComboLine} from './ledger/combo-policy.mjs';
 import {marketIsEnabled} from './market-catalog.mjs';
 import {isExcludedOfferMarket} from './market-policy.mjs';
-export const CATEGORIES=['all','Popular','Goals','Mixed','Corners','Cards','Halves','Players','Other'];
+export const CATEGORIES=['all','Popular','Goals','Mixed','Corners','Halves','Other'];
 export function deliveryCategory(m={}){
  const n=String(m.name??'').toLowerCase(),type=String(m.marketType??'').toLowerCase();
  if(isSameGameComboLine({name:n})||/\b(?:outcome|double chance)\s+(?:and|&|\+)\s+(?:both|total)/i.test(n)||/will win (?:and|&) score exact/i.test(n))return 'Mixed';
