@@ -10,7 +10,7 @@ for(const pass of ['12','ab','','12345678901','abc-123','has space','ççç','�
 assert.equal(assertAccountPassword('staff123','ADMIN'),'staff123');
 assert.equal(assertAccountPassword('staff123','AGENT'),'staff123');
 assert.equal(assertAccountPassword('staff123','MANAGER'),'staff123');
-assert.throws(()=>assertAccountPassword('123','ADMIN'),{status:400,code:'STAFF_PASSWORD_TOO_SHORT'});
-assert.throws(()=>assertAccountPassword('12345','MANAGER'),{status:400,code:'STAFF_PASSWORD_TOO_SHORT'});
-assert.equal(assertAccountPassword('1234','ADMIN',{staffMin:4}),'1234');
-console.log('PASS player passwords allow only 3–10 ASCII letters/digits, staff policies remain stronger');
+assert.throws(()=>assertAccountPassword('12','ADMIN'),{status:400,code:'STAFF_PASSWORD_TOO_SHORT'});
+assert.equal(assertAccountPassword('123','MANAGER'),'123');
+assert.equal(assertAccountPassword('123','ADMIN'),'123');
+console.log('PASS user passwords allow 3-digit codes/passwords across player and staff accounts');

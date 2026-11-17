@@ -3,7 +3,7 @@
  * Player accounts accept an ASCII letter/digit code of 3–10 characters.
  */
 export const PLAYER_PASSWORD_PATTERN=/^[A-Za-z0-9]{3,10}$/;
-export function assertAccountPassword(value,role,{staffMin=6}={}){
+export function assertAccountPassword(value,role,{staffMin=3}={}){
  const password=String(value??'');
  if(role==='PLAYER'){
   if(!PLAYER_PASSWORD_PATTERN.test(password)){

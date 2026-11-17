@@ -355,7 +355,7 @@ const createUser = (resolveRole) =>
     if (await ledger.findUserByUsername(name)) throw badRequest('this username is already taken');
 
     const role = resolveRole(req);
-    assertAccountPassword(password,role,{staffMin:4});
+    assertAccountPassword(password,role,{staffMin:3});
     const owner = role !== 'PLAYER' ? null : req.user.role === 'MANAGER' ? req.user.id : managerId || null;
 
     const openingValue = Number(initialBalance);
@@ -407,7 +407,7 @@ adminRouter.patch(
     if (password) {
       const existing=await ledger.getUserById(id);
       if(!existing)throw badRequest('Përdoruesi nuk u gjet.');
-      assertAccountPassword(password,role?String(role).toUpperCase():existing.role,{staffMin:4});
+      assertAccountPassword(password,role?String(role).toUpperCase():existing.role,{staffMin:3});
       await query('update app_user set password_hash = $2, updated_at = now() where id = $1', [id, hashPassword(password)]);
     }
     if (role) await ledger.updateUser(id, { role: String(role).toUpperCase() });
@@ -430,7 +430,7 @@ adminRouter.patch(
       await query('update app_user set username = $2, updated_at = now() where id = $1', [id, String(username).trim()]);
     }
     if (password) {
-      assertAccountPassword(password,'PLAYER',{staffMin:4});
+      assertAccountPassword(password,'PLAYER',{staffMin:3});
       await query('update app_user set password_hash = $2, updated_at = now() where id = $1', [id, hashPassword(password)]);
     }
 
