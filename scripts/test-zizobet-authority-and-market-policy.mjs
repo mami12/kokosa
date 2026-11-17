@@ -8,7 +8,7 @@ import {isFinished,getResult,FINISHED_RESULT_INSERT} from '../server/ledger/resu
 import {extractConfirmedHalfTimeCandidate} from '../server/ledger/halftime-results.mjs';
 import {toDbOddsShape,buildMarkets} from '../server/collector.mjs';
 import {SCHEMA_SQL} from '../server/schema.mjs';
-import {MARKET_CATEGORY_IDS,catalogRows,setCatalogRows} from '../server/market-catalog.mjs';
+import {MARKET_CATEGORY_IDS,catalogRows,setCatalogRows,marketIsEnabled} from '../server/market-catalog.mjs';
 import {snapshotRow} from '../server/ledger/match-snapshots.mjs';
 import {createEventEvidenceStore,gradeEventLine} from '../server/ledger/event-evidence.mjs';
 
@@ -118,21 +118,23 @@ assert.equal(isExcludedOfferMarket({market_name:'Total Goals {pl}'}),true,
  'an unresolved native player placeholder must not leak into public markets');
 
 
-// Durable restart snapshots must retain the provider identity used by
-// isFinished(), otherwise verified Zizobet results disappear after a restart.
-assert.equal(snapshotRow({...finishedRow,match_id:700,home:'A',away:'B'}).raw.provider,'ZIZOBET');
-
 // All final-score paths require the primary feed identity, not merely an FT label.
 const finishedRow={
+ match_id:700,home:'A',away:'B',
  raw:{provider:'ZIZOBET'},feed_status:'Finished',
  home_score:2,away_score:1,
  score_at:'2026-11-16T18:00:00.000Z'
 };
+
+// Durable restart snapshots must retain the provider identity used by
+// isFinished(), otherwise verified Zizobet results disappear after a restart.
+assert.equal(snapshotRow(finishedRow).raw.provider,'ZIZOBET');
+
 assert.equal(isFinished(finishedRow),true);
 for(const provider of ['FOTMOB','AISCORE','YBETS','SPORTRADAR'])
  assert.equal(isFinished({...finishedRow,raw:{provider}}),false,
   provider+' cannot supply a financial final result');
-assert.match(FINISHED_RESULT_INSERT,/source\\s*\\)\\s*values[^;]*'ZIZOBET'/s);
+assert.match(FINISHED_RESULT_INSERT,/source\s*\)\s*values[^;]*'ZIZOBET'/s);
 
 // Half-time settlement also requires a positive Zizobet source identity.
 const halftimeRow={

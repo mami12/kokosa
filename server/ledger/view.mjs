@@ -16,6 +16,7 @@ import { liveRiskReason } from '../live-risk.mjs';
 import { frozenSelectionPrice } from './system-columns.mjs';
 import { isDecidedLiveOutcome, isYbetsNativeOffer, isZizobetNativeOffer } from './decided-markets.mjs';
 import {isExcludedOfferMarket} from '../market-policy.mjs';
+import {eventMarketRequirement} from './event-market-policy.mjs';
 import {marketDiagnosticAll} from '../market-diagnostic.mjs';
 import {trackerTeamStatistics} from '../match-statistics.mjs';
 import {statsProviders} from '../stats-providers/index.mjs';
@@ -105,6 +106,10 @@ export function toClientMatch(m) {
     if((!diagnostic&&isExcludedOfferMarket(mk))||!marketIsEnabled(mk,m))continue;
     const nativeOffer=isYbetsNativeOffer(mk,m);
     const nativeZizobet=isZizobetNativeOffer(mk,m);
+    // Event-contract markets (need live event data) are only offered through
+    // native Zizobet feeds that supply their own settlement evidence.
+    // Non-native event markets cannot be settled and must not be advertised.
+    if(!diagnostic&&!nativeZizobet&&eventMarketRequirement({name:mk.name}))continue;
     const line = mk.line ?? '';
     const isResultMarket = mk.column === 'result' || /1x2|match result|full time result|\bwinner\b|moneyline/i.test(mk.name ?? '');
     const mType = isResultMarket ? '1X2' : (MARKET_TYPE_BY_COLUMN[mk.column] ?? 'OTHER');

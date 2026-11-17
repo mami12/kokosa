@@ -124,11 +124,14 @@ export function parseNumberedGoalWindow(line){
 
 export function parseOrdinalGoalTime(line){
  const title=String(line.market_name??line.marketName??line.name??'').trim().replace(/^\*\s*/,'');
- if(!/^when will (?:(?:the )?next )?goal\b/i.test(title)&&!/^first goal interval$/i.test(title))return null;
+ if(!/^when will (?:(?:the )?(?:first|next) )?goal\b/i.test(title)&&
+    !/^first goal interval\b/i.test(title)&&
+    !/^(?:first|next|last) goal (?:time|interval)\b/i.test(title)&&
+    !/^time of (?:the )?(?:first|next|last) goal\b/i.test(title))return null;
  let target=null;
- if(/^first goal interval$/i.test(title))target=1;
+ if(/first/i.test(title))target=1;
  const fixed=title.match(/^when will (?:goal (\d{1,3}|number)|(?:the )?next goal)/i);
- if(fixed)target=/^\d+$/.test(fixed[1])?Number(fixed[1]):1;
+ if(fixed&&!target)target=/^\d+$/.test(fixed[1])?Number(fixed[1]):1;
  if(target===null){
   try{
    const encoded=String(line.market_key??line.marketKey??'').split('@')[1];
@@ -137,11 +140,12 @@ export function parseOrdinalGoalTime(line){
   }catch{return null;}
  }
  if(!Number.isInteger(target)||target<1||target>100)target=1;
- const label=String(line.outcome_name??line.outcomeName??'').trim();
+ let label=String(line.outcome_name??line.outcomeName??'').trim();
  if(/^(no goal|no more goals?|none)$/i.test(label))
   return {version:1,kind:'nth-time',event:'goal',target,choice:'none'};
- const range=label.match(/^(?:min(?:ute)?s?\s*)?(\d{1,3})(?::\d{2})?\s*[-–]\s*(\d{1,3})(?::\d{2})?(?:\s*(?:mins?|minutes?))?$/i);
- const plus=label.match(/^(?:min(?:ute)?s?\s*)?(\d{1,3})\s*\+$/i);
+ label=label.replace(/\s*(?:st|nd|rd|th)?\s*(?:match|mins?\.?|minutes?\.?)?$/i,'').trim();
+ const range=label.match(/^(?:min(?:ute)?s?\.?\s*)?(\d{1,3})(?::\d{2})?\s*[-–]\s*(\d{1,3})(?::\d{2})?/i);
+ const plus=label.match(/^(?:min(?:ute)?s?\.?\s*)?(\d{1,3})\s*\+/i);
  if(!range&&!plus)return null;
  const from=Number(range?.[1]??plus[1]),to=range?Number(range[2]):130;
  if(from<0||to>130||from>to)return null;

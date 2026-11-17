@@ -16,7 +16,8 @@ const equalParams=(a,b)=>{
 export function nativeZizobetContractRow(row){
   if(!row||String(row.provider_id??'').toUpperCase()!=='ZIZOBET')return row;
   const raw=String(row.native_market_name??'').trim();
-  if(!raw||!dynamic.test(raw))return row;
+  if(!raw)return row;
+  if(!dynamic.test(raw))return {...row,market_name:raw};
   const key=String(row.market_key??'').match(/^zz(\d+)@([A-Za-z0-9_-]{1,8192})$/);
   if(!key||(row.native_market_id!=null&&String(Number(row.native_market_id))!==key[1]))
     throw unsupported('Identifikuesi origjinal i tregut Zizobet nuk përputhet me kuotën.');

@@ -88,7 +88,8 @@ function elapsedTimedOutcome(match, market) {
     (Number.isFinite(match.match_time_ms) ? Math.floor(match.match_time_ms / 60000) : null));
   if (minute === null) return false;
   const label = norm(market?.outcomeName ?? market?.outcome_name);
-  const range = label.match(/^(?:min(?:ute)?s?\s*)?(\d{1,3})\s*[-–]\s*(\d{1,3})(?:\s*min(?:ute)?s?)?$/);
+  const clean = label.replace(/\s*(?:st|nd|rd|th)?\s*(?:match|mins?\.?|minutes?\.?)?$/i,'').trim();
+  const range = clean.match(/^(?:min(?:ute)?s?\s*)?(\d{1,3})\s*[-–]\s*(\d{1,3})(?:\s*min(?:ute)?s?)?$/);
   if (!range || Number(range[2]) < Number(range[1])) return false;
   // These displayed ranges include stoppage time at the half boundary.
   if (Number(range[2]) === 45 && !firstHalfElapsed(match)) return false;

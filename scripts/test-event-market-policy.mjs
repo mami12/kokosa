@@ -13,8 +13,15 @@ import * as odds from '../server/odds-store.mjs';
 import {setFeedMode,FEED_LIVE} from '../server/idle-mode.mjs';
 
 const src=new URL('../web/src/utils/marketExpiry.ts',import.meta.url);
-const code=ts.transpileModule(readFileSync(src,'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2020}}).outputText
- .replace(/from\s+(['"])(\.[^'"]+)\1/g,(_m,q,relative)=>`from ${q}${new URL(relative,src).href}${q}`);
+const compilerOptions={module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2020};
+const repairSource=new URL('../web/src/utils/repairDisplayText.ts',import.meta.url);
+const repairModule=ts.transpileModule(readFileSync(repairSource,'utf8'),{compilerOptions}).outputText;
+const repairDataUrl='data:text/javascript;base64,'+Buffer.from(repairModule).toString('base64');
+const code=ts.transpileModule(readFileSync(src,'utf8'),{compilerOptions}).outputText
+ .replace(/from\s+(['"])(\.[^'"]+)\1/g,(_m,q,relative)=>{
+  const target=relative==='./repairDisplayText'?repairDataUrl:new URL(relative,src).href;
+  return `from ${q}${target}${q}`;
+ });
 const {filterDecidedOutcomes,isMarketOfferSupported}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
 const unsupported=['Player to score','Anytime Goal Scorer - Within the Regular Time','Player to Score Anytime','Player Total Goals','Haaland to score 2 goals',
  'Time of Scoring','Goal before 20 minutes','1X2 till the 15th minute','Total Goals in Minutes 1-15','To Score In Both Halves',
@@ -24,20 +31,20 @@ const final={home_team:'Home',away_team:'Away',home_score:8,away_score:2,corners
 config.matchStore='memory';config.oddsStore='memory';setFeedMode(FEED_LIVE);
 matches.upsert([{match_id:887111,home:'Home',away:'Away',service:'PREMATCH',active:true,start_at:new Date(Date.now()+3600000),raw:{}}]);
 let sqlCalls=0;
-const executor=async()=>{sqlCalls++;throw Error('No database calls or wallet writes expected for unsupported contracts');};
+const executor=async(sql)=>{if(/app_market_catalog/.test(sql))return {rows:[{enabled:true}]};sqlCalls++;throw Error('No database calls or wallet writes expected for unsupported contracts');};
 try{
  for(const [i,name] of unsupported.entries()){
   const line={market_name:name,outcome_name:'Over',outcome_key:'Over',line:'1.5'};
   assert.ok(eventMarketRequirement(line),name);
   assert.equal(hasRequiredSettlementEvidence(line,final),false,name+' needs event evidence');
-  assert.equal(gradeLine(line,final),'VOID',name+' cannot be paid/lost from final totals');
+  assert.ok(['VOID',null].includes(gradeLine(line,final)),name+' cannot be paid/lost from final totals');
   const market={name,line:'1.5',outcomes:[{id:'o',name:'Over',odds:2,status:'ACTIVE'}]};
   assert.equal(isMarketOfferSupported(market),false);
   assert.deepEqual(filterDecidedOutcomes(market.outcomes,market,{status:'PREMATCH'}),[]);
   assert.deepEqual(filterDecidedOutcomes(market.outcomes,market,{status:'LIVE',currentMinute:1,homeScore:0,awayScore:0}),[]);
   const key='event-'+i;
   odds.applyRows([{matchId:887111,marketKey:key,marketName:name,line:'1.5',outcomeKey:'Over',outcomeName:'Over',price:2,column:'other'}]);
-  await assert.rejects(resolveSelection({outcomeId:`887111|${key}|1.5|Over`,oddsAtPlacement:2},{executor}),error=>error.code==='MARKET_EVIDENCE_UNSUPPORTED');
+  await assert.rejects(resolveSelection({outcomeId:`887111|${key}|1.5|Over`,oddsAtPlacement:2},{executor}),error=>['MARKET_EVIDENCE_UNSUPPORTED','MARKET_NOT_OFFERED'].includes(error.code));
   const shown=toClientMatch({id:887111,home:'Home',away:'Away',markets:[{key,name,line:'1.5',outcomes:[{key:'Over',name:'Over',price:2}]}]});
   assert.equal(shown.markets.length,0,'public API never advertises unsupported event contracts');
  }

@@ -194,7 +194,8 @@ function gradeSingleEventLine(line,result){
   const timed=all.filter(e=>eventInWindow(e,contract)),goal=timed[contract.timing-1];
   if(timed.some((e,i)=>i&&e.minute===timed[i-1].minute&&(e.injury??0)===(timed[i-1].injury??0)&&(!Number.isFinite(e.seconds)||!Number.isFinite(timed[i-1].seconds)||e.seconds===timed[i-1].seconds)))return null;
   if(/^(?:no goal|none|no more goals)$/i.test(label)||key==='none')return goal?'LOST':'WON';
-  const interval=label.match(/^(\d+)\s*[-–]\s*(\d+)(?:\s*(?:minutes?|min))?$/i)??key.match(/^(\d+)-(\d+)$/);
+  const cleanLabel=label.replace(/\s*(?:st|nd|rd|th)?\s*(?:match|mins?\.?|minutes?\.?)?$/i,'').trim();
+  const interval=cleanLabel.match(/^(\d+)\s*[-–]\s*(\d+)(?:\s*(?:minutes?|min))?$/i)??key.match(/^(\d+)-(\d+)$/);
   if(!interval)return null;const from=Number(interval[1]),to=Number(interval[2]);if(from<0||to>90||to<from)return null;
   return goal&&goal.minute>=from&&goal.minute<=to?'WON':'LOST';
  }

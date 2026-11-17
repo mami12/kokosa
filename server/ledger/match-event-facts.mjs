@@ -686,6 +686,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  }
  if(c.kind==='nth-time'){
   if(!Number.isInteger(c.target)||c.target<1)return null;
+  const isPrematch = (line?.accepted_contract?.acceptedLiveSnapshot == null && c.entryBaseline == null && line?.accepted_contract != null);
+  if(isPrematch && !full) return null;
   if(data.nth_team!=null){
    if(Number(data.nth_same_time)>1)return null;
    // A fixed "Who scores goal N in minutes A-B" three-way quote uses
@@ -701,6 +703,9 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    if(c.choice!=='range')return null;
    return decision(inside);
   }
+  // No positive evidence yet — wait for coverage window to elapse before
+  // declaring LOST (goal N did not happen within range).
+  if(!full && Number.isInteger(c.to) && through < c.to) return null;
   if(!full)return null;
   return c.choice==='none'?'WON':'LOST';
  }

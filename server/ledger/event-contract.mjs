@@ -15,8 +15,9 @@ export function eventContract(line={}){
  name=name.replace(/^corners?(?=\s+(?:in|during|between|from|before|after|within|by|until|at)\b)/,'total corners');
  try{const pl=JSON.parse(Buffer.from(String(line.market_key??line.key??'').split('@')[1],'base64url').toString()).pl;if(typeof pl==='string'&&pl.trim()){player??=pl;name=name.replace(pl.toLowerCase(),'player');}}catch{}
  let half=null;name=name.replace(/^(1st|first|2nd|second) half\s*[-:.]\s*/,(s,h)=>{half=/1st|first/.test(h)?1:2;return '';});
- const timing=name.match(/^when will goal (\d+) be scored(?: \((\d+)-minute intervals\))?$/);
- if(timing)return {name,player,half,timing:Number(timing[1]),valid:Number(timing[1])>0};
+ const timing=name.match(/^when will (?:goal (\d+)|(?:the )?first goal) be scored(?: \((\d+)-minute intervals\))?$/) ??
+   (/^first goal (?:interval|time)\b|^time of (?:the )?first goal\b/.test(name) ? [null, '1'] : null);
+ if(timing)return {name,player,half,timing:Number(timing[1]??1),valid:Number(timing[1]??1)>0};
  let window=null;
  const clockRange=name.match(/ from (\d+):00 to (\d+) min(?:ute)?s?$/);
  if(clockRange){window={from:Number(clockRange[1])+1,to:Number(clockRange[2])};name=name.slice(0,clockRange.index);}

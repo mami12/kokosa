@@ -24,6 +24,7 @@ import { multipliedComboPrice, isSameGameComboLine } from './automatic-combos.mj
 import { liveRiskSettings } from '../live-risk-settings.mjs';
 import { isDecidedLiveOutcome, isYbetsNativeOffer } from './decided-markets.mjs';
 import {isExcludedOfferMarket} from '../market-policy.mjs';
+import {eventMarketRequirement} from './event-market-policy.mjs';
 import {assertMarketEnabled} from './market-catalog-store.mjs';
 import { chargeManagerCommission, refundManagerCommission } from './manager-finance.mjs';
 import { assertPlayerCanBet } from './player-controls.mjs';
@@ -132,6 +133,10 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
   // category/name exclusion is not a provider suspension.
   if(isExcludedOfferMarket(row))
     throw Object.assign(badRequest('Ky treg nuk ofrohet.'),{code:'MARKET_NOT_OFFERED',outcomeId:selection.outcomeId});
+  // Event-contract markets (need live event evidence) are only accepted from
+  // native Zizobet feeds that supply their own settlement data.
+  if(!nativeQuoteVerified&&eventMarketRequirement({name:row.market_name}))
+    throw Object.assign(badRequest('Ky treg nuk ofrohet.'),{code:'MARKET_EVIDENCE_UNSUPPORTED',outcomeId:selection.outcomeId});
   await assertMarketEnabled(row,executor,match);
   const nativeOffer=isYbetsNativeOffer(row,match);
   // Offer decisions depend on provider state and explicit admin policy.

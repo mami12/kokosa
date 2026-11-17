@@ -82,14 +82,16 @@ try{
  const query=(sql,params=[])=>db.query(sql,params);
  const id=95008001;
  const final={home_score:1,away_score:0,corners_home:2,corners_away:1,cards_home:0,cards_away:0};
+ const observed=new Date('2026-11-12T20:00:00Z');
  await query(`insert into app_match_result(match_id,home_team,away_team,home_score,away_score,corners_home,corners_away,cards_home,cards_away,source)
    values($1,'Inter Milan','Como 1907',1,0,2,1,0,0,'RECOVERY')`,[id]);
+ await query(`insert into app_live_event_cursor(match_id,last_seen_at) values($1,$2)`,[id,observed]);
  await query(`insert into app_match_event_coverage
   (match_id,provider,kind,through_minute,count_home,count_away,complete,observed_at,confirmed_at)
-  values($1,'fotmob','corner',91,2,1,true,now(),now())`,[id]);
+  values($1,'zizobet','corner',91,2,1,true,$2,$2)`,[id,observed]);
  for(const [eventId,team,minute,phase] of [['c1','home',10,'First Half'],['c2','away',30,'First Half'],['c3','home',60,'Second Half']]){
   await query(`insert into app_match_event_fact(match_id,provider,provider_event_id,kind,team,minute,phase)
-   values($1,'fotmob',$2,'corner',$3,$4,$5)`,[id,eventId,team,minute,phase]);
+   values($1,'zizobet',$2,'corner',$3,$4,$5)`,[id,eventId,team,minute,phase]);
  }
  const check=async (side, expected)=>{
   const line={id:'00000000-0000-4000-8000-000000000001',match_id:id,
