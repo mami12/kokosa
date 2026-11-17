@@ -17,8 +17,8 @@ export function eventMarketRequirement(market = {},teams={}) {
   if (/\b(?:minutes?|mins?|time of|scoring time|timed? goal|goal time|koha e|minuten?|minuta)\b/.test(name) ||
       /\b(?:goals?|scores?|scoring|to score)\s+(?:before|after|within|between|until|during|by|in)\b/.test(name) ||
       /\b(?:score|goals?)\b.*\b(?:either|each|both)\s+hal(?:f|ves)\b/.test(name) ||
-      /\b\d{1,2}:\d{2}\s*[-â€“]\s*\d{1,2}:\d{2}\b/.test(name) ||
-      /\bgoals?\s+\(?\d{1,2}\s*[-â€“]\s*\d{1,2}\)?\s*$/.test(name)) return 'TIMED_EVENT_DATA_REQUIRED';
+      /\b\d{1,2}:\d{2}\s*[-–]\s*\d{1,2}:\d{2}\b/.test(name) ||
+      /\bgoals?\s+\(?\d{1,2}\s*[-–]\s*\d{1,2}\)?\s*$/.test(name)) return 'TIMED_EVENT_DATA_REQUIRED';
   if (/^who (?:scores (?:goal \d+|most goals)|takes most corners|receives most cards)\b/.test(name))return 'EVENT_SEQUENCE_DATA_REQUIRED';
   if (/\b(?:first|last|next|1st|2nd|3rd|4th|5th|second|third|fourth|fifth)\s+(?:(?:team|player)\s+to\s+(?:score|receive)|goals?|corners?|cards?|bookings?|scorers?|fouls?)\b/.test(name) ||
       /\b(?:race to|early payout|own goals?)\b/.test(name)) return 'EVENT_SEQUENCE_DATA_REQUIRED';
@@ -29,7 +29,6 @@ export function eventMarketRequirement(market = {},teams={}) {
       /\b(?:total goals?|goals? total)\b/.test(name))return null;
   // A name such as "Salah Total Goals" must never mean both teams' goals.
   // Explicit team totals are allowed only against verified team identities.
-  if(/\b(?:total goals?|goals? total)\b/.test(name)&&!/[&+]|\b(?:result|1x2|btts|both teams|double chance|exact|range|odd|even|handicap|asian)\b/.test(name)&&!goalTotalContract(market,teams))return 'GOAL_CONTRACT_DATA_REQUIRED';
+  if(/\b(?:total goals?|goals? total)\b/.test(name)&&!/[&+]|\b(?:result|1x2|btts|both teams|double chance|exact|range|odd|even|handicap|asian|draw|win|wins|over|under)\b/.test(name)&&!goalTotalContract(market,teams))return 'GOAL_CONTRACT_DATA_REQUIRED';
   return null;
 }
-

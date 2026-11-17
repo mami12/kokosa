@@ -19,21 +19,25 @@ export function isPeriodGoalTotal(line){
  // A correlated offer is never a simple goal total. Otherwise a native
  // Double Chance + Totals quote is held as "unmapped goal total" before
  // its complete two-leg settlement contract can be frozen.
- if(/\b(?:match\s*bet|double chance|result|winner|both teams?|btts|1x2|ht[\s/]*ft|half[\s-]*time)\b/.test(name)&&
-    /\b(?:and|with)\b|&|(?<!\d)\+|\+(?=[a-z])/.test(name))return false;
+ if(/\b(?:match\s*bet|double chance|result|winner|both teams?|btts|1x2|ht[\s/]*ft|half[\s-]*time|draw|win|wins)\b/.test(name)&&
+    /\b(?:and|with|or)\b|&|(?<!\d)\+|\+(?=[a-z])/.test(name))return false;
  // A word-prefix like "goal" must never turn "Goalscorer" into a team
  // goal-total contract: it is an individual-player proposition.
  if(/\b(?:goals?scorers?|scorers?|player|scorer)\b/.test(name))return false;
- if(/(?:\bgoals?\b|\bgoal line\b|\btotal\b)/.test(name)&&
-    /\b(?:player|scorer|asian|handicap|minutes?|corner|card|shots?|foul|result|btts|both|race|next|first goal|last goal|odd|even)\b/.test(name))return false;
+ if(/\b(?:player|scorer|asian|handicap|minutes?|corners?|cards?|bookings?|shots?|fouls?|result|btts|both|race|next|first goal|last goal|odd|even|clean sheet)\b/.test(name))return false;
  return /(?:^|\b)(?:total goals?|goals? total|team [12] goals?|goals?|goal line|over\s*\/\s*under)/.test(name)||
   /^(?:(?:1st|first|2nd|second) half|full time|match) total$/.test(name)||name==='total';
 }
 export function parsePeriodGoalTotal(line,teams={}){
  if(!isPeriodGoalTotal(line))return null;
- let name=norm(line.market_name??line.marketName??line.name).replace(/[()]/g,' ');
+ let name=norm(line.market_name??line.marketName??line.name).replace(/[()]/g,' ').replace(/\s+/g,' ').trim();
+ // When the title contains "over/under" (e.g. "Total goals over/under (0.5)")
+ // the parenthesised number is a decorative label, not the actual line.
+ // The authoritative line comes from line.line. Strip the trailing number
+ // only when the title does NOT contain over/under.
+ const hasOverUnder=/\bover\s*\/?\s*under\b/.test(name);
  const numTitle=name.match(/\s+(\d+(?:[.,]\d+)?)$/);
- const embedded=numTitle?real(numTitle[1]):null;
+ const embedded=(numTitle&&!hasOverUnder)?real(numTitle[1]):null;
  if(numTitle)name=name.slice(0,-numTitle[0].length).trim();
  let half=0;
  const pre=name.match(/^(?:1st|first|2nd|second)\s+half\b/);
@@ -61,11 +65,14 @@ export function parsePeriodGoalTotal(line,teams={}){
   }
  }
  name=name.replace(/^total\s+/,'').replace(/\s+total$/,'').trim();
+ // Strip trailing "over/under" or "over under" from compound names like
+ // "goals over/under" so the final gate accepts them as plain goal totals.
+ name=name.replace(/\s+over\s*\/?\s*under$/,'').trim();
  // Catalogue: "1st half - exact goals", "Exact goals 5+",
- // "2nd half - exact goals 2+". The outcome still supplies the
+ // "2nd half - exact goals 2+", "Total goals (exact)". The outcome still supplies the
  // chosen number/range; a title saying 2+ is a lower bound, not
  // permission to invent a hidden player, period or total.
- const exactGroup=name.match(/^exact goals?(?:\s+(\d{1,2})\+)?$/);
+ const exactGroup=name.match(/^(?:exact goals?|goals?\s+exact)(?:\s+(\d{1,2})\+)?$/);
  const titleMinimum=exactGroup?.[1]==null?null:Number(exactGroup[1]);
  if(exactGroup)name='goals';
  if(!/^(?:goals?|goal line|total|over\s*\/\s*under)$/.test(name))return null;

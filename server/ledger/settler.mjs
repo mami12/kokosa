@@ -483,6 +483,7 @@ export function classify(marketName = '') {
   if (isMultiscoresMarket(marketName)) return 'MULTISCORES';
   if (isMatchbetFirstGoalMarket(marketName)) return 'MATCHBET_FIRST_GOAL';
   if (isQualificationMarket(marketName)) return 'TO_QUALIFY';
+  if (/\b(?:win|wins|draw)\s+or\s+(?:both\s+teams?\s+(?:to\s+)?score|total\s+goals?\s+(?:over|under))\b/i.test(marketName)) return 'CHANCE_MIX';
   const s = String(marketName).toLowerCase();
   if (isHtFtMarket(marketName)) return 'HT_FT';
   if (/correct score|exact score/i.test(s)) return 'CORRECT_SCORE';
@@ -578,6 +579,7 @@ export function hasRequiredSettlementEvidence(line, result) {
   if(isDcHalfBttsMarket(String(line.market_name??'')))return gradeDcHalfBtts(line,result)!==null;
   if(isHtFtComboMarket(String(line.market_name??'')))return gradeHtFtCombo(line,result)!==null;
   if(isMultiscoresMarket(String(line.market_name??'')))return gradeMultiscores(line,result)!==null;
+  if(isMatchbetFirstGoalMarket(String(line.market_name??'')))return gradeMatchbetFirstGoal(line,result)!==null;
   if(isQualificationMarket(String(line.market_name??'')))return gradeQualification(line,result)!==null;
   if(isPeriodGoalTotal(line))return gradePeriodGoalTotal(parsePeriodGoalTotal(line,result),result)!==null;
   if(isScoringPropMarket(line))return gradeScoringPropMarket(line,result)!==null;
@@ -685,6 +687,8 @@ export function gradeLine(line, result) {
     return gradeHtFtCombo(line,result);
   if(!Array.isArray(line.builder_legs)&&isMultiscoresMarket(String(line.market_name??'')))
     return gradeMultiscores(line,result);
+  if(!Array.isArray(line.builder_legs)&&isMatchbetFirstGoalMarket(String(line.market_name??'')))
+    return gradeMatchbetFirstGoal(line,result);
   if(!Array.isArray(line.builder_legs)&&isQualificationMarket(String(line.market_name??'')))
     return gradeQualification(line,result);
   if(!Array.isArray(line.builder_legs)&&isPeriodGoalTotal(line))
@@ -916,6 +920,32 @@ export function gradeLine(line, result) {
       const words=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
         .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
       const title=' '+words(line.market_name)+' ';
+
+      if (/\bdraw\s+or\s+(?:any\s+)?clean\s*sheet\b/i.test(title)) {
+        const won = (home === away) || (home === 0) || (away === 0);
+        if (key === 'yes' || name === 'yes' || name === 'po') return decide(won);
+        if (key === 'no' || name === 'no' || name === 'jo') return decide(!won);
+        return null;
+      }
+      if (/\b(?:home\s*team\s*wins?|hometeam\s*wins?)\s+or\s+(?:any\s+)?clean\s*sheet\b/i.test(title)) {
+        const won = (home > away) || (home === 0) || (away === 0);
+        if (key === 'yes' || name === 'yes' || name === 'po') return decide(won);
+        if (key === 'no' || name === 'no' || name === 'jo') return decide(!won);
+        return null;
+      }
+      if (/\b(?:away\s*team\s*wins?|awayteam\s*wins?)\s+or\s+(?:any\s+)?clean\s*sheet\b/i.test(title)) {
+        const won = (away > home) || (home === 0) || (away === 0);
+        if (key === 'yes' || name === 'yes' || name === 'po') return decide(won);
+        if (key === 'no' || name === 'no' || name === 'jo') return decide(!won);
+        return null;
+      }
+      if (/\bany\s+clean\s*sheet\b/i.test(title)) {
+        const won = (home === 0) || (away === 0);
+        if (key === 'yes' || name === 'yes' || name === 'po') return decide(won);
+        if (key === 'no' || name === 'no' || name === 'jo') return decide(!won);
+        return null;
+      }
+
       const has=term=>!!term&&title.includes(' '+words(term)+' ');
       const h=has(result.home_team)||/\b(?:home(?: team)?|team 1|ekipi 1)\b/.test(title);
       const a=has(result.away_team)||/\b(?:away(?: team)?|team 2|ekipi 2)\b/.test(title);
@@ -925,6 +955,55 @@ export function gradeLine(line, result) {
       const sheet=h?away===0:home===0;
       if(key==='yes'||name==='yes'||name==='po')return decide(sheet);
       if(key==='no'||name==='no'||name==='jo')return decide(!sheet);
+      return null;
+    }
+
+    case 'CHANCE_MIX': {
+      const isDrawBtts = /\bdraw\s+or\s+both\s+teams?\s+(?:to\s+)?score\b/i.test(line.market_name);
+      if (isDrawBtts) {
+        const won = (home === away) || (home > 0 && away > 0);
+        if (key === 'yes' || name === 'yes' || name === 'po') return decide(won);
+        if (key === 'no' || name === 'no' || name === 'jo') return decide(!won);
+        return null;
+      }
+      const isHomeWinBtts = /\b(?:home\s*team\s*wins?|hometeam\s*wins?)\s+or\s+both\s+teams?\s+(?:to\s+)?score\b/i.test(line.market_name);
+      if (isHomeWinBtts) {
+        const won = (home > away) || (home > 0 && away > 0);
+        if (key === 'yes' || name === 'yes' || name === 'po') return decide(won);
+        if (key === 'no' || name === 'no' || name === 'jo') return decide(!won);
+        return null;
+      }
+      const isAwayWinBtts = /\b(?:away\s*team\s*wins?|awayteam\s*wins?)\s+or\s+both\s+teams?\s+(?:to\s+)?score\b/i.test(line.market_name);
+      if (isAwayWinBtts) {
+        const won = (away > home) || (home > 0 && away > 0);
+        if (key === 'yes' || name === 'yes' || name === 'po') return decide(won);
+        if (key === 'no' || name === 'no' || name === 'jo') return decide(!won);
+        return null;
+      }
+      const isDrawTotalOver = /\bdraw\s+or\s+total\s+goals?\s+over\b/i.test(line.market_name);
+      if (isDrawTotalOver) {
+        const threshold = num(line.line) ?? 2.5;
+        const won = (home === away) || (totalGoals > threshold);
+        if (key === 'yes' || name === 'yes' || name === 'po') return decide(won);
+        if (key === 'no' || name === 'no' || name === 'jo') return decide(!won);
+        return null;
+      }
+      const isDrawTotalUnder = /\bdraw\s+or\s+total\s+goals?\s+under\b/i.test(line.market_name);
+      if (isDrawTotalUnder) {
+        const threshold = num(line.line) ?? 2.5;
+        const won = (home === away) || (totalGoals < threshold);
+        if (key === 'yes' || name === 'yes' || name === 'po') return decide(won);
+        if (key === 'no' || name === 'no' || name === 'jo') return decide(!won);
+        return null;
+      }
+      const isHomeWinTotalOver = /\b(?:home\s*team\s*wins?|hometeam\s*wins?)\s+or\s+total\s+(?:goals?\s+)?over\b/i.test(line.market_name);
+      if (isHomeWinTotalOver) {
+        const threshold = num(line.line) ?? 2.5;
+        const won = (home > away) || (totalGoals > threshold);
+        if (key === 'yes' || name === 'yes' || name === 'po') return decide(won);
+        if (key === 'no' || name === 'no' || name === 'jo') return decide(!won);
+        return null;
+      }
       return null;
     }
 

@@ -7,7 +7,11 @@ export function cornerTotalContract(line={},teams={}){
  let name=norm(line.market_name??line.marketName??line.name);
  if(!/\bcorners?\b/.test(name)||
     /\b(?:race|next|first|last|which|who|most|winner|result|1x2|chance|handicap|asian|odd|even|exact|range|between|minute|minutes|interval|period|half|card|booking|player|extra|time)\b|[&+]/.test(name))return null;
- name=name.replace(/\s*\(?\d+(?:[.,]\d+)?\)?\s*$/,'').replace(/^[ .:-]+|[ .:-]+$/g,'').trim();
+ // Strip trailing parenthesised/bare numbers and "over/under" (and repetitions)
+ name=name.replace(/\s*\(?\d+(?:[.,]\d+)?\)?\s*$/,'')
+          .replace(/\s+over\s*\/?\s*under$/,'')
+          .replace(/\s*\(?\d+(?:[.,]\d+)?\)?\s*$/,'')
+          .replace(/^[ .:-]+|[ .:-]+$/g,'').trim();
  const strip=value=>value.replace(/^\s*[.:-]+\s*|\s*[.:-]+\s*$/g,'').trim();
  const base=value=>/^(?:total corners?|corners? total|corners?|total corner kicks?|corner kicks? total)$/.test(strip(value));
  if(base(name))return {scope:'total'};

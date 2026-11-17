@@ -239,4 +239,51 @@ assert.equal(gradeLine({ market_name: 'Halftime - Who wins the rest?', outcome_n
 assert.equal(gradeLine({ market_name: 'Halftime - Who wins the rest?', outcome_name: '1', outcome_key: '1' }, kazSvk), 'LOST');
 assert.equal(gradeLine({ market_name: 'Halftime - Who wins the rest?', outcome_name: 'X', outcome_key: 'x' }, kazSvk), 'LOST');
 
-console.log('PASS new football combos: Winning Margin, DC+Half BTTS, HT/FT Combos, Multiscores, Winner+Total, Team not to lose+Total, BTTS+Total, Will there be a tie, Qualification, Halftime Rest of Match');
+// ==========================================
+// 9. REAL SPORTSBOOK USER MARKETS TESTS
+// ==========================================
+// HT 1-0, FT 1-0 (Germany vs Netherlands)
+const gerNed = {
+  home_team: 'Germany',
+  away_team: 'Netherlands',
+  home_score: 1,
+  away_score: 0,
+  half_home_score: 1,
+  half_away_score: 0
+};
+
+// Halftime/Fulltime correct score
+assert.equal(gradeLine({ market_name: 'Halftime/Fulltime correct score', outcome_name: '1-0 1-0' }, gerNed), 'WON');
+assert.equal(gradeLine({ market_name: 'Halftime/Fulltime correct score', outcome_name: '1-0 / 4+' }, gerNed), 'LOST');
+assert.equal(gradeLine({ market_name: 'Halftime/Fulltime correct score', outcome_name: '4+ / 4+' }, gerNed), 'LOST');
+assert.equal(gradeLine({ market_name: 'Halftime/Fulltime correct score', outcome_name: '0-0 0-0' }, gerNed), 'LOST');
+
+// Halftime/Fulltime & 1st half total goals
+assert.equal(gradeLine({ market_name: 'Halftime/Fulltime & 1st half total goals (2.5)', outcome_name: '1/1 and Under', line: '2.5' }, gerNed), 'WON');
+assert.equal(gradeLine({ market_name: 'Halftime/Fulltime & 1st half total goals (1.5)', outcome_name: '1/1 and Under', line: '1.5' }, gerNed), 'WON');
+assert.equal(gradeLine({ market_name: 'Halftime/Fulltime & 1st half total goals (0.5)', outcome_name: '1/1 and Over', line: '0.5' }, gerNed), 'WON');
+assert.equal(gradeLine({ market_name: 'Halftime/Fulltime & 1st half total goals (0.5)', outcome_name: '1/1 and Under', line: '0.5' }, gerNed), 'LOST');
+assert.equal(gradeLine({ market_name: 'Halftime/Fulltime & 1st half total goals (2.5)', outcome_name: '2/2 and Under', line: '2.5' }, gerNed), 'LOST');
+
+// Halftime/fulltime & exact goals
+assert.equal(gradeLine({ market_name: 'Halftime/fulltime & exact goals', outcome_name: '1/1 - 1' }, gerNed), 'WON');
+assert.equal(gradeLine({ market_name: 'Halftime/fulltime & exact goals', outcome_name: '1/1 - 5+' }, gerNed), 'LOST');
+assert.equal(gradeLine({ market_name: 'Halftime/fulltime & exact goals', outcome_name: '2/2 - 5+' }, gerNed), 'LOST');
+assert.equal(gradeLine({ market_name: 'Halftime/fulltime & exact goals', outcome_name: 'X/X - 0' }, gerNed), 'LOST');
+
+// Draw or any clean sheet (FT 1-0 -> Netherlands clean sheet: No, Germany clean sheet: Yes -> Any clean sheet: Yes)
+assert.equal(gradeLine({ market_name: 'Draw or any clean sheet', outcome_name: 'Yes' }, gerNed), 'WON');
+assert.equal(gradeLine({ market_name: 'Draw or any clean sheet', outcome_name: 'No' }, gerNed), 'LOST');
+
+// First goal & match result (Germany scored 1, match ended 1-0)
+assert.equal(gradeLine({ market_name: 'First goal & match result', outcome_name: '1st goal 1 / Result 1' }, gerNed), 'WON');
+assert.equal(gradeLine({ market_name: 'First goal & match result', outcome_name: '1st goal 2 / Result 2' }, gerNed), 'LOST');
+assert.equal(gradeLine({ market_name: 'First goal & match result', outcome_name: '1st goal 1 / Result X' }, gerNed), 'LOST');
+
+// Chance mix: Draw or both teams to score (FT 1-0 -> neither draw nor BTTS -> No is WON, Yes is LOST)
+assert.equal(gradeLine({ market_name: 'Draw or both teams to score', outcome_name: 'No' }, gerNed), 'WON');
+assert.equal(gradeLine({ market_name: 'Draw or both teams to score', outcome_name: 'Yes' }, gerNed), 'LOST');
+// FT 1-1 -> draw is true -> Yes is WON
+assert.equal(gradeLine({ market_name: 'Draw or both teams to score', outcome_name: 'Yes' }, drawMatch), 'WON');
+
+console.log('PASS new football combos: Winning Margin, DC+Half BTTS, HT/FT Combos, Multiscores, Winner+Total, Team not to lose+Total, BTTS+Total, Will there be a tie, Qualification, Halftime Rest of Match, Clean Sheets, First Goal & Result, Chance Mix');

@@ -13,7 +13,7 @@ const int=v=>v!=null&&v!==''&&Number.isSafeInteger(Number(v))&&
  Number(v)>=0&&Number(v)<=200?Number(v):null;
 
 export function isDcHalfBttsMarket(name='') {
- return /^double\s*chance\s*&\s*(?:1st|first|2nd|second)\s+half\s+both\s+teams?\s+(?:to\s+)?score/i.test(
+ return /^double\s*chance(?:\s*\([^)]*\))?\s*(?:&|and)\s*(?:1st|first|2nd|second)\s+half\s+both\s+teams?\s+(?:to\s+)?score/i.test(
   String(name).trim());
 }
 

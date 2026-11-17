@@ -2,7 +2,7 @@
  * Multiscores and Matchbet & 1st Goal markets.
  */
 export function isMultiscoresMarket(name = '') {
-  return /^\s*multi\s*scores?\s*$/i.test(name);
+  return /^\s*multi(?:ple)?\s*(?:correct\s*)?scores?\s*$/i.test(name);
 }
 
 export function gradeMultiscores(line, result) {
@@ -23,7 +23,8 @@ export function gradeMultiscores(line, result) {
 }
 
 export function isMatchbetFirstGoalMarket(name = '') {
-  return /^\s*matchbet\s+and\s+1st\s+goal\s*$/i.test(name);
+  const n = String(name).trim();
+  return /^\s*(?:matchbet\s+(?:and|&)\s+1st\s+goal|first\s+goal\s+(?:and|&)\s+match\s+result|1st\s+goal\s+(?:and|&)\s+match\s+result|match\s+result\s+(?:and|&)\s+(?:1st|first)\s+goal|(?:1st|first)\s+goal\s+(?:and|&)\s+result)\s*$/i.test(n);
 }
 
 export function gradeMatchbetFirstGoal(line, result) {
@@ -32,20 +33,50 @@ export function gradeMatchbetFirstGoal(line, result) {
   if (!Number.isFinite(home) || !Number.isFinite(away)) return null;
   
   let first = null;
-  if (home === 0 && away === 0) first = 'none';
-  else if (home > 0 && away === 0) first = 'home';
-  else if (home === 0 && away > 0) first = 'away';
-  else if (result?.first_team_to_score) first = result.first_team_to_score;
+  if (home === 0 && away === 0) {
+    first = 'none';
+  } else if (home > 0 && away === 0) {
+    first = '1';
+  } else if (home === 0 && away > 0) {
+    first = '2';
+  } else {
+    const rawFirst = result?.first_team_to_score ?? result?.stats?.first_goal?.team ?? result?.statistics?.first_goal?.team;
+    if (rawFirst != null) {
+      if (rawFirst === 1 || rawFirst === '1' || String(rawFirst).toLowerCase() === 'home') first = '1';
+      else if (rawFirst === 2 || rawFirst === '2' || String(rawFirst).toLowerCase() === 'away') first = '2';
+    }
+  }
   if (!first) return null;
   
   const matchResult = home > away ? '1' : away > home ? '2' : 'X';
   const raw = String(line.outcome_name ?? line.outcome_key ?? '').trim().toLowerCase();
+
+  if (/^(?:no\s+goal|none|pa\s+gola)$/i.test(raw)) {
+    return (first === 'none') ? 'WON' : 'LOST';
+  }
+
+  // Format: "1st goal 1 / Result 1", "1st goal 2 / Result X"
+  const slashM = raw.match(/(?:1st|first)\s*goal\s*([12]|home|away)\s*[/\\|]\s*result\s*([12xX]|home|draw|away)/i);
+  if (slashM) {
+    const pickFirst = /^(?:1|home)$/i.test(slashM[1]) ? '1' : '2';
+    const pickRes = /^(?:1|home)$/i.test(slashM[2]) ? '1' : /^(?:2|away)$/i.test(slashM[2]) ? '2' : 'X';
+    return (pickFirst === first && pickRes === matchResult) ? 'WON' : 'LOST';
+  }
+
+  // Reverse format: "Result 1 / 1st goal 1"
+  const revM = raw.match(/result\s*([12xX]|home|draw|away)\s*[/\\|]\s*(?:1st|first)\s*goal\s*([12]|home|away)/i);
+  if (revM) {
+    const pickRes = /^(?:1|home)$/i.test(revM[1]) ? '1' : /^(?:2|away)$/i.test(revM[1]) ? '2' : 'X';
+    const pickFirst = /^(?:1|home)$/i.test(revM[2]) ? '1' : '2';
+    return (pickFirst === first && pickRes === matchResult) ? 'WON' : 'LOST';
+  }
   
-  const m = raw.match(/^([12xX]|home|draw|away)\s+and\s+(home|away|none|no goal)$/i);
-  if (!m) return null;
+  const m = raw.match(/^([12xX]|home|draw|away)\s+(?:and|&)\s+(home|away|none|no goal|1|2)$/i);
+  if (m) {
+    const resCode = /^(?:1|home)$/i.test(m[1]) ? '1' : /^(?:2|away)$/i.test(m[1]) ? '2' : 'X';
+    const firstSide = /^(?:none|no goal)$/i.test(m[2]) ? 'none' : /^(?:1|home)$/i.test(m[2]) ? '1' : '2';
+    return (resCode === matchResult && firstSide === first) ? 'WON' : 'LOST';
+  }
   
-  const resCode = /^(?:1|home)$/i.test(m[1]) ? '1' : /^(?:2|away)$/i.test(m[1]) ? '2' : 'X';
-  const firstSide = /^(?:none|no goal)$/i.test(m[2]) ? 'none' : /home/i.test(m[2]) ? 'home' : 'away';
-  
-  return (resCode === matchResult && firstSide === first) ? 'WON' : 'LOST';
+  return null;
 }
