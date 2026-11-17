@@ -54,7 +54,7 @@ function firstHalfElapsed(match) {
 
 function elapsedTimedContract(match, market) {
   const live = String(match?.service ?? match?.status ?? '').toUpperCase() === 'LIVE' || match?.live === true;
-  if (!live || ('clock_at' in match && !match.clock_at) || ('clockAt' in match && !match.clockAt)) return false;
+  if (!live) return false;
   const name = norm(market?.name ?? market?.market_name);
   // The match clock is absolute; do not apply it to a second-half-relative window.
   if (Number(market?.period ?? 0) === 2 || /\b(?:second|2nd)\s*half\b/.test(name)) return false;
@@ -80,16 +80,16 @@ function elapsedTimedContract(match, market) {
 // range in an unrelated market is never a clock window.
 function elapsedTimedOutcome(match, market) {
   const live = String(match?.service ?? match?.status ?? '').toUpperCase() === 'LIVE' || match?.live === true;
-  if (!live || ('clock_at' in match && !match.clock_at) || ('clockAt' in match && !match.clockAt)) return false;
+  if (!live) return false;
   const name = norm(market?.name ?? market?.market_name);
-  if (!/^(?:when will (?:the )?(?:next goal|goal \d+) be scored|(?:first|next|last) goal (?:time|interval)|time of (?:the )?(?:first|next|last) goal)(?:\b|$)/.test(name)) return false;
+  if (!/^(?:when will (?:the )?(?:next goal|goal \d+) be scored|(?:1st|first|next|last) goal (?:time|interval)|time of (?:the )?(?:first|next|last) goal)(?:\b|$)/i.test(name)) return false;
   if (Number(market?.period ?? 0) !== 0 || /\b(?:first|1st|second|2nd) half\b/.test(name)) return false;
   const minute = safeNumber(match.currentMinute ?? match.minute ?? match.live_minute ??
     (Number.isFinite(match.match_time_ms) ? Math.floor(match.match_time_ms / 60000) : null));
   if (minute === null) return false;
-  const label = norm(market?.outcomeName ?? market?.outcome_name);
+  const label = norm(market?.outcomeName ?? market?.outcome_name ?? market?.name);
   const clean = label.replace(/\s*(?:st|nd|rd|th)?\s*(?:match|mins?\.?|minutes?\.?)?$/i,'').trim();
-  const range = clean.match(/^(?:min(?:ute)?s?\s*)?(\d{1,3})\s*[-–]\s*(\d{1,3})(?:\s*min(?:ute)?s?)?$/);
+  const range = clean.match(/^(?:min(?:ute)?s?\s*)?(\d{1,3})(?::\d{2})?\s*[-–]\s*(\d{1,3})(?::\d{2})?(?:\s*min(?:ute)?s?)?$/);
   if (!range || Number(range[2]) < Number(range[1])) return false;
   // These displayed ranges include stoppage time at the half boundary.
   if (Number(range[2]) === 45 && !firstHalfElapsed(match)) return false;
@@ -113,8 +113,10 @@ export function isDecidedLiveMarket(match, market) {
   const score = currentScore(match);
   if (!score) return false;
   const name = norm(market?.name ?? market?.market_name);
-  const numberedGoalTime = name.match(/^when will goal (\d+) be scored(?: \(\d+-minute intervals\))?$/);
-  if (numberedGoalTime && Number(market?.period ?? 0) === 0 && score.home + score.away >= Number(numberedGoalTime[1])) return true;
+  const isFirstGoalTiming = /^(?:when will (?:the )?(?:first goal|goal 1) be scored|(?:first|1st) goal (?:time|interval)|time of (?:the )?first goal)(?:\b|$)/i.test(name);
+  if (isFirstGoalTiming && score.home + score.away >= 1) return true;
+  const numberedGoalTime = name.match(/^when will (?:goal (\d+)|(\d+)(?:st|nd|rd|th) goal) be scored(?: \(\d+-minute intervals\))?$/i);
+  if (numberedGoalTime && Number(market?.period ?? 0) === 0 && score.home + score.away >= Number(numberedGoalTime[1] ?? numberedGoalTime[2])) return true;
   // No guessing about half-specific or combined propositions.
   if (/\b(?:first|1st|second|2nd)\s*half\b|\b(?:ht|ft)\s*\/|halftime\s*\/?\s*fulltime|\b(?:players?|corners?|cards?|bookings?|next|last|first goal|race|handicap|asian|team total)\b|[&+]/.test(name) ||
       Number(market?.period ?? 0) !== 0) return false;

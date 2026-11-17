@@ -30,27 +30,28 @@ const hasPlayerParameter=market=>{
   return !!JSON.parse(new TextDecoder().decode(bytes))?.pl;
  }catch{return false;}
 };
-const PLAYER_WORDS=/\b(?:player|players|goalscorer|goal scorer|top scorer|scorer|assist|assists|goalkeeper|goal keeper)\b|\{pl\}/;
+const isCorner=title=>/\b(?:corners?|kendore|korne)\b/i.test(title);
+const PLAYER_WORDS=/\b(?:player|players|goalscorer|goal scorer|top scorer|scorer|assist|assists|goalkeeper|goal keeper|lojtar\w*|shenues\w*|asist\w*)\b|\{pl\}/i;
 const NAMED_PLAYER=/^[\p{L}][\p{L}'-]{1,35},\s*[\p{L}][\p{L}'-]{1,35}/u;
-const UNSUPPORTED_STATS=/\b(?:fouls?|cards?|carded|booked|bookings?|sent\s+off|tackles?|throw[ -]?ins?|saves?)\b/;
+const UNSUPPORTED_STATS=/\b(?:fouls?|faull\w*|cards?|karton\w*|carded|booked|bookings?|sent\s+off|tackles?|nderhyrje\w*|throw[ -]?ins?|rivenie\w*|saves?|pritje\w*)\b/i;
 export function isPlayerOfferMarket(market){
  if(!market)return false;
  const builder=market?.builder_legs??market?.builderLegs??
   market?.accepted_contract?.builderLegs??market?.accepted_contract?.builder_legs;
  if(Array.isArray(builder)&&builder.some(isPlayerOfferMarket))return true;
  const type=clean(market?.marketType??market?.market_type??market?.category??'');
- return /^(?:player|players|player prop|player props|scorer)$/.test(type)||
+ return /^(?:player|players|player prop|player props|scorer|lojtar\w*)$/.test(type)||
   hasPlayerParameter(market)||titlesOf(market).some(title=>PLAYER_WORDS.test(title)||NAMED_PLAYER.test(title));
 }
 export function isRetiredPlayerOfferMarket(market){
  const type=clean(market?.marketType??market?.market_type??market?.category??
   market?.column??market?.board_column??'');
- const unsupportedType=/^(?:cards?|fouls?|players?|player props?|tackles?|throw[ -]?ins?|saves?|handicap)$/.test(type);
+ const unsupportedType=/^(?:cards?|karton\w*|fouls?|faull\w*|players?|lojtar\w*|player props?|tackles?|throw[ -]?ins?|saves?|handicap|handikap\w*)$/.test(type);
  return unsupportedType||isPlayerOfferMarket(market)||
-  titlesOf(market).some(title=>UNSUPPORTED_STATS.test(title)||NAMED_PLAYER.test(title))||isHandicapOfferMarket(market);
+  titlesOf(market).some(title=>(!isCorner(title)&&UNSUPPORTED_STATS.test(title))||NAMED_PLAYER.test(title))||isHandicapOfferMarket(market);
 }
 export const isHandicapOfferMarket=market=>
- titlesOf(market).some(title=>/\b(?:asian\s+)?handicap\b/.test(title));
+ titlesOf(market).some(title=>/\b(?:asian\s+)?handicap\b|\bhandikap\w*\b|\bfora\b/i.test(title));
 export const isEarlyPayoutOfferMarket=market=>{
  const key=String(market?.market_key??market?.marketKey??market?.extId??market?.key??'');
  const nativeId=String(market?.native_market_id??market?.nativeMarketId??
