@@ -235,7 +235,7 @@ export async function persistVerifiedEventFacts(matchId, frame, execute, observe
  }
  return stored;
 }
-export const SUPPORTED_FACT_KINDS=new Set(['window','sequence','race','last-event','over','under','exact','atLeast','range','team-total-goals','team-nth-time','lead-up','interval-handicap','window-first-event','interval-result','interval-leader','window-total','nth-time','player-goal','player-ordinal-goal','player-goal-special','player-card','half-combo','period-goal-total','half-first-event','half-last-event','half-race','half-next-event','half-parity','half-exact-count','multi-corners','corner-comparison','score-handicap','half-total']);
+export const SUPPORTED_FACT_KINDS=new Set(['window','sequence','race','last-event','over','under','exact','atLeast','range','team-total-goals','team-nth-time','lead-up','interval-handicap','window-first-event','window-parity','interval-result','interval-leader','window-total','nth-time','player-goal','player-ordinal-goal','player-goal-special','player-card','half-combo','period-goal-total','half-first-event','half-last-event','half-race','half-next-event','half-parity','half-exact-count','multi-corners','corner-comparison','score-handicap','half-total']);
 /** A complete, independently reconciled match-corner timeline is required
  * before first-half "First Corner / None" can be decided. Unlabelled stoppage
  * and minute-45+ events cannot be assigned to a half from the minute alone.
@@ -688,6 +688,15 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   if(!Number.isSafeInteger(c.toExclusiveSeconds)||through*60<c.toExclusiveSeconds)return null;
   const h=Number(data.window_home),a=Number(data.window_away);
   return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='window-parity'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||c.event!=='corner'||!['odd','even'].includes(c.choice)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(!full&&through<closesAt)return null;
+  const found=Number(data.window_count);
+  if(!Number.isSafeInteger(found)||found<0)return null;
+  return (found%2===1?'odd':'even')===c.choice?'WON':'LOST';
  }
  if(c.kind==='window-first-event'){
   const closesAt=Math.floor(Number(c.to))+1;
