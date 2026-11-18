@@ -126,7 +126,7 @@ export function parseNumberedGoalWindow(line){
 
 export function parseWindowParity(line){
  const name=norm(line.market_name??line.marketName??line.name);
- const m=name.match(/^odd\\s*\\/\\s*even corners? in minutes (\\d{1,3})\\s*[-–]\\s*(\\d{1,3})(?: \\((\\d{1,2})-minute interval\\))?$/);
+ const m=name.match(/^odd\s*\/\s*even corners? in minutes (\d{1,3})\s*[-–]\s*(\d{1,3})(?: \((\d{1,2})-minute interval\))?$/);
  if(!m)return null;
  const from=Number(m[1]),to=Number(m[2]),width=m[3]==null?null:Number(m[3]);
  if(!Number.isInteger(from)||!Number.isInteger(to)||from<0||to<from||to>130||
@@ -139,7 +139,7 @@ export function parseWindowParity(line){
 
 export function parseFirstCornerWindow(line){
  const name=norm(line.market_name??line.marketName??line.name);
- const m=name.match(/^who takes first corner in minutes (\\d{1,3})\\s*[-–]\\s*(\\d{1,3})(?: \\((\\d{1,2})-minute interval\\))?$/);
+ const m=name.match(/^who takes first corner in minutes (\d{1,3})\s*[-–]\s*(\d{1,3})(?: \((\d{1,2})-minute interval\))?$/);
  if(!m)return null;
  const from=Number(m[1]),to=Number(m[2]),width=m[3]==null?null:Number(m[3]);
  if(!Number.isInteger(from)||!Number.isInteger(to)||from<0||to<from||to>130||
@@ -151,7 +151,7 @@ export function parseFirstCornerWindow(line){
 
 export function parseIntervalHandicap(line,{teams={},drawOffered=false}={}){
  const name=norm(line.market_name??line.marketName??line.name);
- const m=name.match(/^corner handicap in minutes (\\d{1,3})\\s*[-–]\\s*(\\d{1,3})(?: \\((\\d{1,2})-minute interval\\))?$/);
+ const m=name.match(/^corner handicap in minutes (\d{1,3})\s*[-–]\s*(\d{1,3})(?: \((\d{1,2})-minute interval\))?$/);
  if(!m)return null;
  const from=Number(m[1]),to=Number(m[2]),width=m[3]==null?null:Number(m[3]);
  if(!Number.isInteger(from)||!Number.isInteger(to)||from<0||to<from||to>130||
@@ -175,7 +175,7 @@ export function parseLeadUpMarket(line){
 
 export function parseSendingOffMarket(line){
  const title=norm(line.market_name??line.marketName??line.name);
- if(!/^sending off\\??$/.test(title))return null;
+ if(!/^sending off\??$/.test(title))return null;
  const choice=yesNo(line);
  if(choice===null)return null;
  return {version:1,kind:'window',event:'card',from:0,to:90,choice,cardColor:'red'};
