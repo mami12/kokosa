@@ -202,7 +202,7 @@ export function frozenLiveContract(line,match={},at=Date.now()){
  // An interval being in progress is not, by itself, a settled market.
  // The bet resolver checks verified primary incidents before acceptance and
  // rejects only completed propositions or missing required history.
- if(live&&!quoteAnchoredOrdinal&&['window-total','interval-leader','interval-result','window','nth-time','team-nth-time'].includes(contract.kind)){
+ if(live&&!quoteAnchoredOrdinal&&['window-total','interval-leader','interval-result','interval-handicap','window','nth-time','team-nth-time'].includes(contract.kind)){
   const clockAt=time(match.clock_at);
   if(clock===null||clockAt===null||at-clockAt>45000||clockAt-at>5000)
    throw fail('Mungon ora live e freskët për intervalin.');
@@ -211,7 +211,7 @@ export function frozenLiveContract(line,match={},at=Date.now()){
   throw fail('Intervali i këtij tregu ka përfunduar.');
  if(contract.kind==='interval-result'&&clock!=null&&clock*60>=contract.toExclusiveSeconds)
   throw fail('Intervali i rezultatit ka përfunduar.');
- if(['window-total','interval-leader','nth-time'].includes(contract.kind)&&
+ if(['window-total','interval-leader','interval-handicap','nth-time'].includes(contract.kind)&&
     clock!=null&&Number.isFinite(contract.to)&&clock>contract.to+1)
   throw fail('Intervali i këtij tregu ka përfunduar.');
  // Live "Next Goal" needs *exactly* the current confirmed cumulative count.
