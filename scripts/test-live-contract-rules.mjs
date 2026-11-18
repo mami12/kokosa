@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict';
-import {parseEventWindow,parseSequenceBet,parseLastEvent,parseCountMarket,gradeLiveContract,gradeFromAcceptedCounters} from '../server/ledger/live-contract-rules.mjs';
+import {parseEventWindow,parseSequenceBet,parseOrdinalGoalTime,parseLastEvent,parseCountMarket,gradeLiveContract,gradeFromAcceptedCounters} from '../server/ledger/live-contract-rules.mjs';
 
 const windowLine=(market,side)=>({market_name:market,outcome_name:side});
+
+// A live "next goal" interval is the next goal AFTER the accepted score,
+// not an absolute reference to goal #1.
+const nextGoalMarket={market_key:'zz901@e30',market_name:'When will next goal be scored',outcome_name:'31-45'};
+assert.equal(parseOrdinalGoalTime(nextGoalMarket,{goal:{home:2,away:0}})?.target,3);
+assert.equal(parseOrdinalGoalTime(nextGoalMarket,{goal:{home:0,away:0}})?.target,1);
+assert.equal(parseOrdinalGoalTime(nextGoalMarket,{goal:{home:2,away:0}})?.from,31);
+assert.equal(parseOrdinalGoalTime({...nextGoalMarket,market_name:'When will goal 3 be scored'},
+ {goal:{home:0,away:0}})?.target,3,'explicit provider ordinal remains absolute');
+assert.equal(parseOrdinalGoalTime(nextGoalMarket),null,
+ 'unknown accepted score cannot be guessed as goal number one');
 const w=parseEventWindow(windowLine('Will there be a goal in minutes 20-45','Yes'));
 assert.deepEqual([w.kind,w.event,w.from,w.to,w.choice],['window','goal',20,45,true]);
 const obs=(event,events,clock,coverage)=>({
