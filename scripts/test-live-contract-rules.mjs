@@ -74,6 +74,15 @@ assert.equal(gradeLiveContract({...g,side:'none',noneOffered:true},noFurtherGoal
 assert.equal(gradeLiveContract({...g,side:'none',noneOffered:false},noFurtherGoal,{ended:true}),'LOST',
  'An unoffered No Goal selection cannot be invented at settlement');
 
+for(const event of ['corner','card']){
+ const noEventContract={version:1,kind:'sequence',event,target:1,side:'home'};
+ assert.equal(gradeLiveContract(noEventContract,obs(event,[],90,90),{ended:true}),'VOID',
+  event+' no-event rules must not inherit the Next Goal loss rule');
+ assert.equal(gradeLiveContract({...noEventContract,side:'none',noneOffered:true},
+  obs(event,[],90,90),{ended:true}),'WON');
+}
+
+
 assert.equal(parseSequenceBet(windowLine('Who scores goal 2','X')).target,2);
 const ambiguous=obs('goal',[12,12],30,30);ambiguous.events[1].team='away';
 assert.equal(gradeLiveContract(g,ambiguous),null,'Same-minute goal ordering cannot be guessed');
