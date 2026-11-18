@@ -61,4 +61,38 @@ assert.equal(gradeLine(quote('Home team exact goals','Over 2.5'),result),null,
 assert.equal(gradeLine(quote('Home team exact goals','Exactly 3'),result),'WON',
  'Genuine home exact-goal selection uses only home score, not both teams');
 
+// The 6+/9+ suffix is a catalogue cap, not the winning threshold.
+// The numbered outcome remains an exact match-goal count.
+for (const market of ['Exact goals 6+','Exact goals 9+']) {
+ const ticket=quote(market,'5');
+ const contract=parsePeriodGoalTotal(ticket,result);
+ assert.equal(contract?.selection,'exact',market+' uses the selected exact count');
+ assert.equal(contract?.target,5,market+' does not impose the catalogue suffix as a minimum');
+ assert.equal(gradePeriodGoalTotal(contract,result),'WON');
+ assert.equal(gradeLine(ticket,result),'WON');
+ assert.equal(hasRequiredSettlementEvidence(ticket,result),true);
+}
+
+// Provider labels without a space are normalized, and multigoals remains
+// team-scoped instead of accidentally counting both sides.
+const multi=quote('Multigoals awayteam','2');
+assert.equal(parsePeriodGoalTotal(multi,result)?.side,'away');
+assert.equal(gradeLine(multi,result),'WON');
+const htResult={...result,home_score:2,away_score:3,half_home_score:2,half_away_score:1};
+for (const [market,outcome,expected] of [
+ ['1st Half Goals awayteam','1','WON'],
+ ['1st Half Goals hometeam','2','WON'],
+ ['Halftime - Total 3','Over','VOID'],
+ ['Halftime - Total 3','Under','VOID']
+]) {
+ const ticket=quote(market,outcome,market==='Halftime - Total 3'?'3':'');
+ const contract=parsePeriodGoalTotal(ticket,htResult);
+ assert.ok(contract,market+' contract parses');
+ assert.equal(contract.half,1,market+' uses verified first-half score');
+ assert.equal(gradePeriodGoalTotal(contract,htResult),expected);
+ assert.equal(gradeLine(ticket,htResult),expected);
+ assert.equal(hasRequiredSettlementEvidence(ticket,htResult),true);
+}
+
+
 console.log('PASS half/team/match goals O/U, exact, 3+, integer pushes, contradictory half/FT and no incident SQL');
