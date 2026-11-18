@@ -69,6 +69,7 @@ export function resolveMarketTitle(raw,q,{intervalWidth}={}){
   const band=' in minutes '+from+'-'+to+' ('+width+'-minute interval)';
   if(/^result(?:\\s+first value)?$/.test(descriptor))return 'Result from '+from+':00 to '+(to+1)+':00 min';
   if(/^corner result$/.test(descriptor))return 'Who takes most corners'+band;
+  if(/^odd\/even corners?$/.test(descriptor))return 'Odd/Even corners'+band;
   if(/^card result$/.test(descriptor))return 'Who receives most cards'+band;
   if(/^corner handicap$/.test(descriptor))return 'Corner handicap'+band;
   if(/^1st corner$/.test(descriptor))return 'Who takes first corner'+band;
