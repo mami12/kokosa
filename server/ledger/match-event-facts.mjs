@@ -544,6 +544,9 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    (select minute from ordered where minute>=$3::numeric and minute<=$4::numeric
      and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
      and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_minute,
+   (select same_time from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_same_time,
    (select min(ordinal) from (
      select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
      from ordered where ($20::boolean=false or normal_time)
@@ -702,11 +705,12 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   if(c.startExclusive===true&&data.rolling_boundary_uncertain===true)return null;
   const num=Number(c.cardColor?data.color_window_count:data.window_count);
   if(num>0)return decision(c.choice);
-  if(c.normalTimeOnly===true&&data.phase_ambiguous===true)return null;
+  if(c.normalTimeOnly===true&&c.to>=90&&data.phase_ambiguous===true)return null;
   return normalFull||through>=closesAt?decision(!c.choice):null;
  }
  if(c.kind==='interval-result'){
-  if(!Number.isSafeInteger(c.toExclusiveSeconds)||through*60<c.toExclusiveSeconds)return null;
+  if(!Number.isSafeInteger(c.toExclusiveSeconds)||(!normalFull&&through*60<c.toExclusiveSeconds)||
+     c.to>=90&&data.phase_ambiguous===true)return null;
   const h=Number(data.window_home),a=Number(data.window_away);
   return decision((h>a?'home':a>h?'away':'none')===c.side);
  }
@@ -750,8 +754,9 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  }
  if(c.kind==='interval-leader'){
   const closesAt=Math.floor(Number(c.to))+1;
-  if(!Number.isFinite(closesAt)||through<closesAt||
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||
      !['home','away','none'].includes(c.side))return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
   const h=Number(data.window_home),a=Number(data.window_away);
   return decision((h>a?'home':a>h?'away':'none')===c.side);
  }
@@ -759,6 +764,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   if(c.cardColor&&data.card_colors_verified!==true)return null;
   const closesAt=Math.floor(Number(c.to))+1;
   if(!Number.isFinite(closesAt))return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
   const found=Number(c.cardColor?data.color_window_count:data.window_count);
   const closed=full||through>=closesAt;
   if(c.choice==='over'||c.choice==='under'){
@@ -789,7 +795,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   const normalHome=Number(data.normal_home),normalAway=Number(data.normal_away);
   if(!Number.isSafeInteger(normalHome)||!Number.isSafeInteger(normalAway)||
      normalHome<base.home||normalAway<base.away)return null;
-  if(c.side==='draw')return full&&data.phase_ambiguous!==true?
+  if(c.side==='draw')return normalFull&&data.phase_ambiguous!==true?
    decision(normalHome===normalAway):null;
   const afterHome=normalHome-base.home,afterAway=normalAway-base.away;
   const currentLead=c.side==='home'?afterHome-afterAway:afterAway-afterHome;
@@ -842,10 +848,12 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   return c.choice==='none'?'WON':'LOST';
  }
  if(c.kind==='last-event'){
-  if(!full||!['home','away','none'].includes(c.side))return null;
-  if(data.last_team!=null){
-   if(Number(data.last_same_time)>1)return null;
-   return decision(data.last_team===c.side);
+  if(!normalFull||data.phase_ambiguous===true||!['home','away','none'].includes(c.side))return null;
+  const lastTeam=c.normalTimeOnly===true?data.normal_last_team:data.last_team;
+  const lastSameTime=c.normalTimeOnly===true?data.normal_last_same_time:data.last_same_time;
+  if(lastTeam!=null){
+   if(Number(lastSameTime)>1)return null;
+   return decision(lastTeam===c.side);
   }
   return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
  }
@@ -854,7 +862,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    if(Number(data.nth_same_time)>1)return null;
    return decision(data.nth_team===c.side);
   }
-  if(!full)return null;
+  if(!normalFull||data.phase_ambiguous===true)return null;
   // A Next Goal selection is not refundable merely because no further goal
   // was scored. Home/Away lose at confirmed FT; the explicit No Goal outcome
   // wins only when that outcome was actually offered and accepted. Corner/card
@@ -873,9 +881,9 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   // A reached threshold proves None lost without knowing which side was first.
   if(c.side==='none'){
    if(h!==null||a!==null)return 'LOST';
-   return full&&c.noneOffered===true?'WON':null;
+   return normalFull&&data.phase_ambiguous!==true&&c.noneOffered===true?'WON':null;
   }
-  if(h===null&&a===null)return full?(c.noneOffered===true?'LOST':'VOID'):null;
+  if(h===null&&a===null)return normalFull&&data.phase_ambiguous!==true?(c.noneOffered===true?'LOST':'VOID'):null;
   // Simultaneous or minute-only indistinguishable milestones require review.
   if(h!==null&&a!==null&&h===a)return null;
   return decision(c.side===(h!==null&&(a===null||h<a)?'home':'away'));
