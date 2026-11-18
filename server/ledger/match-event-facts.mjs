@@ -430,6 +430,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  if(provider!=='zizobet')return null;
  const c=line?.live_contract;
  if(!c||c.entryEvidenceMissing===true||!SUPPORTED_FACT_KINDS.has(c.kind)||!validKind.has(c.event)||typeof execute!=='function')return null;
+ const normalTimeOnly=c.normalTimeOnly!==false&&c.event!=null;
  const {rows}=await execute(`with covered as (
    select through_minute,count_home,count_away,complete,observed_at,confirmed_at,card_colors_verified from app_match_event_coverage
    where match_id=$1 and provider=$16::text and kind=$2
@@ -590,7 +591,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   c.kind==='interval-result',c.kind==='interval-leader'||c.kind==='interval-handicap',c.cardColor??null,provider,
   c.entryBaseline!=null||c.baseline!=null,
   c.entryBaseline?.home??c.baseline?.home??0,
-  c.entryBaseline?.away??c.baseline?.away??0,c.normalTimeOnly===true]);
+  c.entryBaseline?.away??c.baseline?.away??0,normalTimeOnly]);
  const data=rows[0];
  if(!data||data.through_minute==null||data.open_recovery_gap===true)return null;
  // A partial/corrected frame must not silently reclassify a missing event.
@@ -618,7 +619,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  const full=!!(result&&data.complete===true&&finalCounts&&
    Number(data.home)===Number(expectedTotals[0])&&Number(data.away)===Number(expectedTotals[1]));
  const matchFinished=!!(result&&data.complete===true);
- const normalFull=c.normalTimeOnly===true?matchFinished:full;
+ const normalFull=normalTimeOnly?matchFinished:full;
  // Only the confirmed Zizobet timeline and its own second-poll/archive
  // cursor can authorize a settlement decision.
  if(data.confirmed_at==null||data.observed_at==null)return null;
@@ -719,7 +720,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   if(c.startExclusive===true&&data.rolling_boundary_uncertain===true)return null;
   const num=Number(c.cardColor?data.color_window_count:data.window_count);
   if(num>0)return decision(c.choice);
-  if(c.normalTimeOnly===true&&c.to>=90&&data.phase_ambiguous===true)return null;
+  if(normalTimeOnly&&c.to>=90&&data.phase_ambiguous===true)return null;
   return normalFull||through>=closesAt?decision(!c.choice):null;
  }
  if(c.kind==='interval-result'){
@@ -867,8 +868,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  }
  if(c.kind==='last-event'){
   if(!normalFull||data.phase_ambiguous===true||!['home','away','none'].includes(c.side))return null;
-  const lastTeam=c.normalTimeOnly===true?data.normal_last_team:data.last_team;
-  const lastSameTime=c.normalTimeOnly===true?data.normal_last_same_time:data.last_same_time;
+  const lastTeam=normalTimeOnly?data.normal_last_team:data.last_team;
+  const lastSameTime=normalTimeOnly?data.normal_last_same_time:data.last_same_time;
   if(lastTeam!=null){
    if(Number(lastSameTime)>1)return null;
    return decision(lastTeam===c.side);
