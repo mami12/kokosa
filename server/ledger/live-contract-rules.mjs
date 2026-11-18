@@ -122,14 +122,25 @@ export function parseNumberedGoalWindow(line){
  return null;
 }
 
+export function parseSendingOffMarket(line){
+ const title=norm(line.market_name??line.marketName??line.name);
+ if(!/^sending off\\??$/.test(title))return null;
+ const choice=yesNo(line);
+ if(choice===null)return null;
+ return {version:1,kind:'window',event:'card',from:0,to:130,choice,cardColor:'red'};
+}
+
 export function parseOrdinalGoalTime(line,counts={}){
  const title=String(line.market_name??line.marketName??line.name??'').trim().replace(/^\*\s*/,'');
- if(!/^when will (?:(?:the )?(?:first|next) )?goal\b/i.test(title)&&
+ const teamNext=title.match(/^next (home|away) goal time$/i);
+ if(!teamNext&&!/^when will (?:(?:the )?(?:first|next) )?goal\b/i.test(title)&&
     !/^first goal interval\b/i.test(title)&&
     !/^(?:first|next|last) goal (?:time|interval)\b/i.test(title)&&
     !/^time of (?:the )?(?:first|next|last) goal\b/i.test(title))return null;
  let target=null;
- if(/\bfirst\b/i.test(title))target=1;
+ const teamSide=teamNext?.[1]?.toLowerCase()??null;
+ if(teamSide){const count=nonNeg(counts?.goal?.[teamSide]);if(count===null)return null;target=count+1;}
+ if(!teamSide&&/\bfirst\b/i.test(title))target=1;
  const fixed=title.match(/^when will (?:goal (\d{1,3}|number)|(?:the )?next goal)/i);
  if(fixed?.[1]&&/^\d+$/.test(fixed[1]))target=Number(fixed[1]);
  if(target===null){
@@ -141,7 +152,7 @@ export function parseOrdinalGoalTime(line,counts={}){
  }
  // "Next goal" is relative to the accepted live scoreboard. It is never
  // goal #1 merely because the title did not carry an explicit provider ordinal.
- if(target===null&&/\bnext goal\b/i.test(title)){
+ if(!teamSide&&target===null&&/\bnext goal\b/i.test(title)){
   const home=nonNeg(counts?.goal?.home),away=nonNeg(counts?.goal?.away);
   if(home!==null&&away!==null)target=home+away+1;
  }
@@ -155,7 +166,9 @@ export function parseOrdinalGoalTime(line,counts={}){
  if(!range&&!plus)return null;
  const from=Number(range?.[1]??plus[1]),to=range?Number(range[2]):130;
  if(from<0||to>130||from>to)return null;
- return {version:1,kind:'nth-time',event:'goal',target,choice:'range',from,to};
+ return teamSide
+  ?{version:1,kind:'team-nth-time',event:'goal',target,side:teamSide,choice:'range',from,to}
+  :{version:1,kind:'nth-time',event:'goal',target,choice:'range',from,to};
 }
 
 /** Explicit Zizobet 00:00–09:59 minute RESULT, never today's match score.
@@ -571,7 +584,7 @@ export const liveContract=(line,{counts={},clock=null,teams={}}={})=>{
  const yellow=/\byellow\s+cards?\b/.test(name),red=/\bred\s+cards?\b/.test(name);
  const ambiguous=/\b(?:second\s+yellow|yellow\s+red)\b/.test(name);
  if((yellow&&red)||ambiguous)return null;
- const contract=parsePlayerOrdinalScorer(line)??parsePlayerGoalSpecial(line)??parsePlayerCardContract(line)??parsePlayerGoalContract(line)??parseNumberedGoalWindow(line)??parseOrdinalGoalTime(line,counts)??
+ const contract=parsePlayerOrdinalScorer(line)??parsePlayerGoalSpecial(line)??parsePlayerCardContract(line)??parsePlayerGoalContract(line)??parseSendingOffMarket(line)??parseNumberedGoalWindow(line)??parseOrdinalGoalTime(line,counts)??
   parseTimedResultMarket(line)??parseIntervalLeader(line)??
   parseEventWindow(line,clock)??parseIntervalCount(line)??parseClockWindowTotal(line)??
   parseHalfExactMarket(line)??parseHalfTotal(line)??(parseParityMarket(line)?.kind==='half-parity'?parseParityMarket(line):null)??parseColorCardCount(line)??parseFirstHalfCorner(line)??parseHalfEventContract(line,counts)??parseLastEvent(line)??parseSequenceBet(line,counts)??
