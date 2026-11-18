@@ -74,10 +74,10 @@ export function parsePeriodGoalTotal(line,teams={}){
  // Strip trailing "over/under" or "over under" from compound names like
  // "goals over/under" so the final gate accepts them as plain goal totals.
  name=name.replace(/\s+over\s*\/?\s*under$/,'').trim();
- // Catalogue: "1st half - exact goals", "Exact goals 5+",
- // "2nd half - exact goals 2+", "Total goals (exact)". The outcome still supplies the
- // chosen number/range; a title saying 2+ is a lower bound, not
- // permission to invent a hidden player, period or total.
+ // Catalogue: "1st half - exact goals", "Exact goals 6+",
+ // "2nd half - exact goals 9+", "Total goals (exact)". For these exact-goal
+ // menus, the numeric selection is the contract; the title suffix is the
+ // provider's catalogue cap, not a minimum-goals condition.
  const exactGroup=name.match(/^(?:exact goals?|goals?\s+exact|multigoals?|number of goals?)(?:\s+\d{1,2}\+)?$/);
  if(exactGroup)name='goals';
  if(!/^(?:goals?|goal line|total|over\s*\/\s*under)$/.test(name))return null;
