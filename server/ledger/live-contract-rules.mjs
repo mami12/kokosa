@@ -178,7 +178,7 @@ export function parseSendingOffMarket(line){
  if(!/^sending off\??$/.test(title))return null;
  const choice=yesNo(line);
  if(choice===null)return null;
- return {version:1,kind:'window',event:'card',from:0,to:90,choice,cardColor:'red'};
+ return {version:1,kind:'window',event:'card',from:0,to:130,choice,cardColor:'red',normalTimeOnly:true};
 }
 
 export function parseOrdinalGoalTime(line,counts={}){
