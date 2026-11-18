@@ -235,7 +235,7 @@ export async function persistVerifiedEventFacts(matchId, frame, execute, observe
  }
  return stored;
 }
-export const SUPPORTED_FACT_KINDS=new Set(['window','sequence','race','last-event','over','under','exact','atLeast','range','team-total-goals','interval-result','interval-leader','window-total','nth-time','player-goal','player-ordinal-goal','player-goal-special','player-card','half-combo','period-goal-total','half-first-event','half-last-event','half-race','half-parity','half-exact-count','multi-corners','corner-comparison','score-handicap','half-total']);
+export const SUPPORTED_FACT_KINDS=new Set(['window','sequence','race','last-event','over','under','exact','atLeast','range','team-total-goals','interval-result','interval-leader','window-total','nth-time','player-goal','player-ordinal-goal','player-goal-special','player-card','half-combo','period-goal-total','half-first-event','half-last-event','half-race','half-next-event','half-parity','half-exact-count','multi-corners','corner-comparison','score-handicap','half-total']);
 /** A complete, independently reconciled match-corner timeline is required
  * before first-half "First Corner / None" can be decided. Unlabelled stoppage
  * and minute-45+ events cannot be assigned to a half from the minute alone.
