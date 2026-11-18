@@ -35,6 +35,11 @@ assert.deepEqual({kind:firstCornerWindow?.kind,event:firstCornerWindow?.event,
  side:firstCornerWindow?.side,from:firstCornerWindow?.from,to:firstCornerWindow?.to},
  {kind:'window-first-event',event:'corner',side:'home',from:21,to:30});
 
+
+const oddWindow=liveContract({market_name:'Odd/Even corners in minutes 21-30 (10-minute interval)',outcome_name:'Odd'});
+assert.deepEqual({kind:oddWindow?.kind,event:oddWindow?.event,choice:oddWindow?.choice,
+ from:oddWindow?.from,to:oddWindow?.to},
+ {kind:'window-parity',event:'corner',choice:'odd',from:21,to:30});
 const offsideWindow=liveContract({market_name:'Total 0.5 offsides in minutes 16-16 (1-minute interval)',outcome_name:'Over'});
 assert.deepEqual({kind:offsideWindow?.kind,event:offsideWindow?.event,
  from:offsideWindow?.from,to:offsideWindow?.to},
@@ -305,6 +310,16 @@ assert.equal(await gradeOffside(offsideFacts),'WON',
 assert.equal(await gradeOffside({...offsideFacts,count_home:0,home:0,total:0,
  window_count:0,through_minute:17}),'LOST',
  'A fully covered one-minute offside window with no event settles Under/Over correctly');
+
+const oddFacts={...cornerFacts,window_count:3};
+const gradeOdd=async(facts)=>gradeStoredEventContract({
+ id:'line-odd-corners',match_id:13,live_contract:oddWindow
+ },{home_score:0,away_score:0,corners_home:2,corners_away:1,cards_home:0,cards_away:0},
+ {execute:async()=>({rows:[facts]})});
+assert.equal(await gradeOdd(oddFacts),'WON');
+assert.equal(await gradeOdd({...oddFacts,window_count:2}),'LOST',
+ 'Odd/even is calculated from the accepted interval only');
+
 
 
 
