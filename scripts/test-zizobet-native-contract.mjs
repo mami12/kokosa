@@ -49,6 +49,18 @@ const oddEvenCorners=nativeZizobetContractRow(offer(9022,
  {p1:21,p2:30}));
 assert.equal(oddEvenCorners.market_name,'Odd/Even corners in minutes 21-30 (10-minute interval)');
 assert.equal(liveContract({...oddEvenCorners,outcome_name:'Odd'})?.kind,'window-parity');
+
+const rangeAwayCorners=nativeZizobetContractRow(offer(9023,
+ 'Total 0.5 away team corners in minutes time range (10-minute interval)',
+ {p1:21,p2:30},'0.5'));
+assert.equal(rangeAwayCorners.market_name,'Total 0.5 away team corners in minutes 21-30 (10-minute interval)');
+assert.equal(liveContract(rangeAwayCorners)?.kind,'window-total');
+const numberedGoal=nativeZizobetContractRow(offer(9024,
+ 'Who scores goal number in minutes time range (10-minute interval)',
+ {p1:21,p2:30,p3:2}));
+assert.equal(numberedGoal.market_name,'Who scores goal 2 in minutes 21-30 (10-minute interval)');
+assert.equal(liveContract(numberedGoal)?.kind,'nth-time');
+
 const intervalBookings=nativeZizobetContractRow(offer(9020,
  'Total 0.5 bookings in 10 minutes interval 21-30',{}));
 assert.equal(intervalBookings.market_name,'Total 0.5 cards in minutes 21-30 (10-minute interval)');
