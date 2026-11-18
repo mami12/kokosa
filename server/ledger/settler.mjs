@@ -722,9 +722,9 @@ export function gradeLine(line, result) {
 
   const key = String(line.outcome_key ?? '').toLowerCase().trim();
   const name = String(line.outcome_name ?? '').toLowerCase();
-  const lineValue = num(line.line);
   const goalTotal=goalTotalContract(line,result);
   const cornerTotal=cornerTotalContract(line,result);
+  const lineValue = num(line.line)??num(goalTotal?.line)??num(cornerTotal?.line);
   const type = goalTotal?'TOTAL':classify(line.market_name);
 
   const homeName = norm(result.home_team);
