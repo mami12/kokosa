@@ -11,7 +11,10 @@ import {SCHEMA_SQL} from '../server/schema.mjs';
 import {MARKET_CATEGORY_IDS,catalogRows,setCatalogRows,marketIsEnabled} from '../server/market-catalog.mjs';
 import {snapshotRow} from '../server/ledger/match-snapshots.mjs';
 import {createEventEvidenceStore,gradeEventLine} from '../server/ledger/event-evidence.mjs';
+import {eventMarketRequirement} from '../server/ledger/event-market-policy.mjs';
 
+assert.equal(eventMarketRequirement({name:'Scoring Type'}),'GOAL_CONTRACT_DATA_REQUIRED',
+ 'Scoring Type cannot be settled from aggregate score without explicit goal-method facts');
 assert.equal(isZizobetNativeOffer({key:'zz910@e30'}),true,
  'Zizobet market-key identities are recognized as native');
 assert.equal(isZizobetNativeOffer({extId:'zz911@e30'}),true,
