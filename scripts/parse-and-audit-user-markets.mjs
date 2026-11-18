@@ -87,12 +87,12 @@ const NON_FOOTBALL_PATTERN = new RegExp([
 ].join('|'), 'i');
 
 function hasNativeParameterizedSettlementPath(title) {
-  const t=String(title??'').toLowerCase().replace(/\\s+/g,' ').trim();
-  if(/^\\d{1,2} minutes? - (?:total (?:goals?|corners?|cards?|offsides?)|(?:home|away)team total corners|(?:corner|card) result|corner handicap|1st corner|odd\\/even corners?|(?:home|away)team red card|red card|№ value goal|result) from first value/.test(t))return true;
+  const t=String(title??'').toLowerCase().replace(/\s+/g,' ').trim();
+  if(/^\d{1,2} minutes? - (?:total (?:goals?|corners?|cards?|offsides?)|(?:home|away)team total corners|(?:corner|card) result|corner handicap|1st corner|odd\/even corners?|(?:home|away)team red card|red card|№ value goal|result) from first value/.test(t))return true;
   if(/^1 minute - total (?:goals?|corners?|offsides?) from first value:00 to value min$/.test(t))return true;
-  if(/\\bin minutes time range(?: \\(\\d{1,2}-minute interval\\))?$/.test(t)&&
+  if(/\bin minutes time range(?: \(\d{1,2}-minute interval\))?$/.test(t)&&
      /^(?:total |who scores|who takes|who receives|corner handicap)/.test(t))return true;
-  if(/\\bin \\d{1,2} minutes? interval \\d{1,3}-\\d{1,3}$/.test(t)&&
+  if(/\bin \d{1,2} minutes? interval \d{1,3}-\d{1,3}$/.test(t)&&
      /^(?:total |who scores|who takes|who receives|corner handicap)/.test(t))return true;
   return false;
 }
