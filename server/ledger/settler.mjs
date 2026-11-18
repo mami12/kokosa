@@ -1378,7 +1378,7 @@ export function pendingEventReason(line,result){
  if(!result)return 'FINAL_RESULT_OR_LIVE_FACTS_UNVERIFIED';
  if(!contract){
   const name=String(line?.market_name??'').toLowerCase();
-  if(/\b(?:next|first|last|race|interval|minute|corner|card|goal|offside|bookings|sending off|scorer|player|race to|between|1up|2up|3up|first valueup)\b/.test(name))
+  if(/\b(?:next|first|last|race|interval|minute|corner|card|goal|offside|bookings|sending off|scorer|player|race to|between)\b/.test(name))
    return 'NO_LIVE_CONTRACT';
   return 'NO_SETTLEMENT_RULE';
  }
