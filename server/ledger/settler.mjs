@@ -479,6 +479,7 @@ export function classify(marketName = '') {
   if (isResultTotalMarket(marketName)) return 'RESULT_TOTAL';
   if (isTotalBttsMarket(marketName)) return 'TOTAL_BTTS';
   if (isResultBttsMarket(marketName)) return 'RESULT_BTTS';
+  if (/^which team to score$/i.test(String(marketName).trim())) return 'WHICH_TEAM_TO_SCORE';
   if (isWinningMarginMarket({market_name:marketName})) return 'WINNING_MARGIN';
   if (isMultiscoresMarket(marketName)) return 'MULTISCORES';
   if (isMatchbetFirstGoalMarket(marketName)) return 'MATCHBET_FIRST_GOAL';
@@ -776,6 +777,18 @@ export function gradeLine(line, result) {
       if (key === 'yes' || key === 'goal' || /^yes|^po\b|^goal/i.test(name)) return decide(bothScored);
       if (key === 'no' || key === 'no goal' || /^no|^jo\b|^no\s*goal/i.test(name)) return decide(!bothScored);
       return null;
+
+    case 'WHICH_TEAM_TO_SCORE': {
+      const selection=norm(line.outcome_name??line.outcome_key??'');
+      if(/^(?:both teams?|both|1\s*\+\s*2)$/i.test(selection))return decide(bothScored);
+      if(/^(?:only\s*1|home|home team|1)$/i.test(selection))
+        return decide(home>0&&away===0);
+      if(/^(?:only\s*2|away|away team|2)$/i.test(selection))
+        return decide(away>0&&home===0);
+      if(/^(?:none|neither|no team|no goals?)$/i.test(selection))
+        return decide(home===0&&away===0);
+      return null;
+    }
 
     case 'TOTAL':
     case 'CORNERS':
