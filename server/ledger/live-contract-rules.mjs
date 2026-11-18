@@ -122,6 +122,18 @@ export function parseNumberedGoalWindow(line){
  return null;
 }
 
+export function parseLeadUpMarket(line){
+ const title=norm(line.market_name??line.marketName??line.name);
+ const match=title.match(/^full time ([123])up$/);
+ if(!match)return null;
+ const label=norm(line.outcome_name??line.outcomeName??line.outcome_key??line.outcomeKey);
+ const side=/^(?:1|home|home team|team 1)$/.test(label)?'home':
+  /^(?:2|away|away team|team 2)$/.test(label)?'away':
+  /^(?:x|draw|tie)$/.test(label)?'draw':null;
+ if(!side)return null;
+ return {version:1,kind:'lead-up',event:'goal',target:Number(match[1]),side};
+}
+
 export function parseSendingOffMarket(line){
  const title=norm(line.market_name??line.marketName??line.name);
  if(!/^sending off\\??$/.test(title))return null;
@@ -584,7 +596,7 @@ export const liveContract=(line,{counts={},clock=null,teams={}}={})=>{
  const yellow=/\byellow\s+cards?\b/.test(name),red=/\bred\s+cards?\b/.test(name);
  const ambiguous=/\b(?:second\s+yellow|yellow\s+red)\b/.test(name);
  if((yellow&&red)||ambiguous)return null;
- const contract=parsePlayerOrdinalScorer(line)??parsePlayerGoalSpecial(line)??parsePlayerCardContract(line)??parsePlayerGoalContract(line)??parseSendingOffMarket(line)??parseNumberedGoalWindow(line)??parseOrdinalGoalTime(line,counts)??
+ const contract=parsePlayerOrdinalScorer(line)??parsePlayerGoalSpecial(line)??parsePlayerCardContract(line)??parsePlayerGoalContract(line)??parseLeadUpMarket(line)??parseSendingOffMarket(line)??parseNumberedGoalWindow(line)??parseOrdinalGoalTime(line,counts)??
   parseTimedResultMarket(line)??parseIntervalLeader(line)??
   parseEventWindow(line,clock)??parseIntervalCount(line)??parseClockWindowTotal(line)??
   parseHalfExactMarket(line)??parseHalfTotal(line)??(parseParityMarket(line)?.kind==='half-parity'?parseParityMarket(line):null)??parseColorCardCount(line)??parseFirstHalfCorner(line)??parseHalfEventContract(line,counts)??parseLastEvent(line)??parseSequenceBet(line,counts)??
