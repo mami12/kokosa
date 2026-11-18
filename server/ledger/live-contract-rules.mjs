@@ -132,8 +132,7 @@ export function parseFirstCornerWindow(line){
     width!==null&&to-from+1!==width)return null;
  const side=sideOf(line.outcome_name??line.outcomeName)??sideOf(line.outcome_key??line.outcomeKey);
  if(!['home','away','none'].includes(side))return null;
- return {version:1,kind:'nth-time',event:'corner',target:1,choice:side==='none'?'none':'team-window',
-  ...(side==='none'?{}:{side}),from,to};
+ return {version:1,kind:'window-first-event',event:'corner',side,from,to};
 }
 
 export function parseIntervalHandicap(line,{teams={},drawOffered=false}={}){
