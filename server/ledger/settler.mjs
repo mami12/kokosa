@@ -1511,7 +1511,6 @@ export async function settleVerifiedEventFacts({
    join app_ticket t on t.id=l.ticket_id
    where l.status='PENDING' and t.status='PENDING'
      and l.live_contract is not null
-     and (l.market_key like 'zz%@%' or l.accepted_contract->>'providerMarketKey' like 'zz%@%')
      and not exists(select 1 from app_settlement_override o where o.line_id=l.id)
      and exists(select 1 from app_match_event_coverage e
        where e.match_id=l.match_id and e.kind=l.live_contract->>'event'
