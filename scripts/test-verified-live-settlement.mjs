@@ -210,4 +210,30 @@ const result=await settleVerifiedLiveProposals({runQuery,enabled:true,now:()=>no
 assert.deepEqual({examined:result.examined,graded:result.graded,closed:result.closed.length},
  {examined:2,graded:1,closed:1});
 assert.deepEqual(calls,[{id:'line-a',status:'WON',ticketId:'ticket-a'}]);
+
+const {settleVerifiedEventFacts}=await import('../server/ledger/settler.mjs');
+let eventScanSql='';
+const eventUpdates=[];
+const eventScan=await settleVerifiedEventFacts({
+ runQuery:async(sql)=>{
+  if(/select l\\.\\*/.test(sql)){
+   eventScanSql=sql;
+   return {rows:[{id:'line-native',ticket_id:'ticket-native',match_id:77,
+    market_key:'provider-market-77',market_name:'Next Corner',
+    live_contract:{version:1,kind:'sequence',event:'corner',target:2,side:'home'}}]};
+  }
+  if(/select match_id,home_score/.test(sql))return {rows:[{match_id:77,home_score:1,away_score:0}]};
+  throw Error('Unexpected event settlement query: '+sql);
+ },
+ grade:async()=> 'WON',
+ update:async(lineId,status,ticketId)=>{eventUpdates.push({lineId,status,ticketId});return 1;},
+ recalc:async ticketId=>({ticketId,status:'WON'})
+});
+assert.ok(eventScanSql.includes("l.live_contract is not null"));
+assert.ok(!/market_key\\s+like|providerMarketKey.*like/i.test(eventScanSql),
+ 'verified event settlement must not exclude a valid contract because its native market key has another format');
+assert.deepEqual(eventUpdates,[{lineId:'line-native',status:'WON',ticketId:'ticket-native'}]);
+assert.equal(eventScan.graded,1,
+ 'a supported frozen contract is scanned when its market key is not zz%@%');
+
 console.log('PASS guarded double observation: primary-only, clock freshness, no recovery gaps, no stale contract and no duplicate writes');
