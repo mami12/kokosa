@@ -775,7 +775,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    const minute=Number(data.team_nth_minute),inside=minute>=c.from&&minute<=c.to;
    return c.choice==='none'?decision(!inside):decision(inside);
   }
-  if(normalFull||through>=c.to){
+  if(normalFull||through>c.to){
    if(normalTimeOnly&&c.to>=90&&data.phase_ambiguous===true)return null;
    return c.choice==='none'?'WON':'LOST';
   }
@@ -859,7 +859,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   }
   // No positive evidence yet — wait for coverage window to elapse before
   // declaring LOST (goal N did not happen within range).
-  const scopeClosed=normalFull||(Number.isInteger(c.to)&&through>=c.to);
+  const scopeClosed=normalFull||(Number.isInteger(c.to)&&through>c.to);
   if(!scopeClosed||normalTimeOnly&&c.to>=90&&data.phase_ambiguous===true)return null;
   return c.choice==='none'?'WON':'LOST';
  }
