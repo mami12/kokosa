@@ -433,21 +433,37 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  const {rows}=await execute(`with covered as (
    select through_minute,count_home,count_away,complete,observed_at,confirmed_at,card_colors_verified from app_match_event_coverage
    where match_id=$1 and provider=$16::text and kind=$2
- ), ordered as (
+ ), raw_events as (
    select f.*,
      (lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
        ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1',
         '2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2',
         'regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime')
        or (nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90)) as normal_time,
-     row_number() over(order by coalesce(f.seconds,f.minute*60),f.minute,f.provider_event_id) as ordinal,
-     row_number() over(partition by f.team order by coalesce(f.seconds,f.minute*60),f.minute,f.provider_event_id) as team_ordinal,
-     count(*) over(partition by coalesce(f.seconds,f.minute*60)) as same_time
+     case
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1') then 1
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2') then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime')
+        then case when f.minute<=45 then 1 else 2 end
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=45 then 1
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90 then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf') then 3
+       else 4
+     end as phase_order
    from app_match_event_fact f
    where f.match_id=$1 and f.provider=$16::text and f.kind=$2 and f.active
+ ), ordered as (
+   select raw_events.*,
+     row_number() over(order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as ordinal,
+     row_number() over(partition by team order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as team_ordinal,
+     count(*) over(partition by phase_order,coalesce(seconds,minute*60)) as same_time
+   from raw_events
  ), normal_ordered as (
-   select * from ordered where normal_time
- ), aggregate as (
+   select * from ordered where normal_time ), aggregate as (
    select count(*)::int as total,
     count(*) filter(where team='home')::int as home,
     count(*) filter(where team='away')::int as away,
