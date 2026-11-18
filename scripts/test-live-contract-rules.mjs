@@ -63,6 +63,16 @@ assert.equal(gradeLiveContract({...g,side:'home'},early),'LOST');
 assert.equal(gradeLiveContract({...g,side:'none'},early),'LOST');
 assert.equal(gradeLiveContract({...g,target:3},early),null);
 assert.equal(gradeLiveContract({...g,target:3,side:'none'},early,{ended:true}),'WON');
+
+const noFurtherGoal=obs('goal',[],90,90);
+assert.equal(gradeLiveContract(g,noFurtherGoal,{ended:true}),'LOST',
+ 'Next Goal Home/Away loses when confirmed FT arrives without another goal; it is not VOID');
+assert.equal(gradeLiveContract({...g,side:'home'},noFurtherGoal,{ended:true}),'LOST');
+assert.equal(gradeLiveContract({...g,side:'none',noneOffered:true},noFurtherGoal,{ended:true}),'WON',
+ 'No Goal wins only when that exact outcome was offered');
+assert.equal(gradeLiveContract({...g,side:'none',noneOffered:false},noFurtherGoal,{ended:true}),'LOST',
+ 'An unoffered No Goal selection cannot be invented at settlement');
+
 assert.equal(parseSequenceBet(windowLine('Who scores goal 2','X')).target,2);
 const ambiguous=obs('goal',[12,12],30,30);ambiguous.events[1].team='away';
 assert.equal(gradeLiveContract(g,ambiguous),null,'Same-minute goal ordering cannot be guessed');
