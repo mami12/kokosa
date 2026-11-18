@@ -4,7 +4,7 @@
  * Two-way integer lines push; a quoted 3-way exact selection is distinct.
  */
 const norm=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
- .toLowerCase().replace(/[_:—–-]/g,' ').replace(/\s+/g,' ').trim();
+ .toLowerCase().replace(/\b(home|away)team\b/g,'$1 team').replace(/[_:—–-]/g,' ').replace(/\s+/g,' ').trim();
 const real=value=>value==null||value===''?null:
  /^[0-9]+(?:[.,][0-9]+)?$/.test(String(value).trim())?
   Number(String(value).replace(',','.')):null;
@@ -25,7 +25,7 @@ export function isPeriodGoalTotal(line){
  // goal-total contract: it is an individual-player proposition.
  if(/\b(?:goals?scorers?|scorers?|player|scorer)\b/.test(name))return false;
  if(/\b(?:player|scorer|asian|handicap|minutes?|corners?|cards?|bookings?|shots?|fouls?|result|btts|both|race|next|first goal|last goal|odd|even|clean sheet)\b/.test(name))return false;
- return /(?:^|\b)(?:total goals?|goals? total|team [12] goals?|goals?|goal line|over\s*\/\s*under)/.test(name)||
+ return /\b(?:exact goals?|multigoals?|number of goals?)\b/.test(name)||\n  /(?:^|\b)(?:total goals?|goals? total|team [12] goals?|goals?|goal line|over\s*\/\s*under)/.test(name)||
   /^(?:(?:1st|first|2nd|second) half|full time|match) total$/.test(name)||name==='total';
 }
 export function parsePeriodGoalTotal(line,teams={}){
@@ -42,10 +42,14 @@ export function parsePeriodGoalTotal(line,teams={}){
  let half=0;
  const pre=name.match(/^(?:1st|first|2nd|second)\s+half\b/);
  const post=name.match(/\b(?:1st|first|2nd|second)\s+half$/);
+ const halftime=name.match(/^(?:half time|halftime)\b/);
  if(pre&&post)return null;
  if(pre){
   half=/^(?:1st|first)/.test(pre[0])?1:2;
   name=name.slice(pre[0].length).trim();
+ }else if(halftime){
+  half=1;
+  name=name.slice(halftime[0].length).trim();
  }else if(post){
   half=/^(?:1st|first)/.test(post[0])?1:2;
   name=name.slice(0,-post[0].length).trim();
@@ -72,8 +76,7 @@ export function parsePeriodGoalTotal(line,teams={}){
  // "2nd half - exact goals 2+", "Total goals (exact)". The outcome still supplies the
  // chosen number/range; a title saying 2+ is a lower bound, not
  // permission to invent a hidden player, period or total.
- const exactGroup=name.match(/^(?:exact goals?|goals?\s+exact)(?:\s+(\d{1,2})\+)?$/);
- const titleMinimum=exactGroup?.[1]==null?null:Number(exactGroup[1]);
+ const exactGroup=name.match(/^(?:exact goals?|goals?\s+exact|multigoals?|number of goals?)(?:\s+\d{1,2}\+)?$/);
  if(exactGroup)name='goals';
  if(!/^(?:goals?|goal line|total|over\s*\/\s*under)$/.test(name))return null;
  const title=norm(line.market_name??line.marketName??'');
@@ -98,9 +101,6 @@ export function parsePeriodGoalTotal(line,teams={}){
  else if(more){kind='atLeast';target=Number(more[1]);}
  else if(range){kind='range';target=[Number(range[1]),Number(range[2])];}
  else return null;
- if(titleMinimum!==null&&
-    (kind==='range'?target[0]<titleMinimum:
-     (typeof target==='number'&&target<titleMinimum)))return null;
  if(kind==='range'){
   if(target[1]<target[0]||target[1]>100)return null;
  }else if(!Number.isFinite(target)||target<0||target>100||
