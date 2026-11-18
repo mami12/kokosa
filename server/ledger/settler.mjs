@@ -489,7 +489,7 @@ export function classify(marketName = '') {
   if (isHtFtMarket(marketName)) return 'HT_FT';
   // Zizobet's native 1UP/2UP/3UP and bare 3way labels are 3-outcome
   // full-time result markets (the accepted outcomes are 1/X/2).
-  if (/^(?:3[\\s-]*way|full time [123]up)$/i.test(s.trim())) return '1X2';
+  if (/^(?:3[\s-]*way|full time [123]up)$/i.test(s.trim())) return '1X2';
   if (/correct score|exact score/i.test(s)) return 'CORRECT_SCORE';
   if (/^\s*(?:half\s*time|halftime)\s*[-:.]?\s*(?:3[\s-]*way|1x2)\s*$/i.test(s))return '1X2';
   if (/odd[\s/]*even|tek[\s/]*cift/i.test(s)) return 'ODD_EVEN';
