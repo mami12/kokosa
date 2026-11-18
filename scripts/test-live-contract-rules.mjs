@@ -227,6 +227,18 @@ assert.equal(await gradeNoNextGoal({version:1,kind:'sequence',event:'goal',targe
 assert.equal(await gradeNoNextGoal({version:1,kind:'sequence',event:'goal',target:2,side:'none',noneOffered:true}),
  'WON','Stored Zizobet event facts must settle the quoted No Goal outcome as WON');
 
+const extraTimeGoalFacts={...confirmedGoalFacts,count_home:0,count_away:1,home:0,away:1,total:1,
+ normal_home:0,normal_away:0,phase_ambiguous:false,nth_team:null,nth_minute:null,nth_same_time:null};
+const gradeNoRegulationGoal=async contract=>gradeStoredEventContract({
+ id:'line-next-goal-extra-time',match_id:8,live_contract:contract
+ },{home_score:0,away_score:1,corners_home:0,corners_away:0,cards_home:0,cards_away:0},
+ {execute:async()=>({rows:[extraTimeGoalFacts]})});
+assert.equal(await gradeNoRegulationGoal({version:1,kind:'sequence',event:'goal',target:1,side:'home',normalTimeOnly:true}),'LOST',
+ 'A goal scored only in extra time cannot trigger a regulation-time Next Goal selection');
+assert.equal(await gradeNoRegulationGoal({version:1,kind:'sequence',event:'goal',target:1,side:'none',noneOffered:true,normalTimeOnly:true}),'WON',
+ 'No Goal wins when no regulation-time goal was scored, even if extra time later contains a goal');
+
+
 const teamNthFacts={...confirmedGoalFacts,count_home:1,count_away:1,home:1,away:1,total:2,
  team_nth_minute:72,team_nth_same_time:1};
 const gradeTeamNth=async(contract,facts=teamNthFacts)=>gradeStoredEventContract({
