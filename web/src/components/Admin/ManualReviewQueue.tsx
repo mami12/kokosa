@@ -33,6 +33,8 @@ const labels: Record<string, string> = {
   VOID_NEEDS_CONFIRMATION: 'E pavlefshme: kontrollo nëse anulimi ishte i justifikuar',
   CONFLICTING_API_STATISTICS: 'Mospërputhje mes burimeve të statistikave të ndeshjes',
   MISSING_EVENT_TIMELINE: 'Mungon kronologjia e ngjarjeve (gol, korner ose interval)',
+  MISSING_GOAL_METHOD_EVIDENCE: 'Mungon prova e llojit të golit nga burimi kryesor (penallti, kokë ose këmbë)',
+  NATIVE_CONTRACT_REVIEW: 'Tregu pranohet nga Zizobet, por kërkon rregull të verifikuar për shlyerje',
   MISSING_MARKET_STATISTICS: 'Mungojnë statistikat e nevojshme për mbylljen e tregut',
   UNRESOLVED_FINAL_SELECTION: 'Ndeshja ka përfunduar, por përzgjedhja ende nuk është zgjidhur automatikisht',
   MISSING_FINAL_RESULT: 'Mungon rezultati përfundimtar i konfirmuar nga burimi sportiv',
