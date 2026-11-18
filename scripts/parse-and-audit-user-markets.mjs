@@ -60,6 +60,7 @@ const USER_EXCLUDE_REGEX = new RegExp([
   'ot & pen',
   'incl\\. ot',
   '(?:anytime )?goalscorers?',
+  'scores?\\s+№?.*goal\\s*&\\s*correct score',
   'player.*(?:to score|scores?\\s+(?:a )?goal|goalscorer)',
 ].join('|'), 'i');
 
