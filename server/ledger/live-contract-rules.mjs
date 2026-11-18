@@ -22,7 +22,8 @@ const sideOf=v=>['1','home','home team','team 1'].includes(norm(v))?'home':['2',
 const typeOf=name=>/\b(?:corners?|corner kicks?|kornera?)\b/.test(name)?'corner':
  /\b(?:goals?|scores?|golat?|gola?)\b/.test(name)?'goal':
  /\b(?:cards?|bookings?|kartona?)\b/.test(name)?'card':
- /\b(?:fouls?|faulle?)\b/.test(name)?'foul':\n /\b(?:offsides?)\b/.test(name)?'offside':null;
+ /\b(?:fouls?|faulle?)\b/.test(name)?'foul':
+ /\b(?:offsides?)\b/.test(name)?'offside':null;
 const nonNeg=v=>{const n=number(v);return n!==null&&Number.isInteger(n)&&n>=0?n:null;};
 /** Freeze the provider's exact goal ordinal/interval before any funds move.
  * Provider labels are used only during initial quote interpretation.
@@ -347,7 +348,7 @@ export function parseIntervalCount(line) {
  if(length!=null&&!exclusive&&quotedEnd-from+1!==length)return null;
  const to=exclusive?quotedEnd-1:quotedEnd;
  const event=typeOf(eventName);
- if(!['goal','corner','card','foul'].includes(event))return null;
+ if(!['goal','corner','card','foul','offside'].includes(event))return null;
  const label=norm(line.outcome_name??line.outcomeName??line.outcome_key??line.outcomeKey);
  const rawLine=number(line.line??line.specifier),inTitle=number(titleLine?.replace(',','.'));
  const over=label.match(/^over(?:\s+(\d+(?:[.,]\d+)?))?$/);
@@ -376,7 +377,7 @@ export function parseIntervalCount(line) {
  */
 export function parseClockWindowTotal(line){
  const name=norm(line.market_name??line.marketName??line.name);
- const m=name.match(/^(\d{1,3}):([0-5]\d)\s*[-–]\s*(\d{1,3}):([0-5]\d)\s*min\.?\s*[-–]\s*(?:total\s+)?(?:(home|away)\s+team\s+)?(goals?|corners?|cards?|fouls?)(?:\s+(home|away)\s+team)?\s*(?:\((\d+(?:[.,]\d+)?)\))?$/);
+ const m=name.match(/^(\d{1,3}):([0-5]\d)\s*[-–]\s*(\d{1,3}):([0-5]\d)\s*min\.?\s*[-–]\s*(?:total\s+)?(?:(home|away)\s+team\s+)?(goals?|corners?|cards?|fouls?|offsides?)(?:\s+(home|away)\s+team)?\s*(?:\((\d+(?:[.,]\d+)?)\))?$/);
  if(!m||m[2]!=='00'||m[4]!=='59'||(m[5]&&m[7]))return null;
  const from=Number(m[1]),to=Number(m[3]);
  // 45+ first-half injury time can overlap ordinary absolute minute 45;
