@@ -73,6 +73,8 @@ const NON_FOOTBALL_PATTERN = new RegExp([
   '\\b(?:quarters?|points?|rebounds?|dunks?|free\\s+throw|field\\s+goal|jump\\s+ball|basketball)\\b',
   '\\b(?:home\\s+run|strikeouts?|pitcher|batting|batter|base\\s+on\\s+balls|at\\s+bat|time\\s+at\\s+bat|pitch\\b|baseball)\\b',
   '\\b(?:touchdowns?|touchdown|try|tries|conversion|quarterback|passing\\s+yards|rushing\\s+yards|drive\\s+play|first\\s+down|pass\\s+completion|sack|yards?\\s+gained|rugby|nfl)\\b',
+  '\\b(?:h2h|money line \\(ot\\)|next first value scoring play|result of range hit|round advantage|top second value|top 3 \\(teams\\)|when will the match be decided|winning method|2nd place in the tournament|which team will win the final|free text market|short term free text market)\\b',
+
   '\\b(?:puck|puck\\s+line|powerplay|empty\\s+net|period\\s+and\\s+matchbet|period\\s+result|hockey)\\b',
   '\\b(?:periods?\\b)',
   '\\b(?:knockout|tko|submission|round\\s+\\d+|rounds?\\s+handicap|rounds?\\s+odd|method\\s+of\\s+victory|fighter|knockdowns?|strikes?\\s+landed|boxing|mma|ufc|fight\\s+ends)\\b',
