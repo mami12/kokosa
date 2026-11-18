@@ -37,10 +37,15 @@ export function extractConfirmedHalfTimeCandidate(row){
  const fullHome=score(row.home_score),fullAway=score(row.away_score);
  if(fullHome==null||fullAway==null||home>fullHome||away>fullAway)return null;
  if(phase==='HT'&&(home!==fullHome||away!==fullAway))return null;
- const scoreAt=milliseconds(row.score_at),phaseAt=milliseconds(row.feed_status_at);
+ const scoreAt=milliseconds(row.score_at),phaseAt=milliseconds(row.feed_status_at),
+  clockAt=milliseconds(row.clock_at);
+ // score_at and feed_status_at identify the original score/HT transition.
+ // clock_at advances with each new primary match-info snapshot, even while
+ // the score and phase remain unchanged. Use it to prove the second poll.
  if(!Number.isFinite(scoreAt)||!Number.isFinite(phaseAt)||
-    Math.abs(scoreAt-phaseAt)>120000)return null;
- const at=Math.max(scoreAt,phaseAt);
+    !Number.isFinite(clockAt)||Math.abs(scoreAt-phaseAt)>120000||
+    clockAt<Math.max(scoreAt,phaseAt))return null;
+ const at=clockAt;
  const primaryHome=String(row.home??'').trim(),primaryAway=String(row.away??'').trim();
  if(!primaryHome||!primaryAway||primaryHome===primaryAway)return null;
  return {source:'ZIZOBET',matchId:Number(row.match_id),homeTeam:primaryHome,awayTeam:primaryAway,
