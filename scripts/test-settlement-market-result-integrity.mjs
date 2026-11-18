@@ -106,4 +106,13 @@ assert.equal(gradeLine(choice('Total Goals','Over',{line:'2.5',period:2}),blowou
 assert.equal(gradeLine(choice('Home Team Total Goals','Over',{line:'2.5'}),blowout),'WON');
 assert.equal(gradeLine(choice('Away Team Total Goals','Over',{line:'0.5'}),blowout),'LOST');
 
+
+const denmarkNorway={...score,home_team:'Denmark',away_team:'Norway',
+ home_score:2,away_score:3,half_home_score:2,half_away_score:1};
+for(const market of ['Full Time 1UP','Full Time 2UP','Full Time 3UP','3way']){
+ assert.equal(gradeLine(choice(market,'2'),denmarkNorway),'WON',market+' away selection');
+ assert.equal(gradeLine(choice(market,'X'),denmarkNorway),'LOST',market+' draw selection');
+ assert.equal(gradeLine(choice(market,'1'),denmarkNorway),'LOST',market+' home selection');
+}
+
 console.log('PASS period-scoped score markets, DNB draw win at 1.00, clean sheets, exact bands, card unknowns');
