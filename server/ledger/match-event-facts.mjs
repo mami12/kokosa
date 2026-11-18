@@ -235,7 +235,7 @@ export async function persistVerifiedEventFacts(matchId, frame, execute, observe
  }
  return stored;
 }
-export const SUPPORTED_FACT_KINDS=new Set(['window','sequence','race','last-event','over','under','exact','atLeast','range','team-total-goals','interval-result','interval-leader','window-total','nth-time','player-goal','player-ordinal-goal','player-goal-special','player-card','half-combo','period-goal-total','half-first-event','half-last-event','half-race','half-next-event','half-parity','half-exact-count','multi-corners','corner-comparison','score-handicap','half-total']);
+export const SUPPORTED_FACT_KINDS=new Set(['window','sequence','race','last-event','over','under','exact','atLeast','range','team-total-goals','team-nth-time','interval-result','interval-leader','window-total','nth-time','player-goal','player-ordinal-goal','player-goal-special','player-card','half-combo','period-goal-total','half-first-event','half-last-event','half-race','half-next-event','half-parity','half-exact-count','multi-corners','corner-comparison','score-handicap','half-total']);
 /** A complete, independently reconciled match-corner timeline is required
  * before first-half "First Corner / None" can be decided. Unlabelled stoppage
  * and minute-45+ events cannot be assigned to a half from the minute alone.
@@ -507,6 +507,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    (select team from ordered where ordinal=$8) as nth_team,
    (select minute from ordered where ordinal=$8) as nth_minute,
    (select same_time from ordered where ordinal=$8) as nth_same_time,
+   (select minute from ordered where team=$5::text and team_ordinal=$8) as team_nth_minute,
+   (select same_time from ordered where team=$5::text and team_ordinal=$8) as team_nth_same_time,
    (select min(ordinal) from (
      select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
      from ordered
@@ -648,6 +650,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  const expected=Number(c.target??c.threshold);
  const decision=truth=>truth?'WON':'LOST';
  if(c.kind==='window'){
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
   // A proven event decides YES immediately and NO as lost; a verified
   // absence cannot win until the full quoted time window is complete.
   const closesAt=c.startExclusive===true?Number(c.to):Math.floor(Number(c.to))+1;
@@ -693,6 +696,20 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    if(found>=c.target)return 'WON';
    return closed?'LOST':null;
   }
+  return null;
+ }
+ if(c.kind==='team-nth-time'){
+  if(c.event!=='goal'||!['home','away'].includes(c.side)||
+     !Number.isInteger(c.target)||c.target<1||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(data.team_nth_minute!=null){
+   const minute=Number(data.team_nth_minute);
+   if(!Number.isInteger(minute)||minute<0||minute>130)return null;
+   return decision(minute>=c.from&&minute<=c.to);
+  }
+  // Once the requested team's event window is completely covered, the
+  // absence of that team's next goal is a loss even if the match continues.
+  if(through>c.to||full)return 'LOST';
   return null;
  }
  if(c.kind==='nth-time'){
