@@ -1370,10 +1370,15 @@ export async function updatePendingLine(lineId,status,ticketId,{database=pool,se
  */
 export function pendingEventReason(line,result){
  const contract=line?.live_contract;
- if(!contract)return null;
+ if(!result)return 'FINAL_RESULT_OR_LIVE_FACTS_UNVERIFIED';
+ if(!contract){
+  const name=String(line?.market_name??'').toLowerCase();
+  if(/\\b(?:next|first|last|race|interval|minute|corner|card|goal|scorer|player|race to|between)\\b/.test(name))
+   return 'NO_LIVE_CONTRACT';
+  return 'NO_SETTLEMENT_RULE';
+ }
  if(contract.kind==='player-goal')return 'PLAYER_IDENTITY_OR_PARTICIPATION_UNVERIFIED';
  if(contract.kind==='half-first-event')return 'FIRST_HALF_EVENT_PHASE_OR_COVERAGE_UNVERIFIED';
- if(!result)return 'FINAL_RESULT_OR_LIVE_FACTS_UNVERIFIED';
  if(['sequence','race','nth-time'].includes(contract.kind))
    return 'EVENT_ORDER_OR_COVERAGE_UNVERIFIED';
  if(contract.kind==='interval-result'||contract.startExclusive===true)
@@ -1471,8 +1476,8 @@ export async function settleMatch(matchId) {
          !(isHandicapMarket(line)&&legacyHandicapResult(line,result)==='VOID'))status=null;
     }
     if(!['WON','LOST','VOID'].includes(status)){
-      if(line.live_contract)unresolved.push({line,result});
-      continue; // incomplete feed => PENDING
+      unresolved.push({line,result});
+      continue; // incomplete feed or missing market rule => PENDING
     }
     const settledOdds=settledOddsFor(line,result,status);
     const updated=await updatePendingLine(line.id,status,line.ticket_id,{settledOdds});
