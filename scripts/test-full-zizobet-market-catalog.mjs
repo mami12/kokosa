@@ -5,6 +5,7 @@ import {marketIsEnabled,nativeMarketPolicyKeys} from '../server/market-catalog.m
 import {refreshMarketCatalog,seedNativeMarketCatalog,assertMarketEnabled} from '../server/ledger/market-catalog-store.mjs';
 import {LEDGER_SQL} from '../server/ledger/schema.mjs';
 import {hasFinalSettlementRule} from '../server/ledger/market-settlement-preflight.mjs';
+import {gradeLine} from '../server/ledger/settler.mjs';
 import {oddsOf,dedupeMarketRows,infoOf} from '../server/zizobet/normalize.mjs';
 
 assert.match(LEDGER_SQL,/create table if not exists app_supplemental_match_incident/i,
@@ -25,24 +26,31 @@ const separateCorrectScores=dedupeMarketRows([
 ]);
 assert.equal(separateCorrectScores.length,2,
  'correct-score grids from different native IDs must remain separate contracts');
-// Native quarter-line totals must remain placeable but cannot use the
-// ordinary full-win/full-loss grader until split-stake settlement is added.
+// Native decimal totals use the quoted threshold directly; integer lines still push at equality.
 for(const line of ['0.25','0.75','1.25','1.75']){
  const offer={provider_id:'ZIZOBET',market_name:'Total Goals',outcome_name:'Over',
   outcome_key:'Over',line};
- assert.equal(hasFinalSettlementRule(offer),false,
-  'quarter total '+line+' must remain pending rather than be settled as a full result');
+ assert.equal(hasFinalSettlementRule(offer),true,
+  'quoted decimal total '+line+' must have an exact Over/Under settlement rule');
 }
 assert.equal(hasFinalSettlementRule({provider_id:'ZIZOBET',market_name:'Total Goals',
  outcome_name:'Over',outcome_key:'Over',line:'2.5'}),true,
  'ordinary half-goal totals retain their existing settlement rule');
+
+const fiveGoals={home_score:3,away_score:2,half_home_score:1,half_away_score:1,
+ corners_home:4,corners_away:3,cards_home:1,cards_away:0};
+assert.equal(gradeLine({market_name:'Total Goals',outcome_name:'Over',outcome_key:'Over',line:'4.75'},fiveGoals),'WON');
+assert.equal(gradeLine({market_name:'Total Goals',outcome_name:'Under',outcome_key:'Under',line:'5.75'},fiveGoals),'WON');
+assert.equal(gradeLine({market_name:'Home Team Total Corners',outcome_name:'Over',outcome_key:'Over',line:'3.75'},
+ {...fiveGoals,corners_home:4,corners_away:3}),'WON');
+
 assert.equal(hasFinalSettlementRule({provider_id:'ZIZOBET',market_name:'Total Goals 1.25',
- outcome_name:'Over',outcome_key:'Over',line:''}),false,
- 'quarter thresholds embedded in provider market titles must also remain pending');
+ outcome_name:'Over',outcome_key:'Over',line:''}),true,
+ 'quarter thresholds embedded in provider market titles must also be graded');
 for(const market of ['Total Corners','Home Team Total Corners']){
  assert.equal(hasFinalSettlementRule({provider_id:'ZIZOBET',market_name:market,
-  outcome_name:'Over',outcome_key:'Over',line:'1.75'}),false,
-  market+' quarter totals must not be graded as full wins/losses');
+  outcome_name:'Over',outcome_key:'Over',line:'1.75'}),true,
+  market+' decimal total must use its exact quoted threshold');
 }
 try{
  await db.exec(`create table app_provider_market_definition(
