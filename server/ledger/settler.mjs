@@ -489,6 +489,7 @@ export function classify(marketName = '') {
   if (isHtFtMarket(marketName)) return 'HT_FT';
   // Bare 3way is a normal 1X2 market. Full Time 1UP/2UP/3UP are
   // early-lead contracts and must never fall through to ordinary FT grading.
+  if (/^full[\s.-]*time[\s:.-]*(?:1up|2up|3up)$/i.test(s.trim())) return '1X2';
   if (/^3[\s-]*way$/i.test(s.trim())) return '1X2';
   if (/correct score|exact score/i.test(s)) return 'CORRECT_SCORE';
   if (/^\s*(?:half\s*time|halftime)\s*[-:.]?\s*(?:3[\s-]*way|1x2)\s*$/i.test(s))return '1X2';
@@ -570,6 +571,8 @@ export function hasRequiredSettlementEvidence(line, result) {
   if(line?.accepted_contract?.settlementHold)
     return gradeHeldNativeCombo(line,result)!==null;
   line=withFrozenPeriod(line);
+  if(/^full[\s.-]*time[\s:.-]*(?:1up|2up|3up)$/i.test(String(line.market_name??'').trim()))
+    return hasRequiredSettlementEvidence({...line,market_name:'Full Time Result',live_contract:null},result);
   if (!result||scoreValue(result.home_score)===null||scoreValue(result.away_score)===null)return false;
   if(!Array.isArray(line.builder_legs)&&unverifiedCompositeLine(line,result))return false;
   if(line.live_contract?.kind==='half-combo')
@@ -671,6 +674,8 @@ export function gradeLine(line, result) {
   if(line?.accepted_contract?.settlementHold)
     return gradeHeldNativeCombo(line,result);
   line=withFrozenPeriod(line);
+  if(/^full[\s.-]*time[\s:.-]*(?:1up|2up|3up)$/i.test(String(line.market_name??'').trim()))
+    return gradeLine({...line,market_name:'Full Time Result',live_contract:null},result);
   // Never score a two-condition native quote by matching only the first
   // recognized word. A provider-aligned unknown contract remains PENDING.
   if(!Array.isArray(line.builder_legs)&&unverifiedCompositeLine(line,result))return null;
