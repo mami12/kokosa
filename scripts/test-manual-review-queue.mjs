@@ -17,6 +17,22 @@ assert.equal(reviewReason({...base,market_name:'Total Corners'},now),'MISSING_MA
 assert.equal(reviewReason({...base,market_name:'Total Shots on Target',
  statistics_review:{conflicts:{shotsOnTarget:{a:{home:2,away:3},b:{home:4,away:2}}}}},now),'CONFLICTING_API_STATISTICS');
 assert.equal(reviewReason({...base,line_status:'VOID',ticket_status:'VOID'},now),'VOID_NEEDS_CONFIRMATION');
+
+// A two-way integer total that exactly meets its line is a legitimate push.
+// It should not generate a false administrator alert.
+const fullTimePush={...base,line_status:'VOID',ticket_status:'VOID',
+ market_name:'Total 5',line:'5',outcome_key:'under',outcome_name:'Under',
+ home_score:2,away_score:3};
+assert.equal(reviewReason(fullTimePush,now),null,'confirmed full-time total push is not a manual-review anomaly');
+const halfTimePush={...base,line_status:'VOID',ticket_status:'VOID',
+ market_name:'Halftime - Total 3',line:'3',outcome_key:'over',outcome_name:'Over',
+ accepted_contract:{providerPeriod:1},home_score:2,away_score:3,
+ half_home_score:2,half_away_score:1};
+assert.equal(reviewReason(halfTimePush,now),null,'confirmed HT total push is not a manual-review anomaly');
+const unknownVoid={...base,line_status:'VOID',ticket_status:'VOID',
+ market_name:'Scoring type',line:'',outcome_name:'Penalty'};
+assert.equal(reviewReason(unknownVoid,now),'VOID_NEEDS_CONFIRMATION',
+ 'unsupported event VOID remains visible for manual review');
 assert.equal(reviewReason({...base,result_id:null,match_status:'live',feed_status:'live'},now),null,'active fixtures are not invalid');
 assert.equal(reviewReason({...base,result_id:null,match_status:'ended',feed_status:'ended'},now),'MISSING_FINAL_RESULT');
 
@@ -25,6 +41,9 @@ const rows=[
  {...base,line_id:'line-b',ticket_id:'ticket-b',market_name:'Total Corners'},
  {...base,line_id:'line-c',ticket_id:'ticket-c',line_status:'VOID',ticket_status:'VOID'},
  {...base,line_id:'line-d',ticket_id:'ticket-d',result_id:null,feed_status:'live',match_status:'live'},
+ {...fullTimePush,line_id:'line-e',ticket_id:'ticket-e'},
+ {...halfTimePush,line_id:'line-f',ticket_id:'ticket-f'},
+ {...unknownVoid,line_id:'line-g',ticket_id:'ticket-g'},
 ];
 let observedSql='',observedParams;
 const notices=new Map();
@@ -37,16 +56,16 @@ const runQuery=async(sql,params)=>{
  return {rows:rows.map(row=>({...row,first_seen_at:notices.get(row.line_id)}))};
 };
 const queue=await manualReviewQueue({runQuery,now,limit:25});
-assert.equal(queue.notificationCount,3);
+assert.equal(queue.notificationCount,4);
 assert.equal(queue.items[0].noticeExpiresAt,new Date(now+48*3600000).toISOString());
 const justBefore=await manualReviewQueue({runQuery,now:now+48*3600000-1,limit:25});
-assert.equal(justBefore.notificationCount,3);
+assert.equal(justBefore.notificationCount,4);
 const expired=await manualReviewQueue({runQuery,now:now+48*3600000,limit:25});
 assert.equal(expired.notificationCount,0);
-assert.equal(expired.items.length,3,'expiry does not close unresolved cases');
+assert.equal(expired.items.length,4,'expiry does not close unresolved cases');
 assert.match(observedSql,/o.status='PENDING'/,'an explicit pending decision keeps the review open');
-assert.equal(queue.items.length,3);
-assert.deepEqual(queue.items.map(r=>r.lineId),['line-a','line-b','line-c']);
+assert.equal(queue.items.length,4);
+assert.deepEqual(queue.items.map(r=>r.lineId),['line-a','line-b','line-c','line-g']);
 assert.equal(queue.items[0].finalScore,'2 - 1');
 assert.equal(queue.items[2].lineStatus,'VOID');
 assert.match(observedSql,/app_settlement_override/);
