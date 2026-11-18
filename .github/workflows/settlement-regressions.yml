@@ -1,0 +1,35 @@
+name: Settlement regressions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "server/ledger/**"
+      - "server/zizobet/**"
+      - "server/match-statistics.mjs"
+      - "scripts/test-*.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/settlement-regressions.yml"
+  pull_request:
+    paths:
+      - "server/ledger/**"
+      - "server/zizobet/**"
+      - "server/match-statistics.mjs"
+      - "scripts/test-*.mjs"
+      - "package.json"
+      - "package-lock.json"
+
+jobs:
+  settlement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run test:settlement-focused
+      - run: npm run test:markets
