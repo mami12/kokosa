@@ -635,7 +635,7 @@ export const liveContract=(line,{counts={},clock=null,teams={}}={})=>{
  const yellow=/\byellow\s+cards?\b/.test(name),red=/\bred\s+cards?\b/.test(name);
  const ambiguous=/\b(?:second\s+yellow|yellow\s+red)\b/.test(name);
  if((yellow&&red)||ambiguous)return null;
- let contract=parsePlayerOrdinalScorer(line)??parsePlayerGoalSpecial(line)??parsePlayerCardContract(line)??parsePlayerGoalContract(line)??parseLeadUpMarket(line)??parseWindowParity(line)??parseFirstCornerWindow(line)??parseIntervalHandicap(line)??parseSendingOffMarket(line)??parseNumberedGoalWindow(line)??parseOrdinalGoalTime(line,counts)??
+ const contract=parsePlayerOrdinalScorer(line)??parsePlayerGoalSpecial(line)??parsePlayerCardContract(line)??parsePlayerGoalContract(line)??parseLeadUpMarket(line)??parseWindowParity(line)??parseFirstCornerWindow(line)??parseIntervalHandicap(line)??parseSendingOffMarket(line)??parseNumberedGoalWindow(line)??parseOrdinalGoalTime(line,counts)??
   parseTimedResultMarket(line)??parseIntervalLeader(line)??
   parseEventWindow(line,clock)??parseIntervalCount(line)??parseClockWindowTotal(line)??
   parseHalfExactMarket(line)??parseHalfTotal(line)??(parseParityMarket(line)?.kind==='half-parity'?parseParityMarket(line):null)??parseColorCardCount(line)??parseFirstHalfCorner(line)??parseHalfEventContract(line,counts)??parseLastEvent(line)??parseSequenceBet(line,counts)??
@@ -647,9 +647,6 @@ export const liveContract=(line,{counts={},clock=null,teams={}}={})=>{
  // Unknown/missing foul counters leave these bets PENDING, not LOST.
  if(contract?.event==='foul'&&!['window','window-total','interval-leader'].includes(contract.kind))return null;
  if(!contract)return null;
- // Football event contracts in this project are regulation-time markets.
- // Extra-time and penalty-shootout incidents are never silently counted.
- if(contract.event&&contract.normalTimeOnly!==true)contract={...contract,normalTimeOnly:true};
  // Quarter-line totals require split-stake grading. The event counter below
  // can prove the count, but cannot represent half-win/half-loss outcomes.
  // Leave these native offers without an auto-settlement contract so placement
