@@ -22,7 +22,7 @@ const playerSide=(label,teams={})=>{
 export function parseHandicapContract(line,{teams={},drawOffered=false}={}){
  if(!isHandicapMarket(line))return null;
  const name=norm(line.market_name??line.marketName??line.name);
- if(/\b(?:shots?|cards?|fouls?|players?|penalties|extra time|sets?)\b/.test(name))return null;
+ if(/\b(?:shots?|cards?|fouls?|players?|penalties|extra time|sets?|minutes?|mins?|interval|time range)\b/.test(name))return null;
  const event=/\bcorners?\b/.test(name)?'corner':'goal';
  const first=/\b(?:1st|first) half\b/.test(name),second=/\b(?:2nd|second) half\b/.test(name);
  if(first&&second)return null;
