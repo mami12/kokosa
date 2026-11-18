@@ -27,7 +27,7 @@ assert.deepEqual({kind:nextAway?.kind,target:nextAway?.target,side:nextAway?.sid
 const sendingOff=liveContract({market_name:'Sending off?',outcome_name:'Yes'});
 assert.deepEqual({kind:sendingOff?.kind,event:sendingOff?.event,color:sendingOff?.cardColor,
  from:sendingOff?.from,to:sendingOff?.to,choice:sendingOff?.choice},
- {kind:'window',event:'card',color:'red',from:0,to:90,choice:true});
+ {kind:'window',event:'card',color:'red',from:0,to:130,choice:true,normalTimeOnly:true});
 assert.deepEqual(parseSendingOffMarket({market_name:'Sending off?',outcome_name:'No'})?.choice,false);
 
 const firstCornerWindow=liveContract({market_name:'Who takes first corner in minutes 21-30 (10-minute interval)',outcome_name:'1'});
@@ -251,6 +251,14 @@ const gradeSendingOff=async(contract,facts)=>gradeStoredEventContract({
 assert.equal(await gradeSendingOff(sendingOff,redCardFacts),'WON',
  'A verified red card proves Sending Off Yes');
 assert.equal(await gradeSendingOff({...sendingOff,choice:false},redCardFacts),'LOST');
+
+const noRedFacts={...confirmedGoalFacts,count_home:0,count_away:0,home:0,away:0,total:0,
+ color_window_count:0,color_total:0,card_colors_verified:true,phase_ambiguous:false};
+assert.equal(await gradeSendingOff(sendingOff,noRedFacts),'LOST',
+ 'Confirmed absence of red cards through normal time settles Sending Off No');
+assert.equal(await gradeSendingOff(sendingOff,{...noRedFacts,phase_ambiguous:true}),null,
+ 'Unknown post-90 card phase cannot be guessed as stoppage time or extra time');
+
 assert.equal(await gradeSendingOff(sendingOff,{...redCardFacts,color_window_count:0,
  color_total:0,card_colors_verified:false}),null,
  'Unknown card color cannot prove that no sending off occurred');
