@@ -20,8 +20,9 @@ import { withOdds, serializeMatch } from '../collector.mjs';
 import { toClientMatch, toClientMatches } from './view.mjs';
 import { marketCategories, MARKET_CATEGORY_IDS } from '../market-catalog.mjs';
 import {isSyntheticFootballMatch} from '../football-competitions.mjs';
-import {isDecidedLiveMarket, isDecidedLiveOutcome} from './decided-markets.mjs';
+import {isDecidedLiveMarket, isDecidedLiveOutcome, isZizobetNativeOffer} from './decided-markets.mjs';
 import {isExcludedOfferMarket, isRetiredPlayerOfferMarket, isHandicapOfferMarket} from '../market-policy.mjs';
+import {isCurrentSettlementCheckQuote} from './settlement-check.mjs';
 
 export const adminRouter = express.Router();
 
@@ -149,12 +150,15 @@ async function settlementCheckSelections(matchIds, refresh) {
     const phase = String(current.period ?? current.phase ?? current.feed_status ?? '').toLowerCase();
     const inSecondHalfOrHT = /^(?:2h|ht|ft|2nd half|second half|break time|half time|halftime|ended|finished)\b/.test(phase);
 
-    const seen = new Set(), selections = [];
+    const seen = new Set(), selections = [], selectedMarkets = new Set(), quoteNow = Date.now();
     for (const market of match.markets ?? []) {
       if (market.status !== 'ACTIVE') continue;
       // Exclude markets we do NOT want (cards, fouls, shots on target, saves, tackles, throw-ins, offsides, player props, Asian handicap)
       if (isExcludedOfferMarket(market) || isRetiredPlayerOfferMarket(market) || isHandicapOfferMarket(market)) continue;
-      if (isLiveMatch) {
+      const nativeZizobet = isZizobetNativeOffer(market, current);
+      // Zizobet is authoritative for its currently offered native contracts.
+      // Local score/clock heuristics are fallback rules for non-native feeds only.
+      if (isLiveMatch && !nativeZizobet) {
         if (isDecidedLiveMarket(current, market)) continue;
         // 1st half markets cannot be bet on in 2nd half or HT
         if (inSecondHalfOrHT && (Number(market.period ?? 0) === 1 || /\b(?:1st|first)\s*half\b|\bhalf.?time\b(?!\s*\/?\s*(?:fulltime|ft))/i.test(String(market.name ?? '')))) continue;
@@ -163,8 +167,8 @@ async function settlementCheckSelections(matchIds, refresh) {
         if (isFirstGoalTiming && totalGoals >= 1) continue;
       }
       for (const outcome of market.outcomes ?? []) {
-        if (outcome.status !== 'ACTIVE' || !Number.isFinite(Number(outcome.odds)) || Number(outcome.odds) <= 1 || seen.has(outcome.id)) continue;
-        if (isLiveMatch) {
+        if (!isCurrentSettlementCheckQuote(market, outcome, quoteNow) || seen.has(outcome.id)) continue;
+        if (isLiveMatch && !nativeZizobet) {
           if (isDecidedLiveOutcome(current, { ...market, outcomeName: outcome.name, outcomeCode: outcome.key, outcome_name: outcome.name, outcome_key: outcome.key })) continue;
           // Check elapsed minute intervals: e.g. at min 20, outcome "1-10" or "1-15" is expired
           if (currentMin !== null && Number.isFinite(currentMin)) {
@@ -174,10 +178,11 @@ async function settlementCheckSelections(matchIds, refresh) {
           }
         }
         seen.add(outcome.id);
+        selectedMarkets.add(String(market.id ?? market.extId ?? market.key ?? market.name) + '|' + String(market.line ?? market.specifier ?? ''));
         selections.push({ outcomeId: outcome.id, oddsAtPlacement: Number(outcome.odds) });
       }
     }
-    matches.push({id:match.id,name:`${match.homeTeam?.name ?? match.homeTeam ?? ''} vs ${match.awayTeam?.name ?? match.awayTeam ?? ''}`.trim(),status:match.status,marketCount:match.markets?.filter(market => market.status === 'ACTIVE').length ?? 0,selections});
+    matches.push({id:match.id,name:`${match.homeTeam?.name ?? match.homeTeam ?? ''} vs ${match.awayTeam?.name ?? match.awayTeam ?? ''}`.trim(),status:match.status,marketCount:selectedMarkets.size,selections});
   }
   return matches;
 }
