@@ -69,7 +69,7 @@ assert.deepEqual(queue.items.map(r=>r.lineId),['line-a','line-b','line-c','line-
 assert.equal(queue.items[0].finalScore,'2 - 1');
 assert.equal(queue.items[2].lineStatus,'VOID');
 assert.match(observedSql,/app_settlement_override/);
-assert.deepEqual(observedParams,[75]);
+assert.deepEqual(observedParams,[250]);
 
 // Simulate one approved selection only, in a two-line ticket. No live DB
 // or wallet is used; assert that only the selected UUID is changed.
