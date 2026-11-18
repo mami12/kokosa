@@ -37,6 +37,7 @@ export function reviewReason(row,now=Date.now()){
 }
 export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()}={}){
  const cap=Math.min(300,Math.max(1,Math.trunc(Number(limit)||150)));
+ const scanLimit=Math.min(10000,cap*10);
  const rows=(await runQuery(`select l.id as line_id,l.ticket_id,l.match_id,l.market_key,l.line,l.outcome_key,
     l.outcome_name,l.market_name,l.match_name,l.status as line_status,l.odds_at_placement,
     l.accepted_contract,l.settlement_reason,
@@ -59,7 +60,7 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
       and (l.status='VOID' or r.match_id is not null or t.placed_at<now()-interval '6 hours'
         or coalesce(l.accepted_contract->>'settlementHold','')<>'')
     order by case when l.status='VOID' then 0 else 1 end,t.placed_at desc
-    limit $1`,[Math.min(10000,cap*10)])).rows;
+    limit $1`,[scanLimit])).rows;
  const items=[];
  for(const row of rows){
   const reason=reviewReason(row,now);if(!reason)continue;
@@ -81,5 +82,5 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
    reason,conflicts:row.statistics_review?.conflicts??null});
   if(items.length>=cap)break;
  }
- return {items,count:items.length,notificationCount:items.filter(item=>item.notificationActive).length,hasMore:rows.length>items.length};
+ return {items,count:items.length,notificationCount:items.filter(item=>item.notificationActive).length,hasMore:items.length>=cap||rows.length===scanLimit};
 }
