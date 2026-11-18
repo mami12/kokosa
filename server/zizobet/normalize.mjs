@@ -42,6 +42,50 @@ export function resolveMarketTitle(raw,q,{intervalWidth}={}){
     name=race[1]+'Which team wins race to '+validVals[0]+' '+kind;
   }
  }
+ // The provider catalog exposes parameterized minute windows as readable
+ // placeholders rather than bracket tokens. Resolve them only from the native
+ // p1/p2/h/p3 quote parameters; never infer the interval from the live clock.
+ const providerWindow=name.match(/^(\\d{1,2})\\s+minutes?\\s*[-–]\\s*(.+?)\\s+from\\s+first value(?::00)?\\s*(?:to|[-–])\\s*second value(?::00)?\\s*min\\.?$/i);
+ const timeRange=name.match(/^(.+?)\\s+in\\s+(\\d{1,2})\\s+minutes?\\s+time range(?:\\s*\\((\\d{1,2})-minute interval\\))?$/i);
+ const fixedRange=name.match(/^(.+?)\\s+in\\s+(\\d{1,2})\\s+minutes?\\s+interval\\s+(\\d{1,3})\\s*[-–]\\s*(\\d{1,3})$/i);
+ const firstCorner=name.match(/^(\\d{1,2})\\s+minutes?\\s*[-–]\\s*1st corner\\s+from\\s+first value(?::00)?\\s*[-–]\\s*second value\\s*min$/i);
+ const intervalMatch=providerWindow??timeRange??fixedRange??firstCorner;
+ if(intervalMatch){
+  const width=Number(intervalMatch[1]??intervalMatch[2]);
+  const from=Number(providerWindow||firstCorner?q.p1:timeRange?q.p1:fixedRange?intervalMatch[3]:q.p1);
+  const to=Number(providerWindow||firstCorner?q.p2:timeRange?q.p2:fixedRange?intervalMatch[4]:q.p2);
+  if(!Number.isSafeInteger(width)||width<1||width>30||
+     !Number.isSafeInteger(from)||!Number.isSafeInteger(to)||from<0||to<from||to>130||to-from+1!==width)return null;
+  let descriptor=String(providerWindow?providerWindow[2]:timeRange?timeRange[1]:fixedRange?fixedRange[1]:'1st corner').trim();
+  descriptor=descriptor.replace(/\\s+/g,' ').toLowerCase();
+  const band=' in minutes '+from+'-'+to+' ('+width+'-minute interval)';
+  if(/^result(?:\\s+first value)?$/.test(descriptor))return 'Result from '+from+':00 to '+(to+1)+':00 min';
+  if(/^corner result$/.test(descriptor))return 'Who takes most corners'+band;
+  if(/^card result$/.test(descriptor))return 'Who receives most cards'+band;
+  if(/^corner handicap$/.test(descriptor))return 'Corner handicap'+band;
+  if(/^1st corner$/.test(descriptor))return 'Who takes first corner'+band;
+  if(/^who takes 1st corner$/.test(descriptor))return 'Who takes first corner'+band;
+  if(/^who takes most corners$/.test(descriptor))return 'Who takes most corners'+band;
+  if(/^who receives most bookings$/.test(descriptor))return 'Who receives most cards'+band;
+  if(/^who scores most goals$/.test(descriptor))return 'Who scores most goals'+band;
+  if(/^who scores goal number$/.test(descriptor)||/^№ value goal$/.test(descriptor)){
+   if(!/^\\d+$/.test(text(q.p3)))return null;
+   return 'Who scores goal '+q.p3+band;
+  }
+  const teamTotal=descriptor.match(/^total(?:\\s+(\\d+(?:[.,]\\d+)?))?\\s+(?:(home|away)team\\s+)?(corners?|cards?|bookings?|goals?)(?:\\s+(home|away)team)?$/);
+  if(teamTotal){
+   const value=teamTotal[1]??q.h;
+   if(value==null||!Number.isFinite(Number(value))||Number(value)<0||!Number.isInteger(Number(value)*2))return null;
+   const side=teamTotal[2]??teamTotal[4];
+   if(teamTotal[2]&&teamTotal[4])return null;
+   const event=/bookings?/i.test(teamTotal[3])?'cards':teamTotal[3].toLowerCase();
+   return 'Total '+value+(side?' '+side+' team':'')+' '+event+band;
+  }
+  const red=descriptor.match(/^(?:(home|away)team\\s+)?red card$/);
+  if(red)return (red[1]?red[1]+' team ':'')+'red card'+band;
+ }
+ // One legacy alias in the catalog uses the ordinal word instead of 1UP.
+ if(/^full time first valueup$/i.test(name))return 'Full Time 1UP';
  if(/^When will next goal be scored/i.test(name)&&/^\d+$/.test(text(q.p3))){
   const explicit=name.match(/in (\d+) minutes interval/i)?.[1];
   const width=explicit??intervalWidth;
