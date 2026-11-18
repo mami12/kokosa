@@ -17,6 +17,9 @@ assert.equal(reviewReason({...base,market_name:'Total Corners'},now),'MISSING_MA
 assert.equal(reviewReason({...base,market_name:'Total Shots on Target',
  statistics_review:{conflicts:{shotsOnTarget:{a:{home:2,away:3},b:{home:4,away:2}}}}},now),'CONFLICTING_API_STATISTICS');
 assert.equal(reviewReason({...base,line_status:'VOID',ticket_status:'VOID'},now),'VOID_NEEDS_CONFIRMATION');
+assert.equal(reviewReason({...base,line_status:'VOID',ticket_status:'VOID',
+ market_name:'Scoring Type',outcome_name:'Penalty'},now),'MISSING_GOAL_METHOD_EVIDENCE',
+ 'a Scoring Type VOID stays visible with the precise missing method-evidence reason');
 assert.equal(reviewReason({...base,market_name:'Scoring Type',
  accepted_contract:{settlementHold:'NATIVE_FINAL_RULE_UNMAPPED'},
  settlement_reason:'NATIVE_RULE_REVIEW'},now),'MISSING_GOAL_METHOD_EVIDENCE',
