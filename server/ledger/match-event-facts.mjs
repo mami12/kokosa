@@ -434,18 +434,19 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    select through_minute,count_home,count_away,complete,observed_at,confirmed_at,card_colors_verified from app_match_event_coverage
    where match_id=$1 and provider=$16::text and kind=$2
  ), ordered as (
-   select f.*,row_number() over(order by coalesce(f.seconds,f.minute*60),f.minute,f.provider_event_id) as ordinal,
+   select f.*,
+     (lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+       ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1',
+        '2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2',
+        'regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime')
+       or (nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90)) as normal_time,
+     row_number() over(order by coalesce(f.seconds,f.minute*60),f.minute,f.provider_event_id) as ordinal,
      row_number() over(partition by f.team order by coalesce(f.seconds,f.minute*60),f.minute,f.provider_event_id) as team_ordinal,
      count(*) over(partition by coalesce(f.seconds,f.minute*60)) as same_time
    from app_match_event_fact f
    where f.match_id=$1 and f.provider=$16::text and f.kind=$2 and f.active
  ), normal_ordered as (
-   select * from ordered
-   where lower(regexp_replace(coalesce(phase,''),'[^a-z0-9]','','g')) in
-     ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1',
-      '2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2',
-      'regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime')
-     or (nullif(trim(coalesce(phase,'')),'') is null and minute<=90)
+   select * from ordered where normal_time
  ), aggregate as (
    select count(*)::int as total,
     count(*) filter(where team='home')::int as home,
@@ -465,7 +466,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
          and ($4::numeric is null or minute <= $4)))
       and ($5::text is null or team=$5)
       and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
-       or (team='away' and team_ordinal>$19::int)))::int as window_count,
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as window_count,
     count(*) filter(where (
         ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
          and coalesce(seconds,minute*60)<=$12::numeric)
@@ -474,7 +476,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
       and ($5::text is null or team=$5)
       and card_color=$15::text
       and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
-       or (team='away' and team_ordinal>$19::int)))::int as color_window_count,
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as color_window_count,
     count(*) filter(where (
       ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
        and coalesce(seconds,minute*60)<$12::numeric)
@@ -532,10 +535,10 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    (select same_time from ordered where team=$5::text and team_ordinal=$8) as team_nth_same_time,
    (select team from ordered where minute>=$3::numeric and minute<=$4::numeric
      and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
-     order by ordinal limit 1) as window_first_team,
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_team,
    (select minute from ordered where minute>=$3::numeric and minute<=$4::numeric
      and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
-     order by ordinal limit 1) as window_first_minute,
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_minute,
    (select min(ordinal) from (
      select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
      from ordered
@@ -565,7 +568,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   c.kind==='interval-result',c.kind==='interval-leader'||c.kind==='interval-handicap',c.cardColor??null,provider,
   c.entryBaseline!=null||c.baseline!=null,
   c.entryBaseline?.home??c.baseline?.home??0,
-  c.entryBaseline?.away??c.baseline?.away??0]);
+  c.entryBaseline?.away??c.baseline?.away??0,c.normalTimeOnly===true]);
  const data=rows[0];
  if(!data||data.through_minute==null||data.open_recovery_gap===true)return null;
  // A partial/corrected frame must not silently reclassify a missing event.
