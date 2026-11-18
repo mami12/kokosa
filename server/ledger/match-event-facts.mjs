@@ -736,8 +736,11 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   if(!full)return null;
   // A Next Goal selection is not refundable merely because no further goal
   // was scored. Home/Away lose at confirmed FT; the explicit No Goal outcome
-  // wins only when that outcome was actually offered and accepted.
-  return c.noneOffered===true&&c.side==='none'?'WON':'LOST';
+  // wins only when that outcome was actually offered and accepted. Corner/card
+  // sequence markets retain their provider no-event VOID rule unless Neither
+  // was explicitly quoted.
+  if(c.event==='goal')return c.noneOffered===true&&c.side==='none'?'WON':'LOST';
+  return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
  }
  if(c.kind==='race'){
   if(!Number.isInteger(c.target)||c.target<1||
