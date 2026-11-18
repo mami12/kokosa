@@ -158,7 +158,7 @@ export function parseIntervalHandicap(line,{teams={},drawOffered=false}={}){
     width!==null&&to-from+1!==width)return null;
  const base=parseHandicapContract({...line,market_name:'Corner handicap'}, {teams,drawOffered});
  if(!base||base.event!=='corner'||base.half!==0)return null;
- return {...base,kind:'interval-handicap',from,to};
+ return {...base,kind:'interval-handicap',from,to,normalTimeOnly:true};
 }
 
 export function parseLeadUpMarket(line){
