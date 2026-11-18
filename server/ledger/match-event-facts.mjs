@@ -67,7 +67,7 @@ alter table app_match_event_coverage add column if not exists sample_signature t
 alter table app_match_event_coverage add column if not exists sample_first_seen_at timestamptz;
 alter table app_match_event_coverage add column if not exists confirmed_at timestamptz;
 `;
-const validKind = new Set(['goal','corner','card','foul']);
+const validKind = new Set(['goal','corner','card','foul','offside']);
 const validSide = new Set(['home','away']);
 /**
  * A newer contradictory Zizobet counter/timeline suspends a previous proof.
@@ -576,7 +576,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  const totalFor=kind=>kind==='goal'?[result?.home_score,result?.away_score]:
    kind==='corner'?[result?.corners_home,result?.corners_away]:
    kind==='card'?[result?.cards_home,result?.cards_away]:
-   kind==='foul'?[stats?.fouls?.home,stats?.fouls?.away]:[null,null];
+   kind==='foul'?[stats?.fouls?.home,stats?.fouls?.away]:
+   kind==='offside'?[stats?.offsides?.home,stats?.offsides?.away]:[null,null];
  const expectedTotals=totalFor(c.event);
  const finalCounts=expectedTotals.every(x=>x!=null&&Number.isSafeInteger(Number(x))&&Number(x)>=0);
  const full=!!(result&&data.complete===true&&finalCounts&&
