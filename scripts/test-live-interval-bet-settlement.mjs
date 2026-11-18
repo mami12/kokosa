@@ -76,5 +76,20 @@ try{
  await setCoverage(large,'goal',90,1,66);
  assert.equal(await grade(next),'WON','one new goal in minutes 61-70 wins despite 90-0 earlier score');
  checked+=2;
+
+ // A live "next goal" interval placed at 2-0 must inspect goal #3,
+ // not the first goal of the match. The third goal at minute 37 wins 31-45.
+ const nextMatch=97007;
+ await run('insert into app_live_event_cursor(match_id,last_seen_at) values($1,$2)',[nextMatch,observed]);
+ await add(nextMatch,'goal','goal-1','home',11);
+ await add(nextMatch,'goal','goal-2','home',14);
+ await add(nextMatch,'goal','goal-3','away',37);
+ await setCoverage(nextMatch,'goal',2,1,45);
+ const nextGoal={id,match_id:nextMatch,live_contract:{
+  version:1,kind:'nth-time',event:'goal',target:3,from:31,to:45,choice:'range'}};
+ const lateRange={...nextGoal,live_contract:{...nextGoal.live_contract,from:76,to:90}};
+ assert.equal(await grade(nextGoal),'WON','third match goal is the next goal after accepted 2-0 score');
+ assert.equal(await grade(lateRange),'LOST','third goal at 37 is not in the later 76-90 interval');
+ checked+=2;
  console.log('PASS '+checked+' LIVE PostgreSQL grading checks: purchased event baselines, four kinds, total-vs-ordinal, and 90-0');
 }finally{await db.close();}
