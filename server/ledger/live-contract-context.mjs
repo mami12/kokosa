@@ -66,6 +66,10 @@ export function frozenLiveContract(line,match={},at=Date.now()){
   // settlement, never to this acceptance path.
   const current=contract.event==='goal'?goals:contract.event==='corner'?corners:
     contract.event==='card'?verifiedCards:null;
+  if(contract.kind==='lead-up'){
+   if(goals.home==null||goals.away==null)return {...contract,entryEvidenceMissing:true};
+   return {...contract,baseline:{home:goals.home,away:goals.away}};
+  }
   if(live&&['sequence','race'].includes(contract.kind)&&
      current?.home!=null&&current?.away!=null)
     return {...contract,baseline:{home:current.home,away:current.away}};
@@ -214,6 +218,9 @@ export function frozenLiveContract(line,match={},at=Date.now()){
  // Never infer it from the displayed odds or the browser's score.
  if(contract.kind==='sequence'&&/next/i.test(name)&&
     (current?.home==null||current?.away==null)&&!quoteAnchoredSequence)throw fail('Mungon numri i konfirmuar i golave/kornerave.');
+ if(contract.kind==='lead-up')return goals.home==null||goals.away==null
+  ?{...contract,entryEvidenceMissing:true}
+  :{...contract,baseline:{home:goals.home,away:goals.away}};
  return (contract.kind==='sequence'||contract.kind==='race')&&current?.home!=null&&current?.away!=null
   ?{...contract,baseline:{home:current.home,away:current.away}}:contract;
 }
