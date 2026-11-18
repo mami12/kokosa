@@ -9,8 +9,8 @@ import {primaryLiveCounters} from './primary-live-counters.mjs';
  */
 const whole=value=>value!=null&&value!==''&&Number.isSafeInteger(Number(value))&&Number(value)>=0?Number(value):null;
 const invalid=(message,code='MARKET_EVIDENCE_UNSUPPORTED')=>Object.assign(new Error(message),{code,status:400});
-const timedKinds=new Set(['window','window-total','interval-leader','interval-result','interval-handicap','window-first-event','nth-time']);
-const remainingKinds=new Set(['window','window-total','interval-leader','interval-result','interval-handicap','window-first-event']);
+const timedKinds=new Set(['window','window-total','interval-leader','interval-result','interval-handicap','window-first-event','window-parity','nth-time']);
+const remainingKinds=new Set(['window','window-total','interval-leader','interval-result','interval-handicap','window-first-event','window-parity']);
 
 export function intervalBounds(contract){
  if(!timedKinds.has(contract?.kind))return null;
