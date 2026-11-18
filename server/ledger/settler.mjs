@@ -780,12 +780,13 @@ export function gradeLine(line, result) {
 
     case 'WHICH_TEAM_TO_SCORE': {
       const selection=norm(line.outcome_name??line.outcome_key??'');
-      if(/^(?:both teams?|both|1\s*\+\s*2)$/i.test(selection))return decide(bothScored);
-      if(/^(?:only\s*1|home|home team|1)$/i.test(selection))
+      // norm() removes spaces and punctuation, so compare canonical tokens.
+      if(/^(?:bothteams?|both|12)$/.test(selection))return decide(bothScored);
+      if(/^(?:only1|home|hometeam|1)$/.test(selection))
         return decide(home>0&&away===0);
-      if(/^(?:only\s*2|away|away team|2)$/i.test(selection))
+      if(/^(?:only2|away|awayteam|2)$/.test(selection))
         return decide(away>0&&home===0);
-      if(/^(?:none|neither|no team|no goals?)$/i.test(selection))
+      if(/^(?:none|neither|noteam|nogoals?)$/.test(selection))
         return decide(home===0&&away===0);
       return null;
     }
