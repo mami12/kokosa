@@ -5,10 +5,11 @@ import {HALFTIME_RESULT_SQL,extractConfirmedHalfTimeCandidate,
 import {infoOf} from '../server/zizobet/normalize.mjs';
 import {firstHalfScoreOnly,gradeAtVerifiedHalfTime,scorePeriodOf} from '../server/ledger/settler.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
+import {snapshotRow} from '../server/ledger/match-snapshots.mjs';
 const observed='2026-11-11T20:45:30Z',status='2026-11-11T20:45:31Z';
 const live={match_id:123,home:'Red FC',away:'Blue FC',home_score:2,away_score:1,
  periods_score:[{t1:2,t2:1}],feed_status:'HT',score_at:observed,
- feed_status_at:status,raw:{provider:'ZIZOBET'}};
+ feed_status_at:status,clock_at:'2026-11-11T20:45:32Z',raw:{provider:'ZIZOBET'}};
 // Native Zizobet SetScores can report only one completed period at HT.
 const feedMeta={statuses:new Map([['1_31','Half Time'],['1_30','1st half']])};
 const htNative=infoOf({match_id:123,service:'LIVE'},
@@ -20,6 +21,18 @@ const inPlay=infoOf({match_id:123,service:'LIVE'},
 assert.equal(inPlay.periodsScore,undefined,
  'A single first-period value is not final before HT');
 const candidate=extractConfirmedHalfTimeCandidate(live);
+assert.equal(candidate.observedAt,live.clock_at,
+ 'HT confirmation uses the time of the provider clock snapshot, not frozen score/phase timestamps');
+const secondPoll=extractConfirmedHalfTimeCandidate({...live,
+ clock_at:'2026-11-11T20:45:38Z'});
+assert.ok(Date.parse(secondPoll.observedAt)>Date.parse(candidate.observedAt),
+ 'A later unchanged 2:1 HT observation has a strictly newer independent snapshot time');
+assert.equal(extractConfirmedHalfTimeCandidate({...live,clock_at:null}),null,
+ 'No new primary clock observation cannot confirm a repeated half-time score');
+const persistedSnapshot=snapshotRow(live);
+assert.equal(persistedSnapshot.clock_at,live.clock_at,
+ 'Durable match snapshots retain the match-info clock observation timestamp');
+
 assert.deepEqual([candidate.home,candidate.away],[2,1]);
 assert.equal(candidate.source,'ZIZOBET');
 assert.ok(HALFTIME_RESULT_SQL.includes('app_match_half_result'));
