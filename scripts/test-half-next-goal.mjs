@@ -1,11 +1,15 @@
 import './fixtures/isolated-casino-env.mjs';
 import assert from 'node:assert/strict';
-import {parseHalfEventContract} from '../server/ledger/live-contract-rules.mjs';
-import {gradeHalfEventFacts} from '../server/ledger/match-event-facts.mjs';
+import {parseHalfEventContract,liveContract} from '../server/ledger/live-contract-rules.mjs';
+import {gradeHalfEventFacts,SUPPORTED_FACT_KINDS} from '../server/ledger/match-event-facts.mjs';
 
 const counts={goal:{home:2,away:0}};
 const market=outcome_name=>({market_name:'Halftime - Next goal',outcome_name});
 const away=parseHalfEventContract(market('2'),counts);
+assert.equal(liveContract(market('2'),{counts})?.kind,'half-next-event',
+ 'the production live-contract dispatcher must recognize the halftime next-goal market');
+assert.equal(SUPPORTED_FACT_KINDS.has('half-next-event'),true,
+ 'the primary settlement worker must accept the frozen half-next-event contract');
 assert.deepEqual(
  [away.kind,away.event,away.half,away.side,away.target,away.baseline.home,away.baseline.away],
  ['half-next-event','goal',1,'away',3,2,0]
