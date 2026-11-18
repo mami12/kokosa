@@ -482,12 +482,14 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
       ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
        and coalesce(seconds,minute*60)<$12::numeric)
       or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
-      and team='home' and ($17::boolean=false or team_ordinal>$18::int))::int as window_home,
+      and team='home' and ($17::boolean=false or team_ordinal>$18::int)
+      and ($20::boolean=false or normal_time))::int as window_home,
     count(*) filter(where (
       ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
        and coalesce(seconds,minute*60)<$12::numeric)
       or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
-      and team='away' and ($17::boolean=false or team_ordinal>$19::int))::int as window_away,
+      and team='away' and ($17::boolean=false or team_ordinal>$19::int)
+      and ($20::boolean=false or normal_time))::int as window_away,
     bool_or($10::boolean=true and seconds is null
       and (minute=floor($11::numeric/60) or minute=floor($12::numeric/60))) as rolling_boundary_uncertain,
     count(*) filter(where (own_goal=false or (own_goal is null and aiscore_verified=true))
@@ -518,10 +520,13 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
       and $16::text='zizobet') as open_recovery_gap,
    (select team from ordered where ordinal=(select max(ordinal) from ordered)) as last_team,
    (select same_time from ordered where ordinal=(select max(ordinal) from ordered)) as last_same_time,
-   (select team from ordered where ordinal=$8) as nth_team,
-   (select minute from ordered where ordinal=$8) as nth_minute,
-   (select same_time from ordered where ordinal=$8) as nth_same_time,
-   (select minute from ordered where team=$5::text and team_ordinal=$8) as team_nth_minute,   (select max(lead.home_after-lead.away_after) from (
+   (select team from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_team,
+   (select same_time from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_same_time,
+   (select bool_or(same_time>1) from normal_ordered) as normal_ambiguous_order,
+   (select team from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_team,
+   (select minute from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_minute,
+   (select same_time from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_same_time,
+   (select minute from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_minute,   (select max(lead.home_after-lead.away_after) from (
      select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
        coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
      from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
@@ -532,7 +537,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
      from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
    ) lead) as max_away_lead_since_entry,
 
-   (select same_time from ordered where team=$5::text and team_ordinal=$8) as team_nth_same_time,
+   (select same_time from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_same_time,
    (select team from ordered where minute>=$3::numeric and minute<=$4::numeric
      and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
      and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_team,
@@ -541,20 +546,20 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
      and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_minute,
    (select min(ordinal) from (
      select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
-     from ordered
+     from ordered where ($20::boolean=false or normal_time)
    ) race where team_number=$8 and team='home') as race_home,
    (select min(ordinal) from (
      select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
-     from ordered
+     from ordered where ($20::boolean=false or normal_time)
    ) race where team_number=$8 and team='away') as race_away,
    (select coalesce(seconds,minute*60) from ordered where ordinal=(
      select min(ordinal) from (
-       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered where ($20::boolean=false or normal_time)
      ) race where team_number=$8 and team='home'
    )) as race_home_time,
    (select coalesce(seconds,minute*60) from ordered where ordinal=(
      select min(ordinal) from (
-       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered where ($20::boolean=false or normal_time)
      ) race where team_number=$8 and team='away'
    )) as race_away_time
  from aggregate a left join covered c on true`,
