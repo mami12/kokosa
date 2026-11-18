@@ -766,7 +766,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   if(!Number.isFinite(closesAt))return null;
   if(c.to>=90&&data.phase_ambiguous===true)return null;
   const found=Number(c.cardColor?data.color_window_count:data.window_count);
-  const closed=full||through>=closesAt;
+  const closed=normalFull||through>=closesAt;
   if(c.choice==='over'||c.choice==='under'){
    if(!Number.isFinite(c.threshold)||!Number.isInteger(c.threshold*2))return null;
    // Once the accepted-event count crosses the line it can only increase.
@@ -819,13 +819,16 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   }
   // Once the requested team's event window is completely covered, the
   // absence of that team's next goal is a loss even if the match continues.
-  if(through>=c.to||full)return 'LOST';
+  if(normalFull||through>=c.to){
+   if(c.to>=90&&data.phase_ambiguous===true)return null;
+   return 'LOST';
+  }
   return null;
  }
  if(c.kind==='nth-time'){
   if(!Number.isInteger(c.target)||c.target<1)return null;
   const isPrematch = (line?.accepted_contract?.acceptedLiveSnapshot == null && c.entryBaseline == null && line?.accepted_contract != null);
-  if(isPrematch && !full) return null;
+  if(isPrematch && !normalFull) return null;
   if(data.nth_team!=null){
    if(Number(data.nth_same_time)>1)return null;
    // A fixed "Who scores goal N in minutes A-B" three-way quote uses
@@ -843,8 +846,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   }
   // No positive evidence yet — wait for coverage window to elapse before
   // declaring LOST (goal N did not happen within range).
-  if(!full && Number.isInteger(c.to) && through < c.to) return null;
-  if(!full)return null;
+  const scopeClosed=normalFull||(Number.isInteger(c.to)&&through>=c.to);
+  if(!scopeClosed||c.to>=90&&data.phase_ambiguous===true)return null;
   return c.choice==='none'?'WON':'LOST';
  }
  if(c.kind==='last-event'){
