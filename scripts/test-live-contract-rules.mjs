@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {parseEventWindow,parseSequenceBet,parseOrdinalGoalTime,parseLastEvent,parseCountMarket,gradeLiveContract,gradeFromAcceptedCounters} from '../server/ledger/live-contract-rules.mjs';
+import {parseEventWindow,parseSequenceBet,parseOrdinalGoalTime,parseLastEvent,parseCountMarket,parseSendingOffMarket,liveContract,gradeLiveContract,gradeFromAcceptedCounters} from '../server/ledger/live-contract-rules.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
 
 const windowLine=(market,side)=>({market_name:market,outcome_name:side});
@@ -14,6 +14,22 @@ assert.equal(parseOrdinalGoalTime({...nextGoalMarket,market_name:'When will goal
  {goal:{home:0,away:0}})?.target,3,'explicit provider ordinal remains absolute');
 assert.equal(parseOrdinalGoalTime(nextGoalMarket),null,
  'unknown accepted score cannot be guessed as goal number one');
+
+const nextHome=parseOrdinalGoalTime({market_name:'Next Home Goal Time',outcome_name:'31-45'},
+ {goal:{home:2,away:1}});
+assert.deepEqual({kind:nextHome?.kind,target:nextHome?.target,side:nextHome?.side,
+ from:nextHome?.from,to:nextHome?.to},
+ {kind:'team-nth-time',target:3,side:'home',from:31,to:45});
+const nextAway=parseOrdinalGoalTime({market_name:'Next Away Goal Time',outcome_name:'46-60'},
+ {goal:{home:3,away:1}});
+assert.deepEqual({kind:nextAway?.kind,target:nextAway?.target,side:nextAway?.side},
+ {kind:'team-nth-time',target:2,side:'away'});
+const sendingOff=liveContract({market_name:'Sending off?',outcome_name:'Yes'});
+assert.deepEqual({kind:sendingOff?.kind,event:sendingOff?.event,color:sendingOff?.cardColor,
+ from:sendingOff?.from,to:sendingOff?.to,choice:sendingOff?.choice},
+ {kind:'window',event:'card',color:'red',from:0,to:90,choice:true});
+assert.deepEqual(parseSendingOffMarket({market_name:'Sending off?',outcome_name:'No'})?.choice,false);
+
 const w=parseEventWindow(windowLine('Will there be a goal in minutes 20-45','Yes'));
 assert.deepEqual([w.kind,w.event,w.from,w.to,w.choice],['window','goal',20,45,true]);
 const obs=(event,events,clock,coverage)=>({
@@ -175,6 +191,35 @@ assert.equal(await gradeNoNextGoal({version:1,kind:'sequence',event:'goal',targe
  'LOST','Stored Zizobet event facts must settle Next Goal Away as LOST when FT has no second goal');
 assert.equal(await gradeNoNextGoal({version:1,kind:'sequence',event:'goal',target:2,side:'none',noneOffered:true}),
  'WON','Stored Zizobet event facts must settle the quoted No Goal outcome as WON');
+
+const teamNthFacts={...confirmedGoalFacts,count_home:1,count_away:1,home:1,away:1,total:2,
+ team_nth_minute:72,team_nth_same_time:1};
+const gradeTeamNth=async(contract,facts=teamNthFacts)=>gradeStoredEventContract({
+ id:'line-team-goal-time',match_id:8,live_contract:contract
+ },{home_score:1,away_score:1,corners_home:0,corners_away:0,cards_home:0,cards_away:0},
+ {execute:async()=>({rows:[facts]})});
+const awayGoalTime={version:1,kind:'team-nth-time',event:'goal',target:1,
+ side:'away',choice:'range',from:60,to:75};
+assert.equal(await gradeTeamNth(awayGoalTime),'WON',
+ 'Next Away Goal Time grades against the next away-team goal, not the global next goal');
+assert.equal(await gradeTeamNth({...awayGoalTime,from:30,to:60}),'LOST',
+ 'A team goal outside the selected time band loses');
+assert.equal(await gradeTeamNth(awayGoalTime,{...teamNthFacts,team_nth_minute:null,
+ through_minute:90}), 'LOST',
+ 'A fully covered match with no next team goal loses the time selection');
+const redCardFacts={...confirmedGoalFacts,count_home:0,count_away:1,home:0,away:1,total:1,
+ color_window_count:1,color_total:1,card_colors_verified:true};
+const gradeSendingOff=async(contract,facts)=>gradeStoredEventContract({
+ id:'line-sending-off',match_id:9,live_contract:contract
+ },{home_score:0,away_score:0,corners_home:0,corners_away:0,cards_home:0,cards_away:1},
+ {execute:async()=>({rows:[facts]})});
+assert.equal(await gradeSendingOff(sendingOff,redCardFacts),'WON',
+ 'A verified red card proves Sending Off Yes');
+assert.equal(await gradeSendingOff({...sendingOff,choice:false},redCardFacts),'LOST');
+assert.equal(await gradeSendingOff(sendingOff,{...redCardFacts,color_window_count:0,
+ color_total:0,card_colors_verified:false}),null,
+ 'Unknown card color cannot prove that no sending off occurred');
+
 
 console.log('PASS live event window yes/no, next goal, race, irreversible totals, exact and range');
 
