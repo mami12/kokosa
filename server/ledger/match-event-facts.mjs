@@ -600,6 +600,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  const finalCounts=expectedTotals.every(x=>x!=null&&Number.isSafeInteger(Number(x))&&Number(x)>=0);
  const full=!!(result&&data.complete===true&&finalCounts&&
    Number(data.home)===Number(expectedTotals[0])&&Number(data.away)===Number(expectedTotals[1]));
+ const matchFinished=!!(result&&data.complete===true);
+ const normalFull=c.normalTimeOnly===true?matchFinished:full;
  // Only the confirmed Zizobet timeline and its own second-poll/archive
  // cursor can authorize a settlement decision.
  if(data.confirmed_at==null||data.observed_at==null)return null;
@@ -701,7 +703,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   const num=Number(c.cardColor?data.color_window_count:data.window_count);
   if(num>0)return decision(c.choice);
   if(c.normalTimeOnly===true&&data.phase_ambiguous===true)return null;
-  return full||through>=closesAt?decision(!c.choice):null;
+  return normalFull||through>=closesAt?decision(!c.choice):null;
  }
  if(c.kind==='interval-result'){
   if(!Number.isSafeInteger(c.toExclusiveSeconds)||through*60<c.toExclusiveSeconds)return null;
@@ -712,7 +714,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   const closesAt=Math.floor(Number(c.to))+1;
   if(!Number.isFinite(closesAt)||c.event!=='corner'||!['odd','even'].includes(c.choice)||
      !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
-  if(!full&&through<closesAt)return null;
+  if(!normalFull&&through<closesAt)return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
   const found=Number(data.window_count);
   if(!Number.isSafeInteger(found)||found<0)return null;
   return (found%2===1?'odd':'even')===c.choice?'WON':'LOST';
@@ -722,19 +725,23 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   if(c.event!=='corner'||!Number.isFinite(closesAt)||
      !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from||
      !['home','away','none'].includes(c.side))return null;
-  if(data.window_first_team!=null)
+  if(data.window_first_team!=null){
+   if(Number(data.window_first_same_time)>1)return null;
    return c.side==='none'?'LOST':data.window_first_team===c.side?'WON':'LOST';
-  if(full||through>=closesAt)return c.side==='none'?'WON':'LOST';
+  }
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  if(normalFull||through>=closesAt)return c.side==='none'?'WON':'LOST';
   return null;
  }
  if(c.kind==='interval-handicap'){
   const closesAt=Math.floor(Number(c.to))+1;
-  if(!Number.isFinite(closesAt)||through<closesAt||c.event!=='corner'||
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||c.event!=='corner'||
      !['home','away','none'].includes(c.side)||!Number.isFinite(Number(c.handicap)))return null;
   const h=Number(data.window_home),a=Number(data.window_away),handicap=Number(c.handicap);
   if(!Number.isSafeInteger(h)||h<0||!Number.isSafeInteger(a)||a<0||
      !Number.isSafeInteger(handicap*2))return null;
   const signed=h+handicap-a;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
   if(c.side==='none')return signed===0?'WON':'LOST';
   const delta=c.side==='away'?a+handicap-h:signed;
   if(c.threeWay)return delta>0?'WON':'LOST';
@@ -792,7 +799,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    if(data.ambiguous_order_since_entry===true)return null;
    return 'WON';
   }
-  if(!full||data.phase_ambiguous===true||data.ambiguous_order_since_entry===true)return null;
+  if(!normalFull||data.phase_ambiguous===true||data.ambiguous_order_since_entry===true)return null;
   return 'LOST';
  }
  if(c.kind==='team-nth-time'){
