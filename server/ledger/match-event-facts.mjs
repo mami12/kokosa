@@ -67,7 +67,7 @@ alter table app_match_event_coverage add column if not exists sample_signature t
 alter table app_match_event_coverage add column if not exists sample_first_seen_at timestamptz;
 alter table app_match_event_coverage add column if not exists confirmed_at timestamptz;
 `;
-const validKind = new Set(['goal','corner','card','foul']);
+const validKind = new Set(['goal','corner','card','foul','offside']);
 const validSide = new Set(['home','away']);
 /**
  * A newer contradictory Zizobet counter/timeline suspends a previous proof.
@@ -235,7 +235,7 @@ export async function persistVerifiedEventFacts(matchId, frame, execute, observe
  }
  return stored;
 }
-export const SUPPORTED_FACT_KINDS=new Set(['window','sequence','race','last-event','over','under','exact','atLeast','range','team-total-goals','interval-result','interval-leader','window-total','nth-time','player-goal','player-ordinal-goal','player-goal-special','player-card','half-combo','period-goal-total','half-first-event','half-last-event','half-race','half-next-event','half-parity','half-exact-count','multi-corners','corner-comparison','score-handicap','half-total']);
+export const SUPPORTED_FACT_KINDS=new Set(['window','sequence','race','last-event','over','under','exact','atLeast','range','team-total-goals','interval-result','interval-leader','window-total','nth-time','lead-up','team-nth-time','window-first-event','window-parity','interval-handicap','player-goal','player-ordinal-goal','player-goal-special','player-card','half-combo','period-goal-total','half-first-event','half-last-event','half-race','half-next-event','half-parity','half-exact-count','multi-corners','corner-comparison','score-handicap','half-total']);
 /** A complete, independently reconciled match-corner timeline is required
  * before first-half "First Corner / None" can be decided. Unlabelled stoppage
  * and minute-45+ events cannot be assigned to a half from the minute alone.
@@ -553,7 +553,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  const totalFor=kind=>kind==='goal'?[result?.home_score,result?.away_score]:
    kind==='corner'?[result?.corners_home,result?.corners_away]:
    kind==='card'?[result?.cards_home,result?.cards_away]:
-   kind==='foul'?[stats?.fouls?.home,stats?.fouls?.away]:[null,null];
+   kind==='foul'?[stats?.fouls?.home,stats?.fouls?.away]:
+   kind==='offside'?[stats?.offsides?.home,stats?.offsides?.away]:[null,null];
  const expectedTotals=totalFor(c.event);
  const finalCounts=expectedTotals.every(x=>x!=null&&Number.isSafeInteger(Number(x))&&Number(x)>=0);
  const full=!!(result&&data.complete===true&&finalCounts&&
@@ -734,6 +735,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    return decision(data.nth_team===c.side);
   }
   if(!full)return null;
+  if(c.event==='goal')return c.noneOffered===true&&c.side==='none'?'WON':'LOST';
   return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
  }
  if(c.kind==='race'){
