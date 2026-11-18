@@ -53,10 +53,10 @@ export function resolveMarketTitle(raw,q,{intervalWidth}={}){
   return 'Total '+value+' '+oneMinuteWindow[1].toLowerCase()+
     ' in minutes '+from+'-'+to+' (1-minute interval)';
  }
- const providerWindow=name.match(/^(\\d{1,2})\\s+minutes?\\s*[-–]\\s*(.+?)\\s+from\\s+first value(?::00)?\\s*(?:to|[-–])\\s*second value(?::00)?\\s*min\\.?$/i);
- const timeRange=name.match(/^(.+?)\\s+in\\s+(\\d{1,2})\\s+minutes?\\s+time range(?:\\s*\\((\\d{1,2})-minute interval\\))?$/i);
- const fixedRange=name.match(/^(.+?)\\s+in\\s+(\\d{1,2})\\s+minutes?\\s+interval\\s+(\\d{1,3})\\s*[-–]\\s*(\\d{1,3})$/i);
- const firstCorner=name.match(/^(\\d{1,2})\\s+minutes?\\s*[-–]\\s*1st corner\\s+from\\s+first value(?::00)?\\s*[-–]\\s*second value\\s*min$/i);
+ const providerWindow=name.match(/^(\d{1,2})\s+minutes?\s*[-–]\s*(.+?)\s+from\s+first value(?::00)?\s*(?:to|[-–])\s*second value(?::00)?\s*min\.?$/i);
+ const timeRange=name.match(/^(.+?)\s+in\s+(\d{1,2})\s+minutes?\s+time range(?:\s*\((\d{1,2})-minute interval\))?$/i);
+ const fixedRange=name.match(/^(.+?)\s+in\s+(\d{1,2})\s+minutes?\s+interval\s+(\d{1,3})\s*[-–]\s*(\d{1,3})$/i);
+ const firstCorner=name.match(/^(\d{1,2})\s+minutes?\s*[-–]\s*1st corner\s+from\s+first value(?::00)?\s*[-–]\s*second value\s*min$/i);
  const intervalMatch=providerWindow??timeRange??fixedRange??firstCorner;
  if(intervalMatch){
   const width=Number(intervalMatch[1]??intervalMatch[2]);
@@ -65,9 +65,9 @@ export function resolveMarketTitle(raw,q,{intervalWidth}={}){
   if(!Number.isSafeInteger(width)||width<1||width>30||
      !Number.isSafeInteger(from)||!Number.isSafeInteger(to)||from<0||to<from||to>130||to-from+1!==width)return null;
   let descriptor=String(providerWindow?providerWindow[2]:timeRange?timeRange[1]:fixedRange?fixedRange[1]:'1st corner').trim();
-  descriptor=descriptor.replace(/\\s+/g,' ').toLowerCase();
+  descriptor=descriptor.replace(/\s+/g,' ').toLowerCase();
   const band=' in minutes '+from+'-'+to+' ('+width+'-minute interval)';
-  if(/^result(?:\\s+first value)?$/.test(descriptor))return 'Result from '+from+':00 to '+(to+1)+':00 min';
+  if(/^result(?:\s+first value)?$/.test(descriptor))return 'Result from '+from+':00 to '+(to+1)+':00 min';
   if(/^corner result$/.test(descriptor))return 'Who takes most corners'+band;
   if(/^odd\/even corners?$/.test(descriptor))return 'Odd/Even corners'+band;
   if(/^card result$/.test(descriptor))return 'Who receives most cards'+band;
@@ -78,7 +78,7 @@ export function resolveMarketTitle(raw,q,{intervalWidth}={}){
   if(/^who receives most bookings$/.test(descriptor))return 'Who receives most cards'+band;
   if(/^who scores most goals$/.test(descriptor))return 'Who scores most goals'+band;
   if(/^who scores goal number$/.test(descriptor)||/^№ value goal$/.test(descriptor)){
-   if(!/^\\d+$/.test(text(q.p3)))return null;
+   if(!/^\d+$/.test(text(q.p3)))return null;
    return 'Who scores goal '+q.p3+band;
   }
   const teamFirst=descriptor.match(/^(home|away)team\s+total\s+(corners?|cards?|bookings?|goals?|offsides?)$/);
@@ -87,7 +87,7 @@ export function resolveMarketTitle(raw,q,{intervalWidth}={}){
    if(value==null||!Number.isFinite(Number(value))||Number(value)<0||!Number.isInteger(Number(value)*2))return null;
    return 'Total '+value+' '+teamFirst[1]+' team '+event+band;
   }
-  const teamTotal=descriptor.match(/^total(?:\\s+(\\d+(?:[.,]\\d+)?))?\\s+(?:(home|away)team\\s+)?(corners?|cards?|bookings?|goals?)(?:\\s+(home|away)team)?$/);
+  const teamTotal=descriptor.match(/^total(?:\s+(\d+(?:[.,]\d+)?))?\s+(?:(home|away)team\s+)?(corners?|cards?|bookings?|goals?)(?:\s+(home|away)team)?$/);
   if(teamTotal){
    const value=teamTotal[1]??q.h;
    if(value==null||!Number.isFinite(Number(value))||Number(value)<0||!Number.isInteger(Number(value)*2))return null;
@@ -96,7 +96,7 @@ export function resolveMarketTitle(raw,q,{intervalWidth}={}){
    const event=/bookings?/i.test(teamTotal[3])?'cards':teamTotal[3].toLowerCase();
    return 'Total '+value+(side?' '+side+' team':'')+' '+event+band;
   }
-  const red=descriptor.match(/^(?:(home|away)team\\s+)?red card$/);
+  const red=descriptor.match(/^(?:(home|away)team\s+)?red card$/);
   if(red)return (red[1]?red[1]+' team ':'')+'red card'+band;
  }
  // One legacy alias in the catalog uses the ordinal word instead of 1UP.
