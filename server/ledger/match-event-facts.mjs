@@ -296,11 +296,16 @@ export function gradeFirstHalfCornerFacts(contract,facts,{complete=false}={}){
  * against the provider's complete final counters.
  */
 export function gradeHalfEventFacts(contract,facts,{complete=false}={}){
- if(!complete||!['half-race','half-first-event','half-last-event'].includes(contract?.kind)||
+ if(!complete||!['half-race','half-first-event','half-last-event','half-next-event'].includes(contract?.kind)||
     ![1,2].includes(contract.half)||!['goal','corner','card'].includes(contract.event)||
     !['home','away','none'].includes(contract.side)||!Array.isArray(facts))return null;
- if(contract.kind==='half-race'&&(!Number.isSafeInteger(contract.target)||
+ if(['half-race','half-next-event'].includes(contract.kind)&&(!Number.isSafeInteger(contract.target)||
     contract.target<1||contract.target>100))return null;
+ if(contract.kind==='half-next-event'&&(
+    contract.event!=='goal'||contract.half!==1||
+    !Number.isSafeInteger(contract.baseline?.home)||contract.baseline.home<0||
+    !Number.isSafeInteger(contract.baseline?.away)||contract.baseline.away<0||
+    contract.target!==contract.baseline.home+contract.baseline.away+1))return null;
  const first=new Set(['1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1']);
  const second=new Set(['2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2']);
  const events=[];
@@ -334,6 +339,12 @@ export function gradeHalfEventFacts(contract,facts,{complete=false}={}){
   if(!events.length)return noEvent();
   const winner=(contract.kind==='half-first-event'?events[0]:events.at(-1)).team;
   return decided(winner);
+ }
+ if(contract.kind==='half-next-event'){
+  const baseline=contract.baseline.home+contract.baseline.away;
+  if(events.length<baseline)return null; // provider correction: accepted history disappeared
+  const next=events[contract.target-1];
+  return next?decided(next.team):noEvent();
  }
  const counts={home:0,away:0};
  for(const event of events){
@@ -619,7 +630,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   return gradeHalfTotalFacts(c,facts,{complete:true,
     cardColorsVerified:data.card_colors_verified===true});
  }
- if(['half-first-event','half-last-event','half-race'].includes(c.kind)){
+ if(['half-first-event','half-last-event','half-race','half-next-event'].includes(c.kind)){
   if(!completedScope||!['goal','corner','card'].includes(c.event))return null;
   const events=(await execute(`select minute,seconds,team,phase
     from app_match_event_fact where match_id=$1 and provider=$2
