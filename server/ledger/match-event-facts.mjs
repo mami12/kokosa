@@ -734,7 +734,10 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    return decision(data.nth_team===c.side);
   }
   if(!full)return null;
-  return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
+  // A Next Goal selection is not refundable merely because no further goal
+  // was scored. Home/Away lose at confirmed FT; the explicit No Goal outcome
+  // wins only when that outcome was actually offered and accepted.
+  return c.noneOffered===true&&c.side==='none'?'WON':'LOST';
  }
  if(c.kind==='race'){
   if(!Number.isInteger(c.target)||c.target<1||
