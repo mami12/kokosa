@@ -712,6 +712,75 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
     return gradeFirstHalfCornerFacts(c,events,{complete:true});
   return gradeHalfEventFacts(c,events,{complete:true});
  }
+ if(c.kind==='lead-up'){
+  const base=c.entryBaseline??c.baseline;
+  if(c.event!=='goal'||!Number.isInteger(c.target)||c.target<1||
+     !base||!Number.isSafeInteger(base.home)||!Number.isSafeInteger(base.away)||
+     base.home<0||base.away<0||!['home','away','draw'].includes(c.side))return null;
+  const nh=Number(data.normal_home),na=Number(data.normal_away);
+  if(!Number.isSafeInteger(nh)||!Number.isSafeInteger(na)||nh<base.home||na<base.away)return null;
+  if(c.side==='draw')return normalFull&&data.phase_ambiguous!==true?decision(nh===na):null;
+  const afterHome=nh-base.home,afterAway=na-base.away;
+  const currentLead=c.side==='home'?afterHome-afterAway:afterAway-afterHome;
+  if(currentLead>=c.target)return 'WON';
+  const maximum=Number(c.side==='home'?data.max_home_lead_since_entry:data.max_away_lead_since_entry);
+  if(Number.isFinite(maximum)&&maximum>=c.target){
+   if(data.ambiguous_order_since_entry===true)return null;
+   return 'WON';
+  }
+  if(!normalFull||data.phase_ambiguous===true||data.ambiguous_order_since_entry===true)return null;
+  return 'LOST';
+ }
+ if(c.kind==='window-first-event'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||!['home','away','none'].includes(c.side))return null;
+  if(data.window_first_team!=null){
+   if(Number(data.window_first_same_time)>1)return null;
+   return c.side==='none'?'LOST':data.window_first_team===c.side?'WON':'LOST';
+  }
+  if(normalTimeOnly&&c.to>=90&&data.phase_ambiguous===true)return null;
+  return normalFull||through>=closesAt?(c.side==='none'?'WON':'LOST'):null;
+ }
+ if(c.kind==='window-parity'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(c.event!=='corner'||!['odd','even'].includes(c.choice)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(!normalFull&&through<closesAt)return null;
+  if(normalTimeOnly&&c.to>=90&&data.phase_ambiguous===true)return null;
+  const found=Number(data.window_count);
+  if(!Number.isSafeInteger(found)||found<0)return null;
+  return (found%2===1?'odd':'even')===c.choice?'WON':'LOST';
+ }
+ if(c.kind==='interval-handicap'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(c.event!=='corner'||!Number.isFinite(c.handicap)||
+     !['home','away','none'].includes(c.side)||!Number.isFinite(closesAt)||
+     (!normalFull&&through<closesAt))return null;
+  if(normalTimeOnly&&c.to>=90&&data.phase_ambiguous===true)return null;
+  const h=Number(data.window_home),a=Number(data.window_away);
+  if(!Number.isSafeInteger(h)||!Number.isSafeInteger(a))return null;
+  const signed=c.side==='home'?h+c.handicap-a:a+c.handicap-h;
+  if(c.threeWay===true){
+   if(c.side==='none')return signed===0?'WON':'LOST';
+   return c.side==='home'?decision(signed>0):decision(signed<0);
+  }
+  if(signed===0)return 'VOID';
+  return c.side==='home'?decision(signed>0):decision(signed<0);
+ }
+ if(c.kind==='team-nth-time'){
+  if(!Number.isInteger(c.target)||c.target<1||!['home','away'].includes(c.side)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to))return null;
+  if(data.team_nth_minute!=null){
+   if(Number(data.team_nth_same_time)>1)return null;
+   const minute=Number(data.team_nth_minute),inside=minute>=c.from&&minute<=c.to;
+   return c.choice==='none'?decision(!inside):decision(inside);
+  }
+  if(normalFull||through>=c.to){
+   if(normalTimeOnly&&c.to>=90&&data.phase_ambiguous===true)return null;
+   return c.choice==='none'?'WON':'LOST';
+  }
+  return null;
+ }
  const scopeEnded=full||(Number.isFinite(c.to)&&through>Number(c.to));
  const count=Number(c.cardColor?(c.side==='home'?data.color_home:c.side==='away'?data.color_away:data.color_total):
    (c.side==='home'?data.home:c.side==='away'?data.away:data.total));
