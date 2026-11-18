@@ -63,7 +63,7 @@ assert.equal(gradeLiveContract(g,early),'WON');
 assert.equal(gradeLiveContract({...g,side:'home'},early),'LOST');
 assert.equal(gradeLiveContract({...g,side:'none'},early),'LOST');
 assert.equal(gradeLiveContract({...g,target:3},early),null);
-assert.equal(gradeLiveContract({...g,target:3,side:'none'},early,{ended:true}),'WON');
+assert.equal(gradeLiveContract({...g,target:3,side:'none',noneOffered:true},early,{ended:true}),'WON');
 
 const noFurtherGoal=obs('goal',[],90,90);
 assert.equal(gradeLiveContract(g,noFurtherGoal,{ended:true}),'LOST',
