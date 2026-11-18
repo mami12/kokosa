@@ -1,7 +1,7 @@
 import './fixtures/isolated-casino-env.mjs';
 import assert from 'node:assert/strict';
 import {gradeLine,hasRequiredSettlementEvidence,settledOddsFor,
- scorePeriodOf} from '../server/ledger/settler.mjs';
+ scorePeriodOf,pendingEventReason} from '../server/ledger/settler.mjs';
 import {finishedResultParameters,isFinished} from '../server/ledger/results.mjs';
 const score={home_team:'Manchester City',away_team:'Manchester United',
  home_score:3,away_score:1,half_home_score:0,half_away_score:1,
@@ -114,5 +114,12 @@ for(const market of ['Full Time 1UP','Full Time 2UP','Full Time 3UP','3way']){
  assert.equal(gradeLine(choice(market,'X'),denmarkNorway),'LOST',market+' draw selection');
  assert.equal(gradeLine(choice(market,'1'),denmarkNorway),'LOST',market+' home selection');
 }
+
+
+assert.equal(pendingEventReason({market_name:'Next Goal'},score),'NO_LIVE_CONTRACT',
+ 'an advanced quote without a frozen event contract must be diagnosed');
+assert.equal(pendingEventReason({market_name:'Asian Handicap'},score),'NO_SETTLEMENT_RULE',
+ 'an unsupported market must expose the missing settlement rule');
+assert.equal(pendingEventReason({market_name:'Next Goal'},null),'FINAL_RESULT_OR_LIVE_FACTS_UNVERIFIED');
 
 console.log('PASS period-scoped score markets, DNB draw win at 1.00, clean sheets, exact bands, card unknowns');
