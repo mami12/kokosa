@@ -27,7 +27,7 @@ export function isPeriodGoalTotal(line){
  if(/\b(?:player|scorer|asian|handicap|minutes?|corners?|cards?|bookings?|shots?|fouls?|result|btts|both|race|next|first goal|last goal|odd|even|clean sheet)\b/.test(name))return false;
  return /\b(?:exact goals?|multigoals?|number of goals?)\b/.test(name)||
   /(?:^|\b)(?:total goals?|goals? total|team [12] goals?|goals?|goal line|over\s*\/\s*under)/.test(name)||
-  /^(?:(?:1st|first|2nd|second) half|full time|match) total$/.test(name)||name==='total';
+  /^(?:(?:1st|first|2nd|second) half|full time|match) total$/.test(name)||\n  /^(?:half time|halftime) total(?:\\s+\\d+(?:[.,]\\d+)?)?$/.test(name)||name==='total';
 }
 export function parsePeriodGoalTotal(line,teams={}){
  if(!isPeriodGoalTotal(line))return null;
