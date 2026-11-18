@@ -122,16 +122,16 @@ export function parseNumberedGoalWindow(line){
  return null;
 }
 
-export function parseOrdinalGoalTime(line){
+export function parseOrdinalGoalTime(line,counts={}){
  const title=String(line.market_name??line.marketName??line.name??'').trim().replace(/^\*\s*/,'');
  if(!/^when will (?:(?:the )?(?:first|next) )?goal\b/i.test(title)&&
     !/^first goal interval\b/i.test(title)&&
     !/^(?:first|next|last) goal (?:time|interval)\b/i.test(title)&&
     !/^time of (?:the )?(?:first|next|last) goal\b/i.test(title))return null;
  let target=null;
- if(/first/i.test(title))target=1;
+ if(/\bfirst\b/i.test(title))target=1;
  const fixed=title.match(/^when will (?:goal (\d{1,3}|number)|(?:the )?next goal)/i);
- if(fixed&&!target)target=/^\d+$/.test(fixed[1])?Number(fixed[1]):1;
+ if(fixed?.[1]&&/^\d+$/.test(fixed[1]))target=Number(fixed[1]);
  if(target===null){
   try{
    const encoded=String(line.market_key??line.marketKey??'').split('@')[1];
@@ -139,7 +139,13 @@ export function parseOrdinalGoalTime(line){
    if(Number.isSafeInteger(Number(json.p3))&&Number(json.p3)>0)target=Number(json.p3);
   }catch{return null;}
  }
- if(!Number.isInteger(target)||target<1||target>100)target=1;
+ // "Next goal" is relative to the accepted live scoreboard. It is never
+ // goal #1 merely because the title did not carry an explicit provider ordinal.
+ if(target===null&&/\bnext goal\b/i.test(title)){
+  const home=nonNeg(counts?.goal?.home),away=nonNeg(counts?.goal?.away);
+  if(home!==null&&away!==null)target=home+away+1;
+ }
+ if(!Number.isInteger(target)||target<1||target>100)return null;
  let label=String(line.outcome_name??line.outcomeName??'').trim();
  if(/^(no goal|no more goals?|none)$/i.test(label))
   return {version:1,kind:'nth-time',event:'goal',target,choice:'none'};
@@ -553,7 +559,7 @@ export const liveContract=(line,{counts={},clock=null,teams={}}={})=>{
  const yellow=/\byellow\s+cards?\b/.test(name),red=/\bred\s+cards?\b/.test(name);
  const ambiguous=/\b(?:second\s+yellow|yellow\s+red)\b/.test(name);
  if((yellow&&red)||ambiguous)return null;
- const contract=parsePlayerOrdinalScorer(line)??parsePlayerGoalSpecial(line)??parsePlayerCardContract(line)??parsePlayerGoalContract(line)??parseNumberedGoalWindow(line)??parseOrdinalGoalTime(line)??
+ const contract=parsePlayerOrdinalScorer(line)??parsePlayerGoalSpecial(line)??parsePlayerCardContract(line)??parsePlayerGoalContract(line)??parseNumberedGoalWindow(line)??parseOrdinalGoalTime(line,counts)??
   parseTimedResultMarket(line)??parseIntervalLeader(line)??
   parseEventWindow(line,clock)??parseIntervalCount(line)??parseClockWindowTotal(line)??
   parseHalfExactMarket(line)??parseHalfTotal(line)??(parseParityMarket(line)?.kind==='half-parity'?parseParityMarket(line):null)??parseColorCardCount(line)??parseFirstHalfCorner(line)??parseHalfEventContract(line)??parseLastEvent(line)??parseSequenceBet(line,counts)??
