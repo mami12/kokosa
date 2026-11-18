@@ -45,6 +45,14 @@ export function resolveMarketTitle(raw,q,{intervalWidth}={}){
  // The provider catalog exposes parameterized minute windows as readable
  // placeholders rather than bracket tokens. Resolve them only from the native
  // p1/p2/h/p3 quote parameters; never infer the interval from the live clock.
+ const oneMinuteWindow=name.match(/^1 minute\s*[-–]\s*total\s+(corners?|goals?|offsides?)\s+from first value:00 to value min$/i);
+ if(oneMinuteWindow){
+  const from=Number(q.p1),to=Number(q.p2),value=Number(q.h);
+  if(!Number.isSafeInteger(from)||from<0||from>130||to!==from||
+     q.h==null||!Number.isFinite(value)||value<0||!Number.isInteger(value*2))return null;
+  return 'Total '+value+' '+oneMinuteWindow[1].toLowerCase()+
+    ' in minutes '+from+'-'+to+' (1-minute interval)';
+ }
  const providerWindow=name.match(/^(\\d{1,2})\\s+minutes?\\s*[-–]\\s*(.+?)\\s+from\\s+first value(?::00)?\\s*(?:to|[-–])\\s*second value(?::00)?\\s*min\\.?$/i);
  const timeRange=name.match(/^(.+?)\\s+in\\s+(\\d{1,2})\\s+minutes?\\s+time range(?:\\s*\\((\\d{1,2})-minute interval\\))?$/i);
  const fixedRange=name.match(/^(.+?)\\s+in\\s+(\\d{1,2})\\s+minutes?\\s+interval\\s+(\\d{1,3})\\s*[-–]\\s*(\\d{1,3})$/i);
