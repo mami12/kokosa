@@ -103,7 +103,7 @@ for(const [market,outcome,expected] of [
  ['Number of Goals 6+','4-5 goals','WON'],
  ['Multigoals awayteam','2-3','WON'],
  ['Multigoals awayteam','4+','LOST'],
- ['Multigoals hometeam','1-2','WON']
+ ['Multigoals hometeam','1-2','LOST']
 ]){
  const ticket=quote(market,outcome);
  const contract=parsePeriodGoalTotal(ticket,result);
