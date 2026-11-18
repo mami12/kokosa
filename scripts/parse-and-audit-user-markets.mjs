@@ -5,6 +5,7 @@ import {
   unverifiedCompositeLine 
 } from '../server/ledger/settler.mjs';
 import { isResultBttsMarket } from '../server/ledger/result-btts.mjs';
+import { liveContract } from '../server/ledger/live-contract-rules.mjs';
 import { isResultTotalMarket, isTotalBttsMarket, isFirstHalfResultBtts } from '../server/ledger/mixed-combos.mjs';
 import { isDcBttsMarket } from '../server/ledger/dc-btts.mjs';
 import { isHalfComboFamily } from '../server/ledger/half-combinations.mjs';
@@ -101,9 +102,12 @@ function isSupportedInSettler(title) {
     status: 'ended'
   };
 
-  for (const outcome of ['1', 'Yes', 'yes', 'Over', 'over', '1/1', 'Odd', 'None', 'home', 'away']) {
+  for (const outcome of ['1', 'X', '2', 'Yes', 'No', 'Over 0.5', 'Under 0.5', '1/1', 'Odd', 'Even', 'None', 'home', 'away']) {
     const dummyLine = { market_name: title, outcome_name: outcome, outcome_key: outcome };
     if (gradeHeldNativeCombo(dummyLine, dummyResult) !== null) return true;
+    try {
+      if (liveContract(dummyLine, {counts:{goal:{home:0,away:0},corner:{home:0,away:0},card:{home:0,away:0}},clock:0,teams:{home:'Home',away:'Away'}})) return true;
+    } catch {}
   }
 
   const dummyLine = { market_name: title, outcome_name: '1', outcome_key: '1' };
@@ -134,11 +138,19 @@ function isSupportedInSettler(title) {
 
 const excludedByUser = [];
 const nonFootball = [];
+const hiddenByUser = [];
 const alreadySupported = [];
 const notImplementedYet = [];
 
 for (const it of items) {
   const t = it.title;
+
+  // The supplied catalog explicitly marks disabled markets. They are not
+  // part of the user's active settlement scope and must not inflate gaps.
+  if (it.status !== 'Enabled') {
+    hiddenByUser.push(it);
+    continue;
+  }
 
   if (NON_FOOTBALL_PATTERN.test(t)) {
     nonFootball.push(it);
@@ -161,9 +173,10 @@ for (const it of items) {
 console.log('=== EXACT BREAKDOWN ===');
 console.log('Total items in raw user list:', items.length);
 console.log('1. Excluded by user explicit instruction (Asian, player, fouls, tackles, throwins, shots, sub, OT/pen):', excludedByUser.length);
-console.log('2. Excluded non-football sports (cricket, tennis, snooker, rugby, baseball, etc.):', nonFootball.length);
-console.log('3. Real Football - Të bëra (Në rregull / Mbulohen):', alreadySupported.length);
-console.log('4. Real Football - Të pa-implementuara akoma:', notImplementedYet.length);
+console.log('2. Hidden/disabled in the supplied catalog:', hiddenByUser.length);
+console.log('3. Excluded non-football sports (cricket, tennis, snooker, rugby, baseball, etc.):', nonFootball.length);
+console.log('4. Real Football - Të bëra (Në rregull / Mbulohen):', alreadySupported.length);
+console.log('5. Real Football - Të pa-implementuara akoma:', notImplementedYet.length);
 
 const uniqueNotImpl = new Map();
 for (const it of notImplementedYet) {
@@ -202,6 +215,13 @@ for (const [k, v] of uniqueNotImpl.entries()) {
     families.other.push(v);
   }
 }
+
+
+const uniqueMissing=[...uniqueNotImpl.values()].map(v=>({
+ title:v.title,orders:v.orders,supported:false
+}));
+fs.writeFileSync('scripts/missing-user-markets.json',
+ JSON.stringify(uniqueMissing,null,2),'utf8');
 
 fs.writeFileSync('scripts/audit-families.json', JSON.stringify(families, null, 2), 'utf8');
 console.log('Families breakdown:');
