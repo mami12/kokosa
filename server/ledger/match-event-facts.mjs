@@ -235,7 +235,7 @@ export async function persistVerifiedEventFacts(matchId, frame, execute, observe
  }
  return stored;
 }
-export const SUPPORTED_FACT_KINDS=new Set(['window','sequence','race','last-event','over','under','exact','atLeast','range','team-total-goals','team-nth-time','lead-up','interval-handicap','interval-result','interval-leader','window-total','nth-time','player-goal','player-ordinal-goal','player-goal-special','player-card','half-combo','period-goal-total','half-first-event','half-last-event','half-race','half-next-event','half-parity','half-exact-count','multi-corners','corner-comparison','score-handicap','half-total']);
+export const SUPPORTED_FACT_KINDS=new Set(['window','sequence','race','last-event','over','under','exact','atLeast','range','team-total-goals','team-nth-time','lead-up','interval-handicap','window-first-event','interval-result','interval-leader','window-total','nth-time','player-goal','player-ordinal-goal','player-goal-special','player-card','half-combo','period-goal-total','half-first-event','half-last-event','half-race','half-next-event','half-parity','half-exact-count','multi-corners','corner-comparison','score-handicap','half-total']);
 /** A complete, independently reconciled match-corner timeline is required
  * before first-half "First Corner / None" can be decided. Unlabelled stoppage
  * and minute-45+ events cannot be assigned to a half from the minute alone.
@@ -520,6 +520,12 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    ) lead) as max_away_lead_since_entry,
 
    (select same_time from ordered where team=$5::text and team_ordinal=$8) as team_nth_same_time,
+   (select team from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     order by ordinal limit 1) as window_first_team,
+   (select minute from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     order by ordinal limit 1) as window_first_minute,
    (select min(ordinal) from (
      select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
      from ordered
@@ -554,7 +560,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  if(!data||data.through_minute==null||data.open_recovery_gap===true)return null;
  // A partial/corrected frame must not silently reclassify a missing event.
  if(Number(data.home)!==Number(data.count_home)||
-    Number(data.away)!==Number(data.count_away))return null;
+    Number(data.away)!==Number(data.count_away)||
+    Number(data.total)!==Number(data.home)+Number(data.away))return null;
  // After provider corrections, the accepted counters cannot exceed the
  // present complete chronology. Hold the ticket for review if they do.
  const acceptedBaseline=c.entryBaseline??c.baseline;
@@ -680,6 +687,16 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   if(!Number.isSafeInteger(c.toExclusiveSeconds)||through*60<c.toExclusiveSeconds)return null;
   const h=Number(data.window_home),a=Number(data.window_away);
   return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='window-first-event'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(c.event!=='corner'||!Number.isFinite(closesAt)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from||
+     !['home','away','none'].includes(c.side))return null;
+  if(data.window_first_team!=null)
+   return c.side==='none'?'LOST':data.window_first_team===c.side?'WON':'LOST';
+  if(full||through>=closesAt)return c.side==='none'?'WON':'LOST';
+  return null;
  }
  if(c.kind==='interval-handicap'){
   const closesAt=Math.floor(Number(c.to))+1;
