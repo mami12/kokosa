@@ -232,7 +232,12 @@ const extraTimeGoalFacts={...confirmedGoalFacts,count_home:0,count_away:1,home:0
 const gradeNoRegulationGoal=async contract=>gradeStoredEventContract({
  id:'line-next-goal-extra-time',match_id:8,live_contract:contract
  },{home_score:0,away_score:1,corners_home:0,corners_away:0,cards_home:0,cards_away:0},
- {execute:async()=>({rows:[extraTimeGoalFacts]})});
+ {execute:async(sql,args)=>{
+  assert.match(sql,/normal_ordered/);
+  assert.match(sql,/phase_order/);
+  assert.equal(args[19],true,'event contracts must request regulation-time-only chronology');
+  return {rows:[extraTimeGoalFacts]};
+ }});
 assert.equal(await gradeNoRegulationGoal({version:1,kind:'sequence',event:'goal',target:1,side:'home',normalTimeOnly:true}),'LOST',
  'A goal scored only in extra time cannot trigger a regulation-time Next Goal selection');
 assert.equal(await gradeNoRegulationGoal({version:1,kind:'sequence',event:'goal',target:1,side:'none',noneOffered:true,normalTimeOnly:true}),'WON',
