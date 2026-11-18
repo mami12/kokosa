@@ -878,7 +878,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    if(Number(data.nth_same_time)>1)return null;
    return decision(data.nth_team===c.side);
   }
-  if(!full)return null;
+  if(!normalFull||data.phase_ambiguous===true)return null;
   if(c.event==='goal')return c.noneOffered===true&&c.side==='none'?'WON':'LOST';
   return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
  }
