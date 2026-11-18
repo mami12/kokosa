@@ -41,7 +41,8 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
     l.outcome_name,l.market_name,l.match_name,l.status as line_status,l.odds_at_placement,
     l.accepted_contract,l.settlement_reason,
     t.status as ticket_status,t.placed_at,t.stake,t.original_potential_payout,
-    u.username,r.match_id as result_id,r.home_score,r.away_score,\n    r.half_home_score,r.half_away_score,r.corners_home,r.corners_away,r.cards_home,r.cards_away,
+    u.username,r.match_id as result_id,r.home_score,r.away_score,
+    r.half_home_score,r.half_away_score,r.corners_home,r.corners_away,r.cards_home,r.cards_away,
     sr.payload as statistics_review,m.status as match_status,m.feed_status,
     o.status as override_status,n.first_seen_at
     from app_ticket_line l
