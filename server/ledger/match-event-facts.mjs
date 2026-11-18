@@ -235,7 +235,7 @@ export async function persistVerifiedEventFacts(matchId, frame, execute, observe
  }
  return stored;
 }
-export const SUPPORTED_FACT_KINDS=new Set(['window','sequence','race','last-event','over','under','exact','atLeast','range','team-total-goals','team-nth-time','interval-result','interval-leader','window-total','nth-time','player-goal','player-ordinal-goal','player-goal-special','player-card','half-combo','period-goal-total','half-first-event','half-last-event','half-race','half-next-event','half-parity','half-exact-count','multi-corners','corner-comparison','score-handicap','half-total']);
+export const SUPPORTED_FACT_KINDS=new Set(['window','sequence','race','last-event','over','under','exact','atLeast','range','team-total-goals','team-nth-time','lead-up','interval-result','interval-leader','window-total','nth-time','player-goal','player-ordinal-goal','player-goal-special','player-card','half-combo','period-goal-total','half-first-event','half-last-event','half-race','half-next-event','half-parity','half-exact-count','multi-corners','corner-comparison','score-handicap','half-total']);
 /** A complete, independently reconciled match-corner timeline is required
  * before first-half "First Corner / None" can be decided. Unlabelled stoppage
  * and minute-45+ events cannot be assigned to a half from the minute alone.
@@ -490,6 +490,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
        (own_goal=false and supplemental_verified=true and supplemental_player_name is not null
          and lower(supplemental_player_name)=lower($7))))))::int as player_goals,
     bool_or(same_time>1) as ambiguous_order,
+    bool_or(same_time>1 and ((team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))) as ambiguous_order_since_entry,
     bool_or(seconds is null) as minute_only
    from ordered
  )
@@ -507,7 +508,17 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    (select team from ordered where ordinal=$8) as nth_team,
    (select minute from ordered where ordinal=$8) as nth_minute,
    (select same_time from ordered where ordinal=$8) as nth_same_time,
-   (select minute from ordered where team=$5::text and team_ordinal=$8) as team_nth_minute,
+   (select minute from ordered where team=$5::text and team_ordinal=$8) as team_nth_minute,   (select max(lead.home_after-lead.away_after) from (
+     select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
+       coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
+     from ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+   ) lead) as max_home_lead_since_entry,
+   (select max(lead.away_after-lead.home_after) from (
+     select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
+       coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
+     from ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+   ) lead) as max_away_lead_since_entry,
+
    (select same_time from ordered where team=$5::text and team_ordinal=$8) as team_nth_same_time,
    (select min(ordinal) from (
      select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
@@ -536,7 +547,9 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   c.kind==='interval-result'?c.fromSeconds:c.kind==='window'?c.from*60:null,
   c.kind==='interval-result'?c.toExclusiveSeconds:c.kind==='window'?c.to*60:null,
   c.kind==='interval-result',c.kind==='interval-leader',c.cardColor??null,provider,
-  c.entryBaseline!=null,c.entryBaseline?.home??0,c.entryBaseline?.away??0]);
+  c.entryBaseline!=null||c.baseline!=null,
+  c.entryBaseline?.home??c.baseline?.home??0,
+  c.entryBaseline?.away??c.baseline?.away??0]);
  const data=rows[0];
  if(!data||data.through_minute==null||data.open_recovery_gap===true)return null;
  // A partial/corrected frame must not silently reclassify a missing event.
@@ -544,11 +557,12 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
     Number(data.away)!==Number(data.count_away))return null;
  // After provider corrections, the accepted counters cannot exceed the
  // present complete chronology. Hold the ticket for review if they do.
- if(c.entryBaseline!=null&&(
-    !Number.isSafeInteger(c.entryBaseline.home)||c.entryBaseline.home<0||
-    !Number.isSafeInteger(c.entryBaseline.away)||c.entryBaseline.away<0||
-    c.entryBaseline.home>Number(data.count_home)||
-    c.entryBaseline.away>Number(data.count_away)))return null;
+ const acceptedBaseline=c.entryBaseline??c.baseline;
+ if(acceptedBaseline!=null&&(
+    !Number.isSafeInteger(acceptedBaseline.home)||acceptedBaseline.home<0||
+    !Number.isSafeInteger(acceptedBaseline.away)||acceptedBaseline.away<0||
+    acceptedBaseline.home>Number(data.count_home)||
+    acceptedBaseline.away>Number(data.count_away)))return null;
  const stats=typeof result?.statistics==='string'?(()=>{
   try{return JSON.parse(result.statistics);}catch{return null;}
  })():result?.statistics;
@@ -698,6 +712,24 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    return closed?'LOST':null;
   }
   return null;
+ }
+ if(c.kind==='lead-up'){
+  const base=c.baseline;
+  if(c.event!=='goal'||!Number.isInteger(c.target)||c.target<1||c.target>3||
+     !base||!Number.isSafeInteger(base.home)||base.home<0||
+     !Number.isSafeInteger(base.away)||base.away<0||
+     !['home','away','draw'].includes(c.side))return null;
+  if(c.side==='draw')return full?decision(Number(data.home)===Number(data.away)):null;
+  const afterHome=Number(data.home)-base.home,afterAway=Number(data.away)-base.away;
+  const currentLead=c.side==='home'?afterHome-afterAway:afterAway-afterHome;
+  if(currentLead>=c.target)return 'WON';
+  const maximum=Number(c.side==='home'?data.max_home_lead_since_entry:data.max_away_lead_since_entry);
+  if(Number.isFinite(maximum)&&maximum>=c.target){
+   if(data.ambiguous_order_since_entry===true)return null;
+   return 'WON';
+  }
+  if(!full||data.ambiguous_order_since_entry===true)return null;
+  return 'LOST';
  }
  if(c.kind==='team-nth-time'){
   if(c.event!=='goal'||!['home','away'].includes(c.side)||
