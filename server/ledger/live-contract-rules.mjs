@@ -162,17 +162,10 @@ export function parseIntervalHandicap(line,{teams={},drawOffered=false}={}){
 }
 
 export function parseLeadUpMarket(line){
- const title=norm(line.market_name??line.marketName??line.name);
- const match=title.match(/^full time (1|2|3|first value)up$/);
- if(!match)return null;
- const label=norm(line.outcome_name??line.outcomeName??line.outcome_key??line.outcomeKey);
- const side=/^(?:1|home|home team|team 1)$/.test(label)?'home':
-  /^(?:2|away|away team|team 2)$/.test(label)?'away':
-  /^(?:x|draw|tie)$/.test(label)?'draw':null;
- if(!side)return null;
- return {version:1,kind:'lead-up',event:'goal',target:match[1]==='first value'?1:Number(match[1]),side};
+ // Zizobet Full Time 1UP/2UP/3UP are ordinary 1X2 result markets in the
+ // supplied ticket examples, not an early-lead event proposition.
+ return null;
 }
-
 export function parseSendingOffMarket(line){
  const title=norm(line.market_name??line.marketName??line.name);
  if(!/^sending off\??$/.test(title))return null;
