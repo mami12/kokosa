@@ -88,6 +88,16 @@ for(const [market,selected]of [
  assert.ok(c,market+' prematch');count++;
 }
 
+
+const oneUpPrematch=frozenLiveContract(quote('Full Time 1UP','1'),prematch,now);
+assert.deepEqual({kind:oneUpPrematch?.kind,target:oneUpPrematch?.target,
+ side:oneUpPrematch?.side,baseline:oneUpPrematch?.baseline},
+ {kind:'lead-up',target:1,side:'home',baseline:{home:0,away:0}});
+const twoUpLive=frozenLiveContract(quote('Full Time 2UP','2'),live(6,1,0),now);
+assert.deepEqual({kind:twoUpLive?.kind,target:twoUpLive?.target,
+ side:twoUpLive?.side,baseline:twoUpLive?.baseline},
+ {kind:'lead-up',target:2,side:'away',baseline:{home:1,away:0}});
+
 const nextHomeTime=frozenLiveContract(quote('Next Home Goal Time','31-45'),live(6,1,0),now);
 assert.deepEqual({kind:nextHomeTime?.kind,target:nextHomeTime?.target,side:nextHomeTime?.side},
  {kind:'team-nth-time',target:2,side:'home'});
