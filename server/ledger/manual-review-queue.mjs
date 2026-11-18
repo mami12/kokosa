@@ -8,6 +8,12 @@ const text=value=>String(value??'').trim();
 const nowDate=value=>{const n=new Date(value).getTime();return Number.isFinite(n)?n:0;};
 /** Why this specific selection should be reviewed, never an automatic decision. */
 export function reviewReason(row,now=Date.now()){
+ const market=text(row.market_name);
+ // Scoring Type is a goal-method contract. The current Zizobet timeline
+ // adapter preserves own-goal hints, but not verified penalty/header/foot data.
+ // Keep this explicit reason even when an earlier attempt marked the line VOID.
+ if(/\bscoring type\b/i.test(market)&&['PENDING','VOID'].includes(row.line_status))
+  return 'MISSING_GOAL_METHOD_EVIDENCE';
  if(row.line_status==='VOID'){
   // A confirmed two-way integer Over/Under push is already a valid settlement,
   // not an API anomaly for the administrator to resolve manually.
@@ -15,10 +21,6 @@ export function reviewReason(row,now=Date.now()){
   return 'VOID_NEEDS_CONFIRMATION';
  }
  if(row.line_status!=='PENDING'||row.ticket_status!=='PENDING')return null;
- const market=text(row.market_name);
- // Scoring Type is a goal-method contract. The current Zizobet timeline
- // adapter preserves own-goal hints, but not verified penalty/header/foot data.
- if(/\bscoring type\b/i.test(market))return 'MISSING_GOAL_METHOD_EVIDENCE';
  // Native offers accepted without a proven settlement rule are visible to
  // staff immediately, even while their match is still LIVE.
  if(row.accepted_contract?.settlementHold||row.settlement_reason==='NATIVE_RULE_REVIEW')
