@@ -675,6 +675,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   return decision((h>a?'home':a>h?'away':'none')===c.side);
  }
  if(c.kind==='window-total'){
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
   const closesAt=Math.floor(Number(c.to))+1;
   if(!Number.isFinite(closesAt))return null;
   const found=Number(c.cardColor?data.color_window_count:data.window_count);
