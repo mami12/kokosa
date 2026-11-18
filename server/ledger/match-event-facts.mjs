@@ -827,6 +827,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
      !Number.isInteger(c.target)||c.target<1||
      !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
   if(data.team_nth_minute!=null){
+   if(Number(data.team_nth_same_time)>1)return null;
    const minute=Number(data.team_nth_minute);
    if(!Number.isInteger(minute)||minute<0||minute>130)return null;
    return decision(minute>=c.from&&minute<=c.to);
