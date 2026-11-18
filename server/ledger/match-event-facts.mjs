@@ -438,7 +438,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
      (lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
        ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1',
         '2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2',
-        'regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime')
+        'regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime','90','stoppage','stoppagetime','injurytime')
        or (nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90)) as normal_time,
      case
        when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
@@ -446,7 +446,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
        when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
         ('2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2') then 2
        when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
-        ('regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime')
+        ('regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime','90','stoppage','stoppagetime','injurytime')
         then case when f.minute<=45 then 1 else 2 end
        when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=45 then 1
        when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90 then 2
