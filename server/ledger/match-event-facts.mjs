@@ -235,7 +235,7 @@ export async function persistVerifiedEventFacts(matchId, frame, execute, observe
  }
  return stored;
 }
-export const SUPPORTED_FACT_KINDS=new Set(['window','sequence','race','last-event','over','under','exact','atLeast','range','team-total-goals','team-nth-time','lead-up','interval-result','interval-leader','window-total','nth-time','player-goal','player-ordinal-goal','player-goal-special','player-card','half-combo','period-goal-total','half-first-event','half-last-event','half-race','half-next-event','half-parity','half-exact-count','multi-corners','corner-comparison','score-handicap','half-total']);
+export const SUPPORTED_FACT_KINDS=new Set(['window','sequence','race','last-event','over','under','exact','atLeast','range','team-total-goals','team-nth-time','lead-up','interval-handicap','interval-result','interval-leader','window-total','nth-time','player-goal','player-ordinal-goal','player-goal-special','player-card','half-combo','period-goal-total','half-first-event','half-last-event','half-race','half-next-event','half-parity','half-exact-count','multi-corners','corner-comparison','score-handicap','half-total']);
 /** A complete, independently reconciled match-corner timeline is required
  * before first-half "First Corner / None" can be decided. Unlabelled stoppage
  * and minute-45+ events cannot be assigned to a half from the minute alone.
@@ -546,7 +546,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   c.kind==='window'&&c.startExclusive===true,
   c.kind==='interval-result'?c.fromSeconds:c.kind==='window'?c.from*60:null,
   c.kind==='interval-result'?c.toExclusiveSeconds:c.kind==='window'?c.to*60:null,
-  c.kind==='interval-result',c.kind==='interval-leader',c.cardColor??null,provider,
+  c.kind==='interval-result',c.kind==='interval-leader'||c.kind==='interval-handicap',c.cardColor??null,provider,
   c.entryBaseline!=null||c.baseline!=null,
   c.entryBaseline?.home??c.baseline?.home??0,
   c.entryBaseline?.away??c.baseline?.away??0]);
@@ -680,6 +680,20 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   if(!Number.isSafeInteger(c.toExclusiveSeconds)||through*60<c.toExclusiveSeconds)return null;
   const h=Number(data.window_home),a=Number(data.window_away);
   return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='interval-handicap'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||through<closesAt||c.event!=='corner'||
+     !['home','away','none'].includes(c.side)||!Number.isFinite(Number(c.handicap)))return null;
+  const h=Number(data.window_home),a=Number(data.window_away),handicap=Number(c.handicap);
+  if(!Number.isSafeInteger(h)||h<0||!Number.isSafeInteger(a)||a<0||
+     !Number.isSafeInteger(handicap*2))return null;
+  const signed=h+handicap-a;
+  if(c.side==='none')return signed===0?'WON':'LOST';
+  const delta=c.side==='away'?a+handicap-h:signed;
+  if(c.threeWay)return delta>0?'WON':'LOST';
+  if(delta===0)return 'VOID';
+  return delta>0?'WON':'LOST';
  }
  if(c.kind==='interval-leader'){
   const closesAt=Math.floor(Number(c.to))+1;
