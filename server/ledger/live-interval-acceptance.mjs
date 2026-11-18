@@ -83,7 +83,7 @@ export async function verifyLiveIntervalAcceptance(contract,match,{
   const stamp=match.clock_at==null?NaN:new Date(match.clock_at).getTime();
   const freshClock=Number.isFinite(clock)&&clock>=0&&Number.isFinite(stamp)&&
     stamp<=at+5000&&at-stamp<=45000;
-  const counts=['goal','corner','card','foul'].includes(contract.event)
+  const counts=['goal','corner','card','foul','offside'].includes(contract.event)
     ?primaryLiveCounters(match,contract.event,{at}):null;
   if(contract.kind==='nth-time'){
     // Absolute Nth goal derives from the original quote and complete match
