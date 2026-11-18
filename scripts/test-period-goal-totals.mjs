@@ -95,4 +95,22 @@ for (const [market,outcome,expected] of [
 }
 
 
+
+for(const [market,outcome,expected] of [
+ ['Number of Goals 7+','4-6 goals','WON'],
+ ['Number of Goals 7+','0-1 goals','LOST'],
+ ['Number of Goals 7+','7+ goals','LOST'],
+ ['Number of Goals 6+','4-5 goals','WON'],
+ ['Multigoals awayteam','2-3','WON'],
+ ['Multigoals awayteam','4+','LOST'],
+ ['Multigoals hometeam','1-2','WON']
+]){
+ const ticket=quote(market,outcome);
+ const contract=parsePeriodGoalTotal(ticket,result);
+ assert.ok(contract,market+' parses selection '+outcome);
+ assert.equal(gradePeriodGoalTotal(contract,result),expected,market+' '+outcome);
+ assert.equal(gradeLine(ticket,result),expected,'legacy ticket '+market+' '+outcome);
+ assert.equal(hasRequiredSettlementEvidence(ticket,result),true);
+}
+
 console.log('PASS half/team/match goals O/U, exact, 3+, integer pushes, contradictory half/FT and no incident SQL');
