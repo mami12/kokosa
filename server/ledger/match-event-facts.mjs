@@ -429,7 +429,7 @@ export function gradeHalfTotalFacts(contract,facts,{complete=false,cardColorsVer
 async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}={}){
  if(provider!=='zizobet')return null;
  const c=line?.live_contract;
- if(!c||!SUPPORTED_FACT_KINDS.has(c.kind)||!validKind.has(c.event)||typeof execute!=='function')return null;
+ if(!c||c.entryEvidenceMissing===true||!SUPPORTED_FACT_KINDS.has(c.kind)||!validKind.has(c.event)||typeof execute!=='function')return null;
  const {rows}=await execute(`with covered as (
    select through_minute,count_home,count_away,complete,observed_at,confirmed_at,card_colors_verified from app_match_event_coverage
    where match_id=$1 and provider=$16::text and kind=$2
