@@ -487,9 +487,9 @@ export function classify(marketName = '') {
   if (/\b(?:win|wins|draw)\s+or\s+(?:both\s+teams?\s+(?:to\s+)?score|total\s+goals?\s+(?:over|under))\b/i.test(marketName)) return 'CHANCE_MIX';
   const s = String(marketName).toLowerCase();
   if (isHtFtMarket(marketName)) return 'HT_FT';
-  // Zizobet's native 1UP/2UP/3UP and bare 3way labels are 3-outcome
-  // full-time result markets (the accepted outcomes are 1/X/2).
-  if (/^(?:3[\s-]*way|full time [123]up)$/i.test(s.trim())) return '1X2';
+  // Bare 3way is a normal 1X2 market. Full Time 1UP/2UP/3UP are
+  // early-lead contracts and must never fall through to ordinary FT grading.
+  if (/^3[\s-]*way$/i.test(s.trim())) return '1X2';
   if (/correct score|exact score/i.test(s)) return 'CORRECT_SCORE';
   if (/^\s*(?:half\s*time|halftime)\s*[-:.]?\s*(?:3[\s-]*way|1x2)\s*$/i.test(s))return '1X2';
   if (/odd[\s/]*even|tek[\s/]*cift/i.test(s)) return 'ODD_EVEN';
@@ -1379,7 +1379,7 @@ export function pendingEventReason(line,result){
  }
  if(contract.kind==='player-goal')return 'PLAYER_IDENTITY_OR_PARTICIPATION_UNVERIFIED';
  if(contract.kind==='half-first-event')return 'FIRST_HALF_EVENT_PHASE_OR_COVERAGE_UNVERIFIED';
- if(['sequence','race','nth-time'].includes(contract.kind))
+ if(['sequence','race','nth-time','team-nth-time','lead-up'].includes(contract.kind))
    return 'EVENT_ORDER_OR_COVERAGE_UNVERIFIED';
  if(contract.kind==='interval-result'||contract.startExclusive===true)
    return 'EVENT_SECOND_OR_COVERAGE_UNVERIFIED';
