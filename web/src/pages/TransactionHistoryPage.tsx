@@ -321,7 +321,10 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
                             {entry.lines?.map(line => (
                               <div key={line.id} className="flex items-start justify-between gap-2 text-[11px]">
                                 <div className="min-w-0">
-                                  <div className="font-semibold text-white">{line.matchName}</div>
+                                  <div className="font-semibold text-white">
+                                    {line.matchName}
+                                    {line.scoreAtPlacement && <span className="ml-1.5 text-accent-green font-bold">{line.scoreAtPlacement}</span>}
+                                  </div>
                                   <div className="text-text-secondary">
                                     {formatMarketSelectionLabel(line.marketName, line.marketLine, t)} ·{' '}
                                     {formatTicketSelection(line.outcomeName, line.marketName, line.matchName, t, line.outcomeCode, line.marketLine)}

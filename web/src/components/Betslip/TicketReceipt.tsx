@@ -97,7 +97,10 @@ export default function TicketReceipt({ ticket, onClose }: Props) {
         <div className="space-y-3 py-3">
           {ticket.lines.map((line, index) => (
             <article key={line.id || `${line.matchId}-${index}`} className="border-b border-dashed border-black/30 pb-2 text-xs">
-              <div className="font-bold">{line.matchName}</div>
+              <div className="font-bold">
+                {line.matchName}
+                {line.scoreAtPlacement ? <span className="ml-1 font-black text-emerald-700">{line.scoreAtPlacement}</span> : ''}
+              </div>
               <div className="mt-0.5">
                 {formatMarketSelectionLabel(line.marketName, line.marketLine, t)}: <strong>{formatTicketSelection(line.outcomeName, line.marketName, line.matchName, t, line.outcomeCode, line.marketLine)}</strong>
               </div>

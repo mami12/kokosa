@@ -355,7 +355,10 @@ export default function TicketAudit() {
                         {t.lines?.map((line: any) => (
                           <div key={line.id} className="bg-primary/80 p-3 rounded-xl border border-tertiary flex justify-between items-center text-xs gap-2">
                             <div className="space-y-0.5 min-w-0">
-                              <div className="text-text-secondary text-[11px] truncate">{line.matchName}</div>
+                              <div className="text-text-secondary text-[11px] truncate">
+                                {line.matchName}
+                                {line.scoreAtPlacement && <span className="ml-1 text-accent-green font-bold">{line.scoreAtPlacement}</span>}
+                              </div>
                               <div className="font-semibold text-white">
                                 {formatMarketSelectionLabel(line.marketName, line.marketLine, translate)}: <span className="text-accent-green font-black">{formatTicketSelection(line.outcomeName, line.marketName, line.matchName, translate)}</span>
                               </div>

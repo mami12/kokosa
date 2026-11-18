@@ -141,6 +141,8 @@ export interface BetSelection {
   marketType?: string;
   marketLine?: string;
   matchName: string;
+  /** Match/market score or counter at placement time, e.g. [1:0] or [4:0]. */
+  scoreAtPlacement?: string | null;
   odds: number;
   builderLegs?: { marketId: string; outcomeId: string;priceValidUntil?:number|null;quoteSnapshotAt?:number }[];
   priceValidUntil?:number|null;
@@ -163,6 +165,8 @@ export interface TicketLine {
   marketLine?: string;
   marketName: string;
   matchName: string;
+  /** Match/market score or counter at placement time, e.g. [1:0] or [4:0]. */
+  scoreAtPlacement?: string | null;
   oddsAtPlacement: number;
   /** Effective coefficient used for payout after a settlement rule adjustment, e.g. DNB draw. */
   settledOdds?: number | null;

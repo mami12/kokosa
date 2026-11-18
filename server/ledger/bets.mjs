@@ -43,6 +43,7 @@ import {isSyntheticFootballMatch} from '../football-competitions.mjs';
 import {frozenLiveContract} from './live-contract-context.mjs';
 import {verifyLiveIntervalAcceptance} from './live-interval-acceptance.mjs';
 import {primaryLiveCounters} from './primary-live-counters.mjs';
+import {teamStatisticsFromRow} from '../match-statistics.mjs';
 import {nativeZizobetContractRow} from './native-zizobet-contract.mjs';
 import {parsePlayerCardContract,parsePlayerGoalContract,parseEventWindow,parseSequenceBet} from './live-contract-rules.mjs';
 import {parseCornerComparison} from './corner-comparisons.mjs';
@@ -572,11 +573,48 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
   const zero={home:0,away:0};
   // The future PREMATCH fixture has not begun: zero is real. A LIVE
   // missing counter is unknown, never a manufactured 0-0.
+  const extractStatCounters = (event) => {
+    const primary = primaryLiveCounters(match, event, { at: snapshotAt });
+    if (primary && primary.home != null && primary.away != null) return primary;
+    if (event === 'goal') {
+      const h = match.home_score ?? match.homeScore ?? match.score?.home;
+      const a = match.away_score ?? match.awayScore ?? match.score?.away;
+      if (h != null && a != null && Number.isFinite(Number(h)) && Number.isFinite(Number(a))) {
+        return { home: Number(h), away: Number(a), source: 'match-score' };
+      }
+    }
+    const teams = teamStatisticsFromRow(match);
+    if (teams?.home || teams?.away) {
+      if (event === 'corner') {
+        const h = teams?.home?.corners;
+        const a = teams?.away?.corners;
+        if (h != null && a != null && Number.isFinite(Number(h)) && Number.isFinite(Number(a))) {
+          return { home: Number(h), away: Number(a), source: 'match-stats' };
+        }
+      }
+      if (event === 'card') {
+        const hy = teams?.home?.yellow ?? 0, hr = teams?.home?.red ?? 0;
+        const ay = teams?.away?.yellow ?? 0, ar = teams?.away?.red ?? 0;
+        if (teams?.home && teams?.away) {
+          return { home: Number(hy) + Number(hr), away: Number(ay) + Number(ar), source: 'match-stats' };
+        }
+      }
+      if (event === 'foul') {
+        const h = teams?.home?.fouls;
+        const a = teams?.away?.fouls;
+        if (h != null && a != null && Number.isFinite(Number(h)) && Number.isFinite(Number(a))) {
+          return { home: Number(h), away: Number(a), source: 'match-stats' };
+        }
+      }
+    }
+    return null;
+  };
+
   const acceptedCounters={
-    goal:unstartedPrematch?zero:primaryLiveCounters(match,'goal',{at:snapshotAt}),
-    corner:unstartedPrematch?zero:primaryLiveCounters(match,'corner',{at:snapshotAt}),
-    card:unstartedPrematch?zero:primaryLiveCounters(match,'card',{at:snapshotAt}),
-    foul:unstartedPrematch?zero:primaryLiveCounters(match,'foul',{at:snapshotAt})
+    goal:unstartedPrematch?zero:(extractStatCounters('goal') ?? { home: match.home_score ?? 0, away: match.away_score ?? 0 }),
+    corner:unstartedPrematch?zero:extractStatCounters('corner'),
+    card:unstartedPrematch?zero:extractStatCounters('card'),
+    foul:unstartedPrematch?zero:extractStatCounters('foul')
   };
   return {
     matchId: String(matchId),
@@ -593,6 +631,7 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
     homeTeamName:match.home,awayTeamName:match.away,
     kickoffAt:match.start_at??null,offerObservedAt:row.updated_at??null,
     acceptedLiveSnapshot:{
+      isLive:!unstartedPrematch,
       scoreHome:unstartedPrematch?0:match.home_score??null,
       scoreAway:unstartedPrematch?0:match.away_score??null,
       scoreObservedAt:match.score_at??null,clockMilliseconds:match.match_time_ms??null,
@@ -752,6 +791,68 @@ const round = (n, digits = 2) => Number(Number(n).toFixed(digits));
 const TICKET_COLUMNS = `t.id, t.booking_code, t.user_id, t.stake, t.total_odds, t.potential_payout, t.original_potential_payout, t.potential_quote_reconstructed,
                         t.ticket_type, t.system_type, t.status, t.placed_at, t.settled_at`;
 
+export function getLinePlacementScore(l) {
+  const contract = l?.accepted_contract;
+  const snapshot = contract?.acceptedLiveSnapshot;
+  if (!snapshot) {
+    if (l?.live_contract?.entryBaseline) {
+      const b = l.live_contract.entryBaseline;
+      if (b.home != null && b.away != null) return `[${Number(b.home)}:${Number(b.away)}]`;
+    }
+    return null;
+  }
+
+  const isLive = snapshot.isLive === true ||
+    (snapshot.feedPhase && !/^(?:not started|prematch)$/i.test(String(snapshot.feedPhase).trim())) ||
+    snapshot.clockMilliseconds != null ||
+    snapshot.scoreObservedAt != null ||
+    (l?.live_contract?.entryBaseline != null);
+
+  if (!isLive) return null;
+
+  const marketName = String(l?.market_name ?? contract?.providerMarketName ?? '').toLowerCase();
+
+  // 1. Corners (Goditje këndore)
+  if (/\b(?:corners?|këndore|kendore|korne)\b/i.test(marketName)) {
+    const baseline = l?.live_contract?.event === 'corner' ? l.live_contract.entryBaseline : null;
+    const h = baseline?.home ?? snapshot.counters?.corner?.home;
+    const a = baseline?.away ?? snapshot.counters?.corner?.away;
+    if (h != null && a != null && Number.isFinite(Number(h)) && Number.isFinite(Number(a))) {
+      return `[${Number(h)}:${Number(a)}]`;
+    }
+  }
+
+  // 2. Cards (Kartonë)
+  if (/\b(?:cards?|karton\w*|bookings?|yellow\s*card|red\s*card)\b/i.test(marketName)) {
+    const baseline = l?.live_contract?.event === 'card' ? l.live_contract.entryBaseline : null;
+    const h = baseline?.home ?? snapshot.counters?.card?.home;
+    const a = baseline?.away ?? snapshot.counters?.card?.away;
+    if (h != null && a != null && Number.isFinite(Number(h)) && Number.isFinite(Number(a))) {
+      return `[${Number(h)}:${Number(a)}]`;
+    }
+  }
+
+  // 3. Fouls (Faulla)
+  if (/\b(?:fouls?|faull\w*)\b/i.test(marketName)) {
+    const baseline = l?.live_contract?.event === 'foul' ? l.live_contract.entryBaseline : null;
+    const h = baseline?.home ?? snapshot.counters?.foul?.home;
+    const a = baseline?.away ?? snapshot.counters?.foul?.away;
+    if (h != null && a != null && Number.isFinite(Number(h)) && Number.isFinite(Number(a))) {
+      return `[${Number(h)}:${Number(a)}]`;
+    }
+  }
+
+  // 4. Default: Goals / 1X2 / Totals / BTTS / DC / HT / Combos
+  const baseline = l?.live_contract?.event === 'goal' ? l.live_contract.entryBaseline : null;
+  const h = baseline?.home ?? snapshot.scoreHome ?? snapshot.counters?.goal?.home;
+  const a = baseline?.away ?? snapshot.scoreAway ?? snapshot.counters?.goal?.away;
+  if (h != null && a != null && Number.isFinite(Number(h)) && Number.isFinite(Number(a))) {
+    return `[${Number(h)}:${Number(a)}]`;
+  }
+
+  return null;
+}
+
 const toClientLine = (l) => ({
   id: l.id,
   ticketId: l.ticket_id,
@@ -765,6 +866,7 @@ const toClientLine = (l) => ({
   // This parameter is essential for goal-by-minute and other line-specific tickets.
   marketLine: String(l.line ?? ''),
   matchName: l.match_name,
+  scoreAtPlacement: getLinePlacementScore(l),
   oddsAtPlacement: Number(l.odds_at_placement),
   settledOdds: l.settled_odds==null?null:Number(l.settled_odds),
   status: l.status,

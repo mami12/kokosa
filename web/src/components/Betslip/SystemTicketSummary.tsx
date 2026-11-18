@@ -21,7 +21,7 @@ export default function SystemTicketSummary({ ticket }: { ticket: Ticket }) {
         {system.columns.map((column, index) => (
           <div key={column.id} className="mt-1 border-t border-tertiary/60 py-1">
             <div>#{index + 1} · {column.stake.toFixed(2)} {" " + t("Lëk ×") + " "}{formatOdds(column.totalOdds)} = {column.potentialPayout.toFixed(2)} {" " + t("Lëk ·") + " "}{translateTicketStatus(column.status, t)}</div>
-            <div>{column.lines.map(line => `${line.matchName}: ${formatMarketSelectionLabel(line.marketName, line.marketLine, t)} · ${formatTicketSelection(line.outcomeName, line.marketName, line.matchName, t, line.outcomeCode, line.marketLine)}`).join(' + ')}</div>
+            <div>{column.lines.map(line => `${line.matchName}${line.scoreAtPlacement ? ` ${line.scoreAtPlacement}` : ''}: ${formatMarketSelectionLabel(line.marketName, line.marketLine, t)} · ${formatTicketSelection(line.outcomeName, line.marketName, line.matchName, t, line.outcomeCode, line.marketLine)}`).join(' + ')}</div>
           </div>
         ))}
       </details>

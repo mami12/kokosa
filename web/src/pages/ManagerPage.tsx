@@ -633,7 +633,10 @@ export default function ManagerPage() {
                           <div className="md:col-span-2"><SystemTicketSummary ticket={ticket} /></div>
                           {ticket.lines.map((line) => (
                             <div key={line.id} className="rounded-lg border border-tertiary bg-primary p-3 text-xs">
-                              <div className="text-text-secondary">{line.matchName}</div>
+                              <div className="text-text-secondary">
+                                {line.matchName}
+                                {line.scoreAtPlacement && <span className="ml-1 text-accent-green font-bold">{line.scoreAtPlacement}</span>}
+                              </div>
                               <div className="mt-1 font-semibold text-white">{formatMarketSelectionLabel(line.marketName, line.marketLine, t)}: <span className="text-accent-green">{formatTicketSelection(line.outcomeName, line.marketName, line.matchName, t)}</span></div>
                               <div className="mt-1 flex justify-between text-text-secondary">
                                 <span>{t("Kuota") + " "}<b className="text-white">{formatOdds(line.oddsAtPlacement)}</b></span>

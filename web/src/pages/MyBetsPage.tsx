@@ -90,7 +90,10 @@ export default function MyBetsPage(){
           const lineState=statusInfo(line.status),LineIcon=lineState.Icon;
           return <div key={line.id||index} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 py-3">
             <div className="min-w-0">
-              <p className="break-words text-sm font-semibold leading-snug text-slate-100">{line.matchName}</p>
+              <p className="break-words text-sm font-semibold leading-snug text-slate-100">
+                {line.matchName}
+                {line.scoreAtPlacement && <span className="ml-1.5 font-bold text-accent-green">{line.scoreAtPlacement}</span>}
+              </p>
               <p className="mt-1 break-words text-xs leading-relaxed text-slate-400">
                 {formatMarketSelectionLabel(line.marketName,line.marketLine,t)}
               </p>
