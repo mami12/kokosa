@@ -1,6 +1,7 @@
 import './fixtures/isolated-casino-env.mjs';
 import assert from 'node:assert/strict';
 import {classify,gradeLine,hasRequiredSettlementEvidence} from '../server/ledger/settler.mjs';
+import {eventMarketRequirement} from '../server/ledger/event-market-policy.mjs';
 
 const quote=outcome_name=>({market_name:'Which team to score',outcome_name,line:'',period:0});
 const result=(home_score,away_score)=>({
@@ -9,6 +10,8 @@ const result=(home_score,away_score)=>({
  half_home_score:home_score,half_away_score:away_score
 });
 assert.equal(classify('Which team to score'),'WHICH_TEAM_TO_SCORE');
+assert.equal(eventMarketRequirement({name:'Which team to score'}),null,
+ 'this is a team-scoring proposition, not an individual-player event market');
 
 for(const [score,picks] of [
  [{home_score:2,away_score:3},{'Both teams':'WON','Only 1':'LOST','Only 2':'LOST','None':'LOST'}],
