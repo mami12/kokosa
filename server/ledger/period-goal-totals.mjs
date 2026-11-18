@@ -86,13 +86,14 @@ export function parsePeriodGoalTotal(line,teams={}){
  // An EXACT goals menu is not an Over/Under menu, even when a stale
  // client supplies an arbitrary O/U label and numeric line.
  const exactOnly=Boolean(exactGroup);
- let label=norm(line.outcome_name??line.outcomeName??line.outcome_key??line.outcomeKey);
+ let label=norm(line.outcome_name??line.outcomeName??line.outcome_key??line.outcomeKey)
+  .replace(/\s+goals?$/,'').trim();
  let kind=null,target=null;
  const over=label.match(/^(?:over|mbi)\s*(\d+(?:[.,]\d+)?)?$/);
  const under=label.match(/^(?:under|nen)\s*(\d+(?:[.,]\d+)?)?$/);
  const exact=label.match(/^(?:exact(?:ly)?\s*)?(\d{1,2})$/);
  const more=label.match(/^(\d{1,2})\s*(?:\+|or more)$/);
- const range=label.match(/^(\d{1,2})\s*(?:to|or)\s*(\d{1,2})$/);
+ const range=label.match(/^(\d{1,2})\s*(?:-|–|—|to|or)\s*(\d{1,2})$/);
  const stated=real(over?.[1]??under?.[1]);
  const quoted=real(line.line??line.specifier);
  const nums=[embedded,stated,quoted].filter(x=>x!==null);
