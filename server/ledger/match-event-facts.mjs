@@ -660,7 +660,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   if(c.startExclusive===true&&data.rolling_boundary_uncertain===true)return null;
   const num=Number(c.cardColor?data.color_window_count:data.window_count);
   if(num>0)return decision(c.choice);
-  return through>=closesAt?decision(!c.choice):null;
+  return full||through>=closesAt?decision(!c.choice):null;
  }
  if(c.kind==='interval-result'){
   if(!Number.isSafeInteger(c.toExclusiveSeconds)||through*60<c.toExclusiveSeconds)return null;
@@ -678,7 +678,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   const closesAt=Math.floor(Number(c.to))+1;
   if(!Number.isFinite(closesAt))return null;
   const found=Number(c.cardColor?data.color_window_count:data.window_count);
-  const closed=through>=closesAt;
+  const closed=full||through>=closesAt;
   if(c.choice==='over'||c.choice==='under'){
    if(!Number.isFinite(c.threshold)||!Number.isInteger(c.threshold*2))return null;
    // Once the accepted-event count crosses the line it can only increase.
