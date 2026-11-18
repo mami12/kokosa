@@ -22,6 +22,17 @@ assert.equal(frame.coverage.goalThrough,36+5/60);
 assert.equal(frame.coverage.cornerThrough,36+5/60);
 assert.equal(frame.ended,false);
 assert.equal(frame.events.length,3);
+
+const offsideFrame=normalizeLiveFrame({
+ Match:{Score:'0:0',MatchTimeExtended:'22:00',CornersTeam1:0,CornersTeam2:0,
+  OffsidesTeam1:1,OffsidesTeam2:0,EventStatus:6},
+ TimeLines:[{id:'offside-1',type:'offside',team:1,gt:18,clk:'18:05'}]
+});
+assert.equal(offsideFrame.counts.offside,1);
+assert.equal(offsideFrame.coverage.offsideThrough,22);
+assert.equal(offsideFrame.teams.offside.home,1);
+assert.equal(offsideFrame.events[0].type,'offside');
+
 // Field layout sampled from the public Zizobet live match detail.
 const sameMinuteGame={
  Match:{Score:'1:0',MatchTimeExtended:'46:55',CornersTeam1:1,CornersTeam2:1,EventStatus:4},
