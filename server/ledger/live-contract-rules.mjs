@@ -416,8 +416,20 @@ export function parseFirstHalfCorner(line) {
  * counts. The PostgreSQL fact grader filters by the recorded match period.
  * Live half-races need period baselines and are held until that evidence exists.
  */
-export function parseHalfEventContract(line){
+export function parseHalfEventContract(line,counts={}){
  const name=norm(line.market_name??line.marketName??line.name);
+ // Zizobet's "Halftime - Next goal" is the next goal inside the first half,
+ // after the accepted live score. It is not global goal #1.
+ const nextHalf=name.match(/^(?:halftime|half time|1st half|first half)\s*[-–.:]?\s*next goal$/);
+ if(nextHalf){
+  if(line.period!=null&&Number(line.period)!==0&&Number(line.period)!==1)return null;
+  const side=sideOf(line.outcome_name??line.outcomeName)??sideOf(line.outcome_key??line.outcomeKey);
+  const home=nonNeg(counts?.goal?.home),away=nonNeg(counts?.goal?.away);
+  if(!side||home===null||away===null)return null;
+  return {version:1,kind:'half-next-event',event:'goal',half:1,side,
+   target:home+away+1,baseline:{home,away},
+   noneOffered:side==='none'||line.halfNoneOffered===true};
+ }
  const m=name.match(/^(1st|first|2nd|second) half\s*[-–.:]?\s*(?:(?:which team wins )?race to (\d{1,3}) (goals?|corners?|cards?)|(first|last) (goal|corner|card))$/);
  if(!m)return null;
  const half=/^(?:1st|first)$/.test(m[1])?1:2;
@@ -562,7 +574,7 @@ export const liveContract=(line,{counts={},clock=null,teams={}}={})=>{
  const contract=parsePlayerOrdinalScorer(line)??parsePlayerGoalSpecial(line)??parsePlayerCardContract(line)??parsePlayerGoalContract(line)??parseNumberedGoalWindow(line)??parseOrdinalGoalTime(line,counts)??
   parseTimedResultMarket(line)??parseIntervalLeader(line)??
   parseEventWindow(line,clock)??parseIntervalCount(line)??parseClockWindowTotal(line)??
-  parseHalfExactMarket(line)??parseHalfTotal(line)??(parseParityMarket(line)?.kind==='half-parity'?parseParityMarket(line):null)??parseColorCardCount(line)??parseFirstHalfCorner(line)??parseHalfEventContract(line)??parseLastEvent(line)??parseSequenceBet(line,counts)??
+  parseHalfExactMarket(line)??parseHalfTotal(line)??(parseParityMarket(line)?.kind==='half-parity'?parseParityMarket(line):null)??parseColorCardCount(line)??parseFirstHalfCorner(line)??parseHalfEventContract(line,counts)??parseLastEvent(line)??parseSequenceBet(line,counts)??
   parseTeamGoalMarket(line,teams)??parseMultiCornerContract(line)??parseCornerComparison(line)??parseTeamCountMarket(line)??parseCountMarket(line);
  // Full-time foul totals continue to use verified final statistics.
  // For explicitly bounded YES/NO foul windows ONLY, accept a native event
