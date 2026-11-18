@@ -45,7 +45,7 @@ import {verifyLiveIntervalAcceptance} from './live-interval-acceptance.mjs';
 import {primaryLiveCounters} from './primary-live-counters.mjs';
 import {teamStatisticsFromRow} from '../match-statistics.mjs';
 import {nativeZizobetContractRow} from './native-zizobet-contract.mjs';
-import {parsePlayerCardContract,parsePlayerGoalContract,parseEventWindow,parseSequenceBet} from './live-contract-rules.mjs';
+import {parsePlayerCardContract,parsePlayerGoalContract,parseEventWindow,parseSequenceBet,parseIntervalHandicap} from './live-contract-rules.mjs';
 import {parseCornerComparison} from './corner-comparisons.mjs';
 import {parseFirstHalfCorner,parseHalfEventContract} from './live-contract-rules.mjs';
 import {isHandicapMarket,parseHandicapContract} from './handicap-contracts.mjs';
@@ -481,28 +481,34 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
     /^(?:x|draw|tie|barazim)$/i.test(String(o.outcome_name??o.outcome_key??'').trim()));
   let handicapContract=null;
   if(isHandicapMarket(row)){
-    handicapContract=parseHandicapContract(row,{teams:match,drawOffered:handicapDrawOffered});
+    handicapContract=parseIntervalHandicap(row,{teams:match,drawOffered:handicapDrawOffered})??
+      parseHandicapContract(row,{teams:match,drawOffered:handicapDrawOffered});
     if(!handicapContract&&!holdNative('NATIVE_HANDICAP_UNMAPPED'))
       throw Object.assign(badRequest('Handikapi nuk ka opsion të qartë ose kërkon pagesë pjesore 0.25/0.75.'),{
         code:'MARKET_EVIDENCE_UNSUPPORTED',outcomeId:selection?.outcomeId});
     const liveHandicap=String(match.service??'').toUpperCase()==='LIVE';
     if(liveHandicap&&handicapContract){
-      // Live Asian Handicap often means goals AFTER acceptance, whereas
-      // corner spreads/other providers may use the entire match. Only an
-      // explicitly labelled remaining-match market has unambiguous scope.
-      if((!handicapContract.rest||handicapContract.event!=='goal'||handicapContract.half!==0)&&
-         !holdNative('NATIVE_LIVE_HANDICAP_UNMAPPED'))
-        throw Object.assign(badRequest('Mungon rregulli i furnizuesit për handikapin LIVE.'),{
-          code:'MARKET_EVIDENCE_UNSUPPORTED',outcomeId:selection?.outcomeId});
-      const stamp=Date.parse(match.score_at??'');
-      const h=match.home_score==null?null:Number(match.home_score);
-      const a=match.away_score==null?null:Number(match.away_score);
-      if((!Number.isSafeInteger(h)||h<0||!Number.isSafeInteger(a)||a<0||
-         !Number.isFinite(stamp)||Date.now()-stamp>90000||stamp-Date.now()>5000)&&
-         !holdNative('NATIVE_HANDICAP_BASELINE_UNVERIFIED'))
-        throw Object.assign(badRequest('Rezultati LIVE nuk është i konfirmuar për handikapin.'),{
-          code:'MARKET_EVIDENCE_UNSUPPORTED',outcomeId:selection?.outcomeId});
-      if(!settlementHold)handicapContract={...handicapContract,baseline:{home:h,away:a}};
+      if(handicapContract.kind==='interval-handicap'){
+        // The interval acceptance helper freezes the confirmed corner counters
+        // and clock; it must not be replaced with the full-match score.
+      }else{
+        // Live Asian Handicap often means goals AFTER acceptance, whereas
+        // corner spreads/other providers may use the entire match. Only an
+        // explicitly labelled remaining-match market has unambiguous scope.
+        if((!handicapContract.rest||handicapContract.event!=='goal'||handicapContract.half!==0)&&
+           !holdNative('NATIVE_LIVE_HANDICAP_UNMAPPED'))
+          throw Object.assign(badRequest('Mungon rregulli i furnizuesit për handikapin LIVE.'),{
+            code:'MARKET_EVIDENCE_UNSUPPORTED',outcomeId:selection?.outcomeId});
+        const stamp=Date.parse(match.score_at??'');
+        const h=match.home_score==null?null:Number(match.home_score);
+        const a=match.away_score==null?null:Number(match.away_score);
+        if((!Number.isSafeInteger(h)||h<0||!Number.isSafeInteger(a)||a<0||
+           !Number.isFinite(stamp)||Date.now()-stamp>90000||stamp-Date.now()>5000)&&
+           !holdNative('NATIVE_HANDICAP_BASELINE_UNVERIFIED'))
+          throw Object.assign(badRequest('Rezultati LIVE nuk është i konfirmuar për handikapin.'),{
+            code:'MARKET_EVIDENCE_UNSUPPORTED',outcomeId:selection?.outcomeId});
+        if(!settlementHold)handicapContract={...handicapContract,baseline:{home:h,away:a}};
+      }
     }
   }
   let contract;
