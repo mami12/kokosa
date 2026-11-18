@@ -1379,7 +1379,7 @@ export function pendingEventReason(line,result){
  }
  if(contract.kind==='player-goal')return 'PLAYER_IDENTITY_OR_PARTICIPATION_UNVERIFIED';
  if(contract.kind==='half-first-event')return 'FIRST_HALF_EVENT_PHASE_OR_COVERAGE_UNVERIFIED';
- if(['sequence','race','nth-time','team-nth-time','lead-up'].includes(contract.kind))
+ if(['sequence','race','nth-time','team-nth-time','lead-up','interval-handicap','window-first-event'].includes(contract.kind))
    return 'EVENT_ORDER_OR_COVERAGE_UNVERIFIED';
  if(contract.kind==='interval-result'||contract.startExclusive===true)
    return 'EVENT_SECOND_OR_COVERAGE_UNVERIFIED';
