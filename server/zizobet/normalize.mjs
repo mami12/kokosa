@@ -72,7 +72,7 @@ export function resolveMarketTitle(raw,q,{intervalWidth}={}){
    if(!/^\\d+$/.test(text(q.p3)))return null;
    return 'Who scores goal '+q.p3+band;
   }
-  const teamFirst=descriptor.match(/^(home|away)team\s+total\s+(corners?|cards?|bookings?|goals?)$/);
+  const teamFirst=descriptor.match(/^(home|away)team\s+total\s+(corners?|cards?|bookings?|goals?|offsides?)$/);
   if(teamFirst){
    const value=q.h,event=/bookings?/i.test(teamFirst[2])?'cards':teamFirst[2].toLowerCase();
    if(value==null||!Number.isFinite(Number(value))||Number(value)<0||!Number.isInteger(Number(value)*2))return null;
