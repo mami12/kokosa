@@ -10,7 +10,7 @@ export function eventMarketRequirement(market = {},teams={}) {
     .normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
   if (/\b(?:players?|goalscorers?|goal scorers?|scorers?|assists?|hat[ -]?trick|golashenues(?:it)?|lojtari|lojtare(?:t)?)\b/.test(name) ||
       /\bto score\s+(?:a goal|[2-9]\+? goals?|two|three|four)\b/.test(name)) return 'PLAYER_EVENT_DATA_REQUIRED';
-  if(/\b(?:headed goals?|header goals?|penalty goals?|left[ -]foot|right[ -]foot|scoring method|method of (?:the )?goal)\b/.test(name))return 'GOAL_CONTRACT_DATA_REQUIRED';
+  if(/\b(?:scoring type|headed goals?|header goals?|penalty goals?|left[ -]foot|right[ -]foot|scoring method|method of (?:the )?goal)\b/.test(name))return 'GOAL_CONTRACT_DATA_REQUIRED';
   if(/\banytime\b/.test(name)&&/\b(?:score|scoring)\b/.test(name))return 'PLAYER_EVENT_DATA_REQUIRED';
   if(/\bto score\b/.test(name)&&!(/\bboth (?:teams?|sides?)\b/.test(name)||/^(?:home(?: team)?|away(?: team)?|team [12]) to score$/.test(name)))return 'PLAYER_EVENT_DATA_REQUIRED';
   if (/^when will (?:the )?(?:goal \d+|next goal) be scored\b/.test(name))return 'TIMED_EVENT_DATA_REQUIRED';
