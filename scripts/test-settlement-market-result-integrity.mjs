@@ -86,4 +86,24 @@ for(const status of ['After penalties','Penalties','Extra time','After match','P
  assert.equal(isFinished({...finishedFrame,feed_status:status}),false,
   status+' score could be non-regulation and must not settle 90m bets');
 }
+
+// Same fixture result and same quoted market/line must produce one
+// deterministic answer for every ticket, regardless of which account or
+// ticket row carries it. A 5-0 FT cannot make Over 2.5 both WON and LOST.
+const blowout={...score,home_team:'Home FC',away_team:'Away FC',
+ home_score:5,away_score:0,half_home_score:2,half_away_score:0};
+for(const threshold of ['2.5','3.5','4.5']){
+ assert.equal(gradeLine(choice('Total Goals','Over',{line:threshold}),blowout),'WON',
+  'FT Over '+threshold+' is WON for 5-0');
+ assert.equal(gradeLine(choice('Total Goals','Under',{line:threshold}),blowout),'LOST',
+  'FT Under '+threshold+' is LOST for 5-0');
+}
+assert.equal(gradeLine(choice('Total Goals','Over',{line:'2.5',period:1}),blowout),'LOST',
+ '1H Over 2.5 uses 2-0 at HT, not the 5-0 FT');
+assert.equal(gradeLine(choice('Total Goals','Under',{line:'2.5',period:1}),blowout),'WON');
+assert.equal(gradeLine(choice('Total Goals','Over',{line:'2.5',period:2}),blowout),'WON',
+ '2H Over 2.5 uses FT minus HT: 3-0');
+assert.equal(gradeLine(choice('Home Team Total Goals','Over',{line:'2.5'}),blowout),'WON');
+assert.equal(gradeLine(choice('Away Team Total Goals','Over',{line:'0.5'}),blowout),'LOST');
+
 console.log('PASS period-scoped score markets, DNB draw win at 1.00, clean sheets, exact bands, card unknowns');
