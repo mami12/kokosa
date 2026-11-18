@@ -2,7 +2,7 @@ import {resolveMarketTitle} from '../zizobet/normalize.mjs';
 
 // Provider identifiers and quoted parameters, not browser translations, define
 // dynamic Zizobet contracts. Ordinary static titles retain their existing rules.
-const dynamic=/\[[^\]]+\]|\{[^}]+\}|\brace to x\b/i;
+const dynamic=/\[[^\]]+\]|\{[^}]+\}|\brace to x\b|\bfirst value\b|\bsecond value\b|\btime range\b/i;
 const unsupported=message=>Object.assign(new Error(message),{
   status:400,code:'MARKET_EVIDENCE_UNSUPPORTED'
 });
