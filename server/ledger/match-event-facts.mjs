@@ -695,6 +695,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   if(c.startExclusive===true&&data.rolling_boundary_uncertain===true)return null;
   const num=Number(c.cardColor?data.color_window_count:data.window_count);
   if(num>0)return decision(c.choice);
+  if(c.normalTimeOnly===true&&data.phase_ambiguous===true)return null;
   return full||through>=closesAt?decision(!c.choice):null;
  }
  if(c.kind==='interval-result'){
