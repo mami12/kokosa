@@ -87,6 +87,14 @@ for(const [market,selected]of [
  const c=frozenLiveContract(quote(market,selected),prematch,now);
  assert.ok(c,market+' prematch');count++;
 }
+
+const nextHomeTime=frozenLiveContract(quote('Next Home Goal Time','31-45'),live(6,1,0),now);
+assert.deepEqual({kind:nextHomeTime?.kind,target:nextHomeTime?.target,side:nextHomeTime?.side},
+ {kind:'team-nth-time',target:2,side:'home'});
+const nextAwayTime=frozenLiveContract(quote('Next Away Goal Time','31-45'),live(6,1,0),now);
+assert.deepEqual({kind:nextAwayTime?.kind,target:nextAwayTime?.target,side:nextAwayTime?.side},
+ {kind:'team-nth-time',target:1,side:'away'});
+
 const next=frozenLiveContract(quote('Next Goal','2'),live(6,1,0),now);
 assert.equal(next.target,2);assert.deepEqual(next.baseline,{home:1,away:0});count++;
 const race=frozenLiveContract(quote('Race to 7 Corners','1'),live(6,0,0,3,2),now);
