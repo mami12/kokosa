@@ -433,16 +433,49 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  const {rows}=await execute(`with covered as (
    select through_minute,count_home,count_away,complete,observed_at,confirmed_at,card_colors_verified from app_match_event_coverage
    where match_id=$1 and provider=$16::text and kind=$2
- ), ordered as (
-   select f.*,row_number() over(order by coalesce(f.seconds,f.minute*60),f.minute,f.provider_event_id) as ordinal,
-     row_number() over(partition by f.team order by coalesce(f.seconds,f.minute*60),f.minute,f.provider_event_id) as team_ordinal,
-     count(*) over(partition by coalesce(f.seconds,f.minute*60)) as same_time
+ ), raw_events as (
+   select f.*,
+     (lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+       ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1',
+        '2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2',
+        'regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime',
+        '90','stoppage','stoppagetime','injurytime')
+       or lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^45[0-9]{1,2}$'
+       or lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^90[0-9]{1,2}$'
+       or (nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90)) as normal_time,
+     case
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1') then 1
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2') then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^45[0-9]{1,2}$' then 1
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^90[0-9]{1,2}$' then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime',
+         '90','stoppage','stoppagetime','injurytime') then case when f.minute<=45 then 1 else 2 end
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=45 then 1
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90 then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf') then 3
+       else 4
+     end as phase_order
    from app_match_event_fact f
    where f.match_id=$1 and f.provider=$16::text and f.kind=$2 and f.active
+ ), ordered as (
+   select raw_events.*,
+     row_number() over(order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as ordinal,
+     row_number() over(partition by team order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as team_ordinal,
+     count(*) over(partition by phase_order,coalesce(seconds,minute*60)) as same_time
+   from raw_events
+ ), normal_ordered as (
+   select * from ordered where normal_time
  ), aggregate as (
    select count(*)::int as total,
     count(*) filter(where team='home')::int as home,
     count(*) filter(where team='away')::int as away,
+    (select count(*)::int from normal_ordered where team='home') as normal_home,
+    (select count(*)::int from normal_ordered where team='away') as normal_away,
+    bool_or(minute>90 and nullif(trim(coalesce(phase,'')),'') is null) as phase_ambiguous,
     count(*) filter(where card_color=$15::text)::int as color_total,
     count(*) filter(where team='home' and card_color=$15::text)::int as color_home,
     count(*) filter(where team='away' and card_color=$15::text)::int as color_away,
@@ -455,7 +488,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
          and ($4::numeric is null or minute <= $4)))
       and ($5::text is null or team=$5)
       and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
-       or (team='away' and team_ordinal>$19::int)))::int as window_count,
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as window_count,
     count(*) filter(where (
         ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
          and coalesce(seconds,minute*60)<=$12::numeric)
@@ -464,17 +498,20 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
       and ($5::text is null or team=$5)
       and card_color=$15::text
       and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
-       or (team='away' and team_ordinal>$19::int)))::int as color_window_count,
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as color_window_count,
     count(*) filter(where (
       ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
        and coalesce(seconds,minute*60)<$12::numeric)
       or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
-      and team='home' and ($17::boolean=false or team_ordinal>$18::int))::int as window_home,
+      and team='home' and ($17::boolean=false or team_ordinal>$18::int)
+      and ($20::boolean=false or normal_time))::int as window_home,
     count(*) filter(where (
       ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
        and coalesce(seconds,minute*60)<$12::numeric)
       or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
-      and team='away' and ($17::boolean=false or team_ordinal>$19::int))::int as window_away,
+      and team='away' and ($17::boolean=false or team_ordinal>$19::int)
+      and ($20::boolean=false or normal_time))::int as window_away,
     bool_or($10::boolean=true and seconds is null
       and (minute=floor($11::numeric/60) or minute=floor($12::numeric/60))) as rolling_boundary_uncertain,
     count(*) filter(where (own_goal=false or (own_goal is null and aiscore_verified=true))
