@@ -6,6 +6,7 @@ import {goalTotalContract} from './goal-total-contract.mjs';
 import {parseParityMarket} from './parity-markets.mjs';
 import {parseMultiCornerContract} from './multi-corners.mjs';
 import {parseCornerComparison} from './corner-comparisons.mjs';
+import {parseHandicapContract} from './handicap-contracts.mjs';
 import {parsePlayerOrdinalScorer} from './player-ordinal-scorer.mjs';
 import {parsePlayerGoalSpecial} from './player-goal-specials.mjs';
 import {parseHalfExactMarket} from './half-exact-markets.mjs';
@@ -120,6 +121,31 @@ export function parseNumberedGoalWindow(line){
   }
  }
  return null;
+}
+
+export function parseFirstCornerWindow(line){
+ const name=norm(line.market_name??line.marketName??line.name);
+ const m=name.match(/^who takes first corner in minutes (\\d{1,3})\\s*[-–]\\s*(\\d{1,3})(?: \\((\\d{1,2})-minute interval\\))?$/);
+ if(!m)return null;
+ const from=Number(m[1]),to=Number(m[2]),width=m[3]==null?null:Number(m[3]);
+ if(!Number.isInteger(from)||!Number.isInteger(to)||from<0||to<from||to>130||
+    width!==null&&to-from+1!==width)return null;
+ const side=sideOf(line.outcome_name??line.outcomeName)??sideOf(line.outcome_key??line.outcomeKey);
+ if(!['home','away','none'].includes(side))return null;
+ return {version:1,kind:'nth-time',event:'corner',target:1,choice:side==='none'?'none':'team-window',
+  ...(side==='none'?{}:{side}),from,to};
+}
+
+export function parseIntervalHandicap(line,{teams={},drawOffered=false}={}){
+ const name=norm(line.market_name??line.marketName??line.name);
+ const m=name.match(/^corner handicap in minutes (\\d{1,3})\\s*[-–]\\s*(\\d{1,3})(?: \\((\\d{1,2})-minute interval\\))?$/);
+ if(!m)return null;
+ const from=Number(m[1]),to=Number(m[2]),width=m[3]==null?null:Number(m[3]);
+ if(!Number.isInteger(from)||!Number.isInteger(to)||from<0||to<from||to>130||
+    width!==null&&to-from+1!==width)return null;
+ const base=parseHandicapContract({...line,market_name:'Corner handicap'}, {teams,drawOffered});
+ if(!base||base.event!=='corner'||base.half!==0)return null;
+ return {...base,kind:'interval-handicap',from,to};
 }
 
 export function parseLeadUpMarket(line){
@@ -596,7 +622,7 @@ export const liveContract=(line,{counts={},clock=null,teams={}}={})=>{
  const yellow=/\byellow\s+cards?\b/.test(name),red=/\bred\s+cards?\b/.test(name);
  const ambiguous=/\b(?:second\s+yellow|yellow\s+red)\b/.test(name);
  if((yellow&&red)||ambiguous)return null;
- const contract=parsePlayerOrdinalScorer(line)??parsePlayerGoalSpecial(line)??parsePlayerCardContract(line)??parsePlayerGoalContract(line)??parseLeadUpMarket(line)??parseSendingOffMarket(line)??parseNumberedGoalWindow(line)??parseOrdinalGoalTime(line,counts)??
+ const contract=parsePlayerOrdinalScorer(line)??parsePlayerGoalSpecial(line)??parsePlayerCardContract(line)??parsePlayerGoalContract(line)??parseLeadUpMarket(line)??parseFirstCornerWindow(line)??parseIntervalHandicap(line)??parseSendingOffMarket(line)??parseNumberedGoalWindow(line)??parseOrdinalGoalTime(line,counts)??
   parseTimedResultMarket(line)??parseIntervalLeader(line)??
   parseEventWindow(line,clock)??parseIntervalCount(line)??parseClockWindowTotal(line)??
   parseHalfExactMarket(line)??parseHalfTotal(line)??(parseParityMarket(line)?.kind==='half-parity'?parseParityMarket(line):null)??parseColorCardCount(line)??parseFirstHalfCorner(line)??parseHalfEventContract(line,counts)??parseLastEvent(line)??parseSequenceBet(line,counts)??
