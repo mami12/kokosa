@@ -26,12 +26,15 @@ assert.equal(frame.events.length,3);
 const offsideFrame=normalizeLiveFrame({
  Match:{Score:'0:0',MatchTimeExtended:'22:00',CornersTeam1:0,CornersTeam2:0,
   OffsidesTeam1:1,OffsidesTeam2:0,EventStatus:6},
- TimeLines:[{id:'offside-1',type:'offside',team:1,gt:18,clk:'18:05'}]
+ TimeLines:[{id:'offside-1',type:'offside',team:1,gt:18,clk:'18:05'},
+  {id:'stoppage-goal',type:'score_change',team:2,gt:'90+4',clk:'90:04'}]
 });
 assert.equal(offsideFrame.counts.offside,1);
 assert.equal(offsideFrame.coverage.offsideThrough,22);
 assert.equal(offsideFrame.teams.offside.home,1);
 assert.equal(offsideFrame.events[0].type,'offside');
+assert.equal(offsideFrame.events[1].phase,'2nd half',
+ 'Zizobet 90+N events remain regulation-time stoppage, not extra time');
 
 // Field layout sampled from the public Zizobet live match detail.
 const sameMinuteGame={
