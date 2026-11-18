@@ -500,7 +500,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
        (own_goal=false and supplemental_verified=true and supplemental_player_name is not null
          and lower(supplemental_player_name)=lower($7))))))::int as player_goals,
     bool_or(same_time>1) as ambiguous_order,
-    bool_or(same_time>1 and ((team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))) as ambiguous_order_since_entry,
+    (select bool_or(same_time>1 and ((team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))) from normal_ordered) as ambiguous_order_since_entry,
     bool_or(seconds is null) as minute_only
    from ordered
  )
@@ -526,7 +526,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    (select max(lead.away_after-lead.home_after) from (
      select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
        coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
-     from ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+     from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
    ) lead) as max_away_lead_since_entry,
 
    (select same_time from ordered where team=$5::text and team_ordinal=$8) as team_nth_same_time,
