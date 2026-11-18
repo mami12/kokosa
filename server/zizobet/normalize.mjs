@@ -54,12 +54,12 @@ export function resolveMarketTitle(raw,q,{intervalWidth}={}){
     ' in minutes '+from+'-'+to+' (1-minute interval)';
  }
  const providerWindow=name.match(/^(\d{1,2})\s+minutes?\s*[-–]\s*(.+?)\s+from\s+first value(?::00)?\s*(?:to|[-–])\s*second value(?::00)?\s*min\.?$/i);
- const timeRange=name.match(/^(.+?)\s+in\s+(\d{1,2})\s+minutes?\s+time range(?:\s*\((\d{1,2})-minute interval\))?$/i);
+ const timeRange=name.match(/^(.+?)\s+in\s+(?:(\d{1,2})\s+)?minutes?\s+time range(?:\s*\((\d{1,2})-minute interval\))?$/i);
  const fixedRange=name.match(/^(.+?)\s+in\s+(\d{1,2})\s+minutes?\s+interval\s+(\d{1,3})\s*[-–]\s*(\d{1,3})$/i);
  const firstCorner=name.match(/^(\d{1,2})\s+minutes?\s*[-–]\s*1st corner\s+from\s+first value(?::00)?\s*[-–]\s*second value\s*min$/i);
  const intervalMatch=providerWindow??timeRange??fixedRange??firstCorner;
  if(intervalMatch){
-  const width=Number(intervalMatch[1]??intervalMatch[2]);
+  const width=Number(providerWindow||firstCorner?intervalMatch[1]:timeRange?(timeRange[2]??timeRange[3]):intervalMatch[2]);
   const from=Number(providerWindow||firstCorner?q.p1:timeRange?q.p1:fixedRange?intervalMatch[3]:q.p1);
   const to=Number(providerWindow||firstCorner?q.p2:timeRange?q.p2:fixedRange?intervalMatch[4]:q.p2);
   if(!Number.isSafeInteger(width)||width<1||width>30||
