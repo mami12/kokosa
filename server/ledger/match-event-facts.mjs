@@ -997,6 +997,20 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  * primary timeline. Conflicting historical verdicts are never paid.
  */
 export async function gradeStoredEventContract(line,result,{execute}={}){
+ const market=String(line?.market_name??'').trim();
+ if(/^full[\\s.-]*time[\\s:.-]*(?:1up|2up|3up)$/i.test(market)){
+  const home=Number(result?.home_score),away=Number(result?.away_score);
+  if(!Number.isSafeInteger(home)||home<0||!Number.isSafeInteger(away)||away<0)return null;
+  const pick=String(line?.outcome_name??line?.outcome_key??'').trim().toLowerCase();
+  const homeName=String(result?.home_team??line?.home_team??'').trim().toLowerCase();
+  const awayName=String(result?.away_team??line?.away_team??'').trim().toLowerCase();
+  const side=/^(?:1|home|home team)$/.test(pick)||!!homeName&&pick===homeName?'home':
+   /^(?:x|draw|tie)$/.test(pick)?'draw':
+   /^(?:2|away|away team)$/.test(pick)||!!awayName&&pick===awayName?'away':null;
+  if(!side)return null;
+  return side==='home'?(home>away?'WON':'LOST'):
+   side==='away'?(away>home?'WON':'LOST'):(home===away?'WON':'LOST');
+ }
  if(line?.live_contract?.kind==='half-combo')
   return gradeHalfCombination(line.live_contract,result);
  if(line?.live_contract?.kind==='period-goal-total')
