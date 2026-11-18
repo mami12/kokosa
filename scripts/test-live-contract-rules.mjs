@@ -254,7 +254,8 @@ assert.equal(await gradeSendingOff(sendingOff,{...redCardFacts,color_window_coun
  'Unknown card color cannot prove that no sending off occurred');
 
 const homeLedThenLost={...confirmedGoalFacts,count_home:1,count_away:2,home:1,away:2,total:3,
- max_home_lead_since_entry:1,max_away_lead_since_entry:2,ambiguous_order_since_entry:false};
+ max_home_lead_since_entry:1,max_away_lead_since_entry:2,ambiguous_order_since_entry:false,
+ normal_home:1,normal_away:2,phase_ambiguous:false};
 const gradeLeadUp=async(contract,facts,result)=>gradeStoredEventContract({
  id:'line-lead-up',match_id:10,live_contract:contract
  },result,{execute:async()=>({rows:[facts]})});
@@ -266,13 +267,15 @@ assert.equal(await gradeLeadUp({...oneUpHome,target:2},homeLedThenLost,
  {home_score:1,away_score:2,corners_home:0,corners_away:0,cards_home:0,cards_away:0}),'LOST',
  '2UP loses when the team never reached a two-goal lead');
 const bothTeamsLed={...confirmedGoalFacts,count_home:2,count_away:3,home:2,away:3,total:5,
- max_home_lead_since_entry:1,max_away_lead_since_entry:1,ambiguous_order_since_entry:false};
+ max_home_lead_since_entry:1,max_away_lead_since_entry:1,ambiguous_order_since_entry:false,
+ normal_home:2,normal_away:3,phase_ambiguous:false};
 assert.equal(await gradeLeadUp(oneUpHome,bothTeamsLed,
  {home_score:2,away_score:3,corners_home:0,corners_away:0,cards_home:0,cards_away:0}),'WON');
 assert.equal(await gradeLeadUp({...oneUpHome,side:'away'},bothTeamsLed,
  {home_score:2,away_score:3,corners_home:0,corners_away:0,cards_home:0,cards_away:0}),'WON',
  'Both sides can independently satisfy 1UP during a comeback');
-const drawFacts={...confirmedGoalFacts,count_home:1,count_away:1,home:1,away:1,total:2};
+const drawFacts={...confirmedGoalFacts,count_home:1,count_away:1,home:1,away:1,total:2,
+ normal_home:1,normal_away:1,phase_ambiguous:false};
 assert.equal(await gradeLeadUp({...oneUpHome,side:'draw'},drawFacts,
  {home_score:1,away_score:1,corners_home:0,corners_away:0,cards_home:0,cards_away:0}),'WON',
  'The draw selection follows the final 1X2 result');
@@ -280,6 +283,20 @@ assert.equal(await gradeLeadUp(oneUpHome,{...drawFacts,max_home_lead_since_entry
  ambiguous_order_since_entry:true},
  {home_score:1,away_score:1,corners_home:0,corners_away:0,cards_home:0,cards_away:0}),null,
  'Ambiguous same-time goal order cannot prove an early lead');
+
+const extraTimeOnly={...confirmedGoalFacts,count_home:0,count_away:1,home:0,away:1,total:1,
+ normal_home:0,normal_away:0,phase_ambiguous:false,
+ max_home_lead_since_entry:null,max_away_lead_since_entry:null,ambiguous_order_since_entry:false};
+const afterExtraTime={home_score:0,away_score:1,corners_home:0,corners_away:0,cards_home:0,cards_away:0};
+assert.equal(await gradeLeadUp(oneUpHome,extraTimeOnly,afterExtraTime),'LOST',
+ 'A lead reached only in extra time does not trigger 1UP');
+assert.equal(await gradeLeadUp({...oneUpHome,side:'away'},extraTimeOnly,afterExtraTime),'LOST',
+ 'An extra-time goal cannot trigger the away 1UP selection');
+assert.equal(await gradeLeadUp({...oneUpHome,side:'draw'},extraTimeOnly,afterExtraTime),'WON',
+ 'The draw selection uses the regulation-time score even if extra time decides the overall match');
+assert.equal(await gradeLeadUp(oneUpHome,{...extraTimeOnly,phase_ambiguous:true},afterExtraTime),null,
+ 'Unlabelled goals after minute 90 cannot be guessed as stoppage time or extra time');
+
 
 const cornerFacts={...confirmedGoalFacts,count_home:2,count_away:1,home:2,away:1,total:3,
  window_home:2,window_away:1,window_first_team:'home',window_first_minute:22};
