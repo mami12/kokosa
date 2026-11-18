@@ -48,6 +48,16 @@ const intervalBookings=nativeZizobetContractRow(offer(9020,
 assert.equal(intervalBookings.market_name,'Total 0.5 cards in minutes 21-30 (10-minute interval)');
 assert.equal(liveContract(intervalBookings)?.event,'card');
 
+
+const oneMinuteOffside=nativeZizobetContractRow(offer(9021,
+ '1 minute - Total offsides from first value:00 to value min',
+ {p1:16,p2:16},'0.5'));
+assert.equal(oneMinuteOffside.market_name,'Total 0.5 offsides in minutes 16-16 (1-minute interval)');
+assert.deepEqual(liveContract(oneMinuteOffside),{
+ version:1,kind:'window-total',event:'offside',from:16,to:16,
+ choice:'over',threshold:0.5
+});
+
 const race=offer(9002,'Which team wins race to X corners?',{},'7');
 assert.equal(nativeZizobetContractRow(race).market_name,'Which team wins race to 7 corners');
 const score=offer(18639,'Correct score [{score}]',{p3:'1:0'});
