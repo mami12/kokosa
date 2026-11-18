@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {parseEventWindow,parseSequenceBet,parseOrdinalGoalTime,parseLastEvent,parseCountMarket,parseSendingOffMarket,liveContract,gradeLiveContract,gradeFromAcceptedCounters} from '../server/ledger/live-contract-rules.mjs';
+import {parseEventWindow,parseSequenceBet,parseOrdinalGoalTime,parseLastEvent,parseCountMarket,parseSendingOffMarket,parseLeadUpMarket,liveContract,gradeLiveContract,gradeFromAcceptedCounters} from '../server/ledger/live-contract-rules.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
 
 const windowLine=(market,side)=>({market_name:market,outcome_name:side});
@@ -29,6 +29,17 @@ assert.deepEqual({kind:sendingOff?.kind,event:sendingOff?.event,color:sendingOff
  from:sendingOff?.from,to:sendingOff?.to,choice:sendingOff?.choice},
  {kind:'window',event:'card',color:'red',from:0,to:90,choice:true});
 assert.deepEqual(parseSendingOffMarket({market_name:'Sending off?',outcome_name:'No'})?.choice,false);
+
+for(const [market,target]of [['Full Time 1UP',1],['Full Time 2UP',2],['Full Time 3UP',3]]){
+ const home=liveContract({market_name:market,outcome_name:'1'});
+ const draw=liveContract({market_name:market,outcome_name:'X'});
+ const away=liveContract({market_name:market,outcome_name:'2'});
+ assert.deepEqual([home?.kind,home?.target,home?.side],['lead-up',target,'home']);
+ assert.deepEqual([draw?.kind,draw?.target,draw?.side],['lead-up',target,'draw']);
+ assert.deepEqual([away?.kind,away?.target,away?.side],['lead-up',target,'away']);
+}
+assert.equal(parseLeadUpMarket({market_name:'Full Time 2UP',outcome_name:'Draw'})?.side,'draw');
+
 
 const w=parseEventWindow(windowLine('Will there be a goal in minutes 20-45','Yes'));
 assert.deepEqual([w.kind,w.event,w.from,w.to,w.choice],['window','goal',20,45,true]);
@@ -219,6 +230,35 @@ assert.equal(await gradeSendingOff({...sendingOff,choice:false},redCardFacts),'L
 assert.equal(await gradeSendingOff(sendingOff,{...redCardFacts,color_window_count:0,
  color_total:0,card_colors_verified:false}),null,
  'Unknown card color cannot prove that no sending off occurred');
+
+const homeLedThenLost={...confirmedGoalFacts,count_home:1,count_away:2,home:1,away:2,total:3,
+ max_home_lead_since_entry:1,max_away_lead_since_entry:2,ambiguous_order_since_entry:false};
+const gradeLeadUp=async(contract,facts,result)=>gradeStoredEventContract({
+ id:'line-lead-up',match_id:10,live_contract:contract
+ },result,{execute:async()=>({rows:[facts]})});
+const oneUpHome={version:1,kind:'lead-up',event:'goal',target:1,side:'home',baseline:{home:0,away:0}};
+assert.equal(await gradeLeadUp(oneUpHome,homeLedThenLost,
+ {home_score:1,away_score:2,corners_home:0,corners_away:0,cards_home:0,cards_away:0}),'WON',
+ '1UP remains WON after the selected team later loses the match');
+assert.equal(await gradeLeadUp({...oneUpHome,target:2},homeLedThenLost,
+ {home_score:1,away_score:2,corners_home:0,corners_away:0,cards_home:0,cards_away:0}),'LOST',
+ '2UP loses when the team never reached a two-goal lead');
+const bothTeamsLed={...confirmedGoalFacts,count_home:2,count_away:3,home:2,away:3,total:5,
+ max_home_lead_since_entry:1,max_away_lead_since_entry:1,ambiguous_order_since_entry:false};
+assert.equal(await gradeLeadUp(oneUpHome,bothTeamsLed,
+ {home_score:2,away_score:3,corners_home:0,corners_away:0,cards_home:0,cards_away:0}),'WON');
+assert.equal(await gradeLeadUp({...oneUpHome,side:'away'},bothTeamsLed,
+ {home_score:2,away_score:3,corners_home:0,corners_away:0,cards_home:0,cards_away:0}),'WON',
+ 'Both sides can independently satisfy 1UP during a comeback');
+const drawFacts={...confirmedGoalFacts,count_home:1,count_away:1,home:1,away:1,total:2};
+assert.equal(await gradeLeadUp({...oneUpHome,side:'draw'},drawFacts,
+ {home_score:1,away_score:1,corners_home:0,corners_away:0,cards_home:0,cards_away:0}),'WON',
+ 'The draw selection follows the final 1X2 result');
+assert.equal(await gradeLeadUp(oneUpHome,{...drawFacts,max_home_lead_since_entry:1,
+ ambiguous_order_since_entry:true},
+ {home_score:1,away_score:1,corners_home:0,corners_away:0,cards_home:0,cards_away:0}),null,
+ 'Ambiguous same-time goal order cannot prove an early lead');
+
 
 
 console.log('PASS live event window yes/no, next goal, race, irreversible totals, exact and range');
