@@ -22,7 +22,7 @@ const sideOf=v=>['1','home','home team','team 1'].includes(norm(v))?'home':['2',
 const typeOf=name=>/\b(?:corners?|corner kicks?|kornera?)\b/.test(name)?'corner':
  /\b(?:goals?|scores?|golat?|gola?)\b/.test(name)?'goal':
  /\b(?:cards?|bookings?|kartona?)\b/.test(name)?'card':
- /\b(?:fouls?|faulle?)\b/.test(name)?'foul':null;
+ /\b(?:fouls?|faulle?)\b/.test(name)?'foul':\n /\b(?:offsides?)\b/.test(name)?'offside':null;
 const nonNeg=v=>{const n=number(v);return n!==null&&Number.isInteger(n)&&n>=0?n:null;};
 /** Freeze the provider's exact goal ordinal/interval before any funds move.
  * Provider labels are used only during initial quote interpretation.
@@ -328,8 +328,8 @@ export function parseIntervalCount(line) {
     /\b(?:which|who|race|next|first|last|winner|result|player|scorer|asian|handicap|penalty|extra time)\b/.test(name))return null;
  // Accept a complete grammar, not a substring: discarding "home team"
  // would pay a home-only bet from the away team's corners.
- const usual=name.match(/^(?:total\s+)?(?:(\d+(?:[.,]\d+)?)\s+)?(?:(home|away)\s+team\s+)?(goals?|corners?|cards?|fouls?)\s*(?:(home|away)\s+team)?\s+in\s+minutes?\s+(\d{1,3})\s*[-–]\s*(\d{1,3})(?:\s+\((\d{1,2})-minute interval\))?$/);
- const leading=name.match(/^(home|away)\s+team\s+(?:total\s+)?(goals?|corners?|cards?|fouls?)\s+in\s+minutes?\s+(\d{1,3})\s*[-–]\s*(\d{1,3})(?:\s+\((\d{1,2})-minute interval\))?$/);
+ const usual=name.match(/^(?:total\s+)?(?:(\d+(?:[.,]\d+)?)\s+)?(?:(home|away)\s+team\s+)?(goals?|corners?|cards?|fouls?|offsides?)\s*(?:(home|away)\s+team)?\s+in\s+minutes?\s+(\d{1,3})\s*[-–]\s*(\d{1,3})(?:\s+\((\d{1,2})-minute interval\))?$/);
+ const leading=name.match(/^(home|away)\s+team\s+(?:total\s+)?(goals?|corners?|cards?|fouls?|offsides?)\s+in\s+minutes?\s+(\d{1,3})\s*[-–]\s*(\d{1,3})(?:\s+\((\d{1,2})-minute interval\))?$/);
  if(!usual&&!leading)return null;
  const titleLine=usual?.[1]??null,preSide=usual?.[2]??leading?.[1]??null;
  const eventName=usual?.[3]??leading?.[2],postSide=usual?.[4]??null;
