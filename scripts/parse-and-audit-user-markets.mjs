@@ -45,29 +45,22 @@ for (const b of blocks) {
 // "pervec asian handicap mi listo ketu pervec foule tackles throwins shot on target substition over time penalty dhe shenon gol x lojtar"
 const USER_EXCLUDE_REGEX = new RegExp([
   'asian',
-  'foul',
-  'tackle',
-  'throw-in',
-  'shot',
+  'fouls?',
+  'tackles?',
+  'throw[\\s-]?ins?',
+  'shots?\\s+on\\s+(?:target|goal)',
   'substition',
-  'sure sub',
   'substitut',
   'overtime',
   'over time',
   'extra time',
   'extratime',
-  'penalty shootout',
+  'penalt(?:y|ies)',
   'ot only',
   'ot & pen',
   'incl\\. ot',
-  'player',
-  'goalscorer',
-  'scorer',
-  'assist',
-  'carded',
-  'sent off',
-  'passes',
-  'performance'
+  '(?:anytime )?goalscorers?',
+  'player.*(?:to score|scores?\\s+(?:a )?goal|goalscorer)',
 ].join('|'), 'i');
 
 // Non-football sports:
