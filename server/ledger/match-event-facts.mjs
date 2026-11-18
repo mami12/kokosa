@@ -998,7 +998,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  */
 export async function gradeStoredEventContract(line,result,{execute}={}){
  const market=String(line?.market_name??'').trim();
- if(/^full[\\s.-]*time[\\s:.-]*(?:1up|2up|3up)$/i.test(market)){
+ if(/^full[\s.-]*time[\s:.-]*(?:1up|2up|3up)$/i.test(market)){
   const home=Number(result?.home_score),away=Number(result?.away_score);
   if(!Number.isSafeInteger(home)||home<0||!Number.isSafeInteger(away)||away<0)return null;
   const pick=String(line?.outcome_name??line?.outcome_key??'').trim().toLowerCase();
