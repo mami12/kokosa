@@ -34,6 +34,11 @@ const firstCornerWindow=liveContract({market_name:'Who takes first corner in min
 assert.deepEqual({kind:firstCornerWindow?.kind,event:firstCornerWindow?.event,
  side:firstCornerWindow?.side,from:firstCornerWindow?.from,to:firstCornerWindow?.to},
  {kind:'window-first-event',event:'corner',side:'home',from:21,to:30});
+
+const offsideWindow=liveContract({market_name:'Total 0.5 offsides in minutes 16-16 (1-minute interval)',outcome_name:'Over'});
+assert.deepEqual({kind:offsideWindow?.kind,event:offsideWindow?.event,
+ from:offsideWindow?.from,to:offsideWindow?.to},
+ {kind:'window-total',event:'offside',from:16,to:16});
 const intervalCornerHandicap=liveContract({market_name:'Corner handicap in minutes 21-30 (10-minute interval)',
  outcome_name:'1',line:'-0.5'});
 assert.deepEqual({kind:intervalCornerHandicap?.kind,event:intervalCornerHandicap?.event,
@@ -289,6 +294,18 @@ assert.equal(await gradeCornerContract({...firstCornerWindow,side:'none'},
 assert.equal(await gradeCornerContract(intervalCornerHandicap),'WON',
  'A corner handicap uses only corners inside its quoted interval');
 assert.equal(await gradeCornerContract({...intervalCornerHandicap,handicap:-1.5}),'LOST');
+
+const offsideFacts={...confirmedGoalFacts,count_home:1,count_away:0,home:1,away:0,total:1,
+ window_count:1};
+const gradeOffside=async(facts)=>gradeStoredEventContract({
+ id:'line-offside-window',match_id:12,live_contract:offsideWindow
+ },null,{execute:async()=>({rows:[facts]})});
+assert.equal(await gradeOffside(offsideFacts),'WON',
+ 'A confirmed Zizobet offside inside the accepted minute window settles Over');
+assert.equal(await gradeOffside({...offsideFacts,count_home:0,home:0,total:0,
+ window_count:0,through_minute:17}),'LOST',
+ 'A fully covered one-minute offside window with no event settles Under/Over correctly');
+
 
 
 
