@@ -626,6 +626,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  const finalCounts=expectedTotals.every(x=>x!=null&&Number.isSafeInteger(Number(x))&&Number(x)>=0);
  const full=!!(result&&data.complete===true&&finalCounts&&
    Number(data.home)===Number(expectedTotals[0])&&Number(data.away)===Number(expectedTotals[1]));
+ const matchFinished=!!(result&&data.complete===true);
+ const normalFull=normalTimeOnly?matchFinished:full;
  // Only the confirmed Zizobet timeline and its own second-poll/archive
  // cursor can authorize a settlement decision.
  if(data.confirmed_at==null||data.observed_at==null)return null;
@@ -725,17 +727,20 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   if(c.startExclusive===true&&data.rolling_boundary_uncertain===true)return null;
   const num=Number(c.cardColor?data.color_window_count:data.window_count);
   if(num>0)return decision(c.choice);
-  return through>=closesAt?decision(!c.choice):null;
+  if(normalTimeOnly&&c.to>=90&&data.phase_ambiguous===true)return null;
+  return normalFull||through>=closesAt?decision(!c.choice):null;
  }
  if(c.kind==='interval-result'){
-  if(!Number.isSafeInteger(c.toExclusiveSeconds)||through*60<c.toExclusiveSeconds)return null;
+  if(!Number.isSafeInteger(c.toExclusiveSeconds)||(!normalFull&&through*60<c.toExclusiveSeconds)||
+     normalTimeOnly&&c.to>=90&&data.phase_ambiguous===true)return null;
   const h=Number(data.window_home),a=Number(data.window_away);
   return decision((h>a?'home':a>h?'away':'none')===c.side);
  }
  if(c.kind==='interval-leader'){
   const closesAt=Math.floor(Number(c.to))+1;
-  if(!Number.isFinite(closesAt)||through<closesAt||
-     !['home','away','none'].includes(c.side))return null;
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||
+     !['home','away','none'].includes(c.side)||
+     normalTimeOnly&&c.to>=90&&data.phase_ambiguous===true)return null;
   const h=Number(data.window_home),a=Number(data.window_away);
   return decision((h>a?'home':a>h?'away':'none')===c.side);
  }
@@ -743,7 +748,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   const closesAt=Math.floor(Number(c.to))+1;
   if(!Number.isFinite(closesAt))return null;
   const found=Number(c.cardColor?data.color_window_count:data.window_count);
-  const closed=through>=closesAt;
+  const closed=normalFull||through>=closesAt;
+  if(normalTimeOnly&&c.to>=90&&data.phase_ambiguous===true)return null;
   if(c.choice==='over'||c.choice==='under'){
    if(!Number.isFinite(c.threshold)||!Number.isInteger(c.threshold*2))return null;
    // Once the accepted-event count crosses the line it can only increase.
@@ -766,7 +772,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  if(c.kind==='nth-time'){
   if(!Number.isInteger(c.target)||c.target<1)return null;
   const isPrematch = (line?.accepted_contract?.acceptedLiveSnapshot == null && c.entryBaseline == null && line?.accepted_contract != null);
-  if(isPrematch && !full) return null;
+  if(isPrematch && !normalFull) return null;
   if(data.nth_team!=null){
    if(Number(data.nth_same_time)>1)return null;
    // A fixed "Who scores goal N in minutes A-B" three-way quote uses
@@ -784,15 +790,17 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   }
   // No positive evidence yet — wait for coverage window to elapse before
   // declaring LOST (goal N did not happen within range).
-  if(!full && Number.isInteger(c.to) && through < c.to) return null;
-  if(!full)return null;
+  const scopeClosed=normalFull||(Number.isInteger(c.to)&&through>=c.to);
+  if(!scopeClosed||normalTimeOnly&&c.to>=90&&data.phase_ambiguous===true)return null;
   return c.choice==='none'?'WON':'LOST';
  }
  if(c.kind==='last-event'){
-  if(!full||!['home','away','none'].includes(c.side))return null;
-  if(data.last_team!=null){
-   if(Number(data.last_same_time)>1)return null;
-   return decision(data.last_team===c.side);
+  if(!normalFull||data.phase_ambiguous===true||!['home','away','none'].includes(c.side))return null;
+  const lastTeam=normalTimeOnly?data.normal_last_team:data.last_team;
+  const lastSameTime=normalTimeOnly?data.normal_last_same_time:data.last_same_time;
+  if(lastTeam!=null){
+   if(Number(lastSameTime)>1)return null;
+   return decision(lastTeam===c.side);
   }
   return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
  }
@@ -815,9 +823,9 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   // A reached threshold proves None lost without knowing which side was first.
   if(c.side==='none'){
    if(h!==null||a!==null)return 'LOST';
-   return full&&c.noneOffered===true?'WON':null;
+   return normalFull&&data.phase_ambiguous!==true&&c.noneOffered===true?'WON':null;
   }
-  if(h===null&&a===null)return full?(c.noneOffered===true?'LOST':'VOID'):null;
+  if(h===null&&a===null)return normalFull&&data.phase_ambiguous!==true?(c.noneOffered===true?'LOST':'VOID'):null;
   // Simultaneous or minute-only indistinguishable milestones require review.
   if(h!==null&&a!==null&&h===a)return null;
   return decision(c.side===(h!==null&&(a===null||h<a)?'home':'away'));
