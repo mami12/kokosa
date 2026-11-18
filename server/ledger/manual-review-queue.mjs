@@ -1,13 +1,19 @@
 import {query} from '../db.mjs';
 import {eventMarketRequirement} from './event-market-policy.mjs';
 import {settlementStatisticFields} from './settlement-review.mjs';
+import {isProvenTwoWayTotalPush} from './settler.mjs';
 
 const NOTICE_LIFETIME_MS=48*60*60*1000;
 const text=value=>String(value??'').trim();
 const nowDate=value=>{const n=new Date(value).getTime();return Number.isFinite(n)?n:0;};
 /** Why this specific selection should be reviewed, never an automatic decision. */
 export function reviewReason(row,now=Date.now()){
- if(row.line_status==='VOID')return 'VOID_NEEDS_CONFIRMATION';
+ if(row.line_status==='VOID'){
+  // A confirmed two-way integer Over/Under push is already a valid settlement,
+  // not an API anomaly for the administrator to resolve manually.
+  if(isProvenTwoWayTotalPush(row,row))return null;
+  return 'VOID_NEEDS_CONFIRMATION';
+ }
  if(row.line_status!=='PENDING'||row.ticket_status!=='PENDING')return null;
  // Native offers accepted without a proven settlement rule are visible to
  // staff immediately, even while their match is still LIVE.
@@ -35,7 +41,7 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
     l.outcome_name,l.market_name,l.match_name,l.status as line_status,l.odds_at_placement,
     l.accepted_contract,l.settlement_reason,
     t.status as ticket_status,t.placed_at,t.stake,t.original_potential_payout,
-    u.username,r.match_id as result_id,r.home_score,r.away_score,
+    u.username,r.match_id as result_id,r.home_score,r.away_score,\n    r.half_home_score,r.half_away_score,r.corners_home,r.corners_away,r.cards_home,r.cards_away,
     sr.payload as statistics_review,m.status as match_status,m.feed_status,
     o.status as override_status,n.first_seen_at
     from app_ticket_line l
@@ -52,7 +58,7 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
       and (l.status='VOID' or r.match_id is not null or t.placed_at<now()-interval '6 hours'
         or coalesce(l.accepted_contract->>'settlementHold','')<>'')
     order by case when l.status='VOID' then 0 else 1 end,t.placed_at desc
-    limit $1`,[cap*3])).rows;
+    limit $1`,[Math.min(10000,cap*10)])).rows;
  const items=[];
  for(const row of rows){
   const reason=reviewReason(row,now);if(!reason)continue;
