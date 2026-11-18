@@ -25,7 +25,7 @@ const code=ts.transpileModule(readFileSync(src,'utf8'),{compilerOptions}).output
 const {filterDecidedOutcomes,isMarketOfferSupported}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
 const unsupported=['Player to score','Anytime Goal Scorer - Within the Regular Time','Player to Score Anytime','Player Total Goals','Haaland to score 2 goals',
  'Time of Scoring','Goal before 20 minutes','1X2 till the 15th minute','Total Goals in Minutes 1-15','To Score In Both Halves',
- 'Next Goal','First Team To Score','Last Goal','3rd Goal','Race to 3 Goals','Own Goals','Full Time Result (Early payout 1:0)',
+ 'Next Goal','First Team To Score','Last Goal','3rd Goal','Race to 3 Goals','Own Goals','Full Time Result (Early payout 1:0)','Full Time 1UP','Full Time 2UP','Full Time 3UP',
  'To Score Anytime','Mohamed Salah to Score','Mohamed Salah Total Goals','Total Goals (00:00 - 14:59)','Goals 0-15'];
 const final={home_team:'Home',away_team:'Away',home_score:8,away_score:2,corners_home:10,corners_away:5,cards_home:4,cards_away:1};
 config.matchStore='memory';config.oddsStore='memory';setFeedMode(FEED_LIVE);
