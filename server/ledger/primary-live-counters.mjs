@@ -26,9 +26,9 @@ export function primaryLiveCounters(match,event,{at=Date.now()}={}){
   return home!==null&&away!==null&&fresh(match.score_at,at,90000)?
    {home,away,source:'zizobet-score'}:null;
  }
- if(!['corner','card','foul'].includes(event))return null;
+ if(!['corner','card','foul','offside'].includes(event))return null;
  const teams=teamStatisticsFromRow(match);
- const fields=event==='card'?['yellow','red']:[event==='corner'?'corners':'fouls'];
+ const fields=event==='card'?['yellow','red']:[event==='corner'?'corners':event==='offside'?'offsides':'fouls'];
  const values=[];
  for(const side of ['home','away']){
   const team=teams[side];
