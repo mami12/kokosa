@@ -244,19 +244,21 @@ assert.equal(await gradeTeamNth(awayGoalTime,{...teamNthFacts,team_nth_minute:nu
  'A fully covered match with no next team goal loses the time selection');
 const redCardFacts={...confirmedGoalFacts,count_home:0,count_away:1,home:0,away:1,total:1,
  color_window_count:1,color_total:1,card_colors_verified:true};
-const gradeSendingOff=async(contract,facts)=>gradeStoredEventContract({
+const gradeSendingOff=async(contract,facts,result={home_score:0,away_score:0,
+ corners_home:0,corners_away:0,cards_home:0,cards_away:1})=>gradeStoredEventContract({
  id:'line-sending-off',match_id:9,live_contract:contract
- },{home_score:0,away_score:0,corners_home:0,corners_away:0,cards_home:0,cards_away:1},
- {execute:async()=>({rows:[facts]})});
+ },result,{execute:async()=>({rows:[facts]})});
 assert.equal(await gradeSendingOff(sendingOff,redCardFacts),'WON',
  'A verified red card proves Sending Off Yes');
 assert.equal(await gradeSendingOff({...sendingOff,choice:false},redCardFacts),'LOST');
 
 const noRedFacts={...confirmedGoalFacts,count_home:0,count_away:0,home:0,away:0,total:0,
  color_window_count:0,color_total:0,card_colors_verified:true,phase_ambiguous:false};
-assert.equal(await gradeSendingOff(sendingOff,noRedFacts),'LOST',
+assert.equal(await gradeSendingOff(sendingOff,noRedFacts,{home_score:0,away_score:0,
+ corners_home:0,corners_away:0,cards_home:0,cards_away:0}),'LOST',
  'Confirmed absence of red cards through normal time settles Sending Off No');
-assert.equal(await gradeSendingOff(sendingOff,{...noRedFacts,phase_ambiguous:true}),null,
+assert.equal(await gradeSendingOff(sendingOff,{...noRedFacts,phase_ambiguous:true},{home_score:0,away_score:0,
+ corners_home:0,corners_away:0,cards_home:0,cards_away:0}),null,
  'Unknown post-90 card phase cannot be guessed as stoppage time or extra time');
 
 assert.equal(await gradeSendingOff(sendingOff,{...redCardFacts,color_window_count:0,
