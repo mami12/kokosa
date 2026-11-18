@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {parseEventWindow,parseSequenceBet,parseOrdinalGoalTime,parseLastEvent,parseCountMarket,gradeLiveContract,gradeFromAcceptedCounters} from '../server/ledger/live-contract-rules.mjs';
+import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
 
 const windowLine=(market,side)=>({market_name:market,outcome_name:side});
 
@@ -142,6 +143,30 @@ assert.equal(gradeLiveContract(integerOver,{counts:{goal:1}},{ended:true}),'LOST
 const missingMinute=obs('goal',[null],11,11);
 const firstTen=parseEventWindow(windowLine('Goal in first 10 minutes','Yes'));
 assert.equal(gradeLiveContract(firstTen,missingMinute),null,'Missing event minute is not minute zero');
+
+const confirmedGoalFacts={
+ through_minute:90,count_home:1,count_away:0,complete:true,
+ observed_at:'2026-11-18T20:00:00.000Z',
+ confirmed_at:'2026-11-18T19:59:50.000Z',
+ archive_poll_at:'2026-11-18T20:00:00.000Z',
+ second_poll_at:null,open_recovery_gap:false,
+ home:1,away:0,total:1,nth_team:null,nth_minute:null,nth_same_time:null,
+ last_team:'home',last_same_time:1,race_home_time:null,race_away_time:null,
+ window_count:0,color_window_count:0,window_home:0,window_away:0,
+ color_total:0,color_home:0,color_away:0,card_colors_verified:false,
+ ambiguous_order:false,minute_only:false
+};
+const gradeNoNextGoal=async contract=>gradeStoredEventContract({
+ id:'line-next-goal',match_id:7,live_contract:contract
+ },{home_score:1,away_score:0,corners_home:0,corners_away:0,cards_home:0,cards_away:0},
+ {execute:async()=>({rows:[confirmedGoalFacts]})});
+assert.equal(await gradeNoNextGoal({version:1,kind:'sequence',event:'goal',target:2,side:'home'}),
+ 'LOST','Stored Zizobet event facts must settle Next Goal Home as LOST when FT has no second goal');
+assert.equal(await gradeNoNextGoal({version:1,kind:'sequence',event:'goal',target:2,side:'away'}),
+ 'LOST','Stored Zizobet event facts must settle Next Goal Away as LOST when FT has no second goal');
+assert.equal(await gradeNoNextGoal({version:1,kind:'sequence',event:'goal',target:2,side:'none',noneOffered:true}),
+ 'WON','Stored Zizobet event facts must settle the quoted No Goal outcome as WON');
+
 console.log('PASS live event window yes/no, next goal, race, irreversible totals, exact and range');
 
 const homeWindow=parseEventWindow(windowLine('Home team corner in minutes 20-45','Yes'));
