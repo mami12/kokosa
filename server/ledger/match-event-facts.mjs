@@ -439,10 +439,20 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
      count(*) over(partition by coalesce(f.seconds,f.minute*60)) as same_time
    from app_match_event_fact f
    where f.match_id=$1 and f.provider=$16::text and f.kind=$2 and f.active
+ ), normal_ordered as (
+   select * from ordered
+   where lower(regexp_replace(coalesce(phase,''),'[^a-z0-9]','','g')) in
+     ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1',
+      '2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2',
+      'regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime')
+     or (nullif(trim(coalesce(phase,'')),'') is null and minute<=90)
  ), aggregate as (
    select count(*)::int as total,
     count(*) filter(where team='home')::int as home,
     count(*) filter(where team='away')::int as away,
+    (select count(*)::int from normal_ordered where team='home') as normal_home,
+    (select count(*)::int from normal_ordered where team='away') as normal_away,
+    bool_or(minute>90 and nullif(trim(coalesce(phase,'')),'') is null) as phase_ambiguous,
     count(*) filter(where card_color=$15::text)::int as color_total,
     count(*) filter(where team='home' and card_color=$15::text)::int as color_home,
     count(*) filter(where team='away' and card_color=$15::text)::int as color_away,
@@ -511,7 +521,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    (select minute from ordered where team=$5::text and team_ordinal=$8) as team_nth_minute,   (select max(lead.home_after-lead.away_after) from (
      select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
        coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
-     from ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+     from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
    ) lead) as max_home_lead_since_entry,
    (select max(lead.away_after-lead.home_after) from (
      select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
@@ -760,8 +770,12 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
      !base||!Number.isSafeInteger(base.home)||base.home<0||
      !Number.isSafeInteger(base.away)||base.away<0||
      !['home','away','draw'].includes(c.side))return null;
-  if(c.side==='draw')return full?decision(Number(data.home)===Number(data.away)):null;
-  const afterHome=Number(data.home)-base.home,afterAway=Number(data.away)-base.away;
+  const normalHome=Number(data.normal_home),normalAway=Number(data.normal_away);
+  if(!Number.isSafeInteger(normalHome)||!Number.isSafeInteger(normalAway)||
+     normalHome<base.home||normalAway<base.away)return null;
+  if(c.side==='draw')return full&&data.phase_ambiguous!==true?
+   decision(normalHome===normalAway):null;
+  const afterHome=normalHome-base.home,afterAway=normalAway-base.away;
   const currentLead=c.side==='home'?afterHome-afterAway:afterAway-afterHome;
   if(currentLead>=c.target)return 'WON';
   const maximum=Number(c.side==='home'?data.max_home_lead_since_entry:data.max_away_lead_since_entry);
@@ -769,7 +783,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    if(data.ambiguous_order_since_entry===true)return null;
    return 'WON';
   }
-  if(!full||data.ambiguous_order_since_entry===true)return null;
+  if(!full||data.phase_ambiguous===true||data.ambiguous_order_since_entry===true)return null;
   return 'LOST';
  }
  if(c.kind==='team-nth-time'){
