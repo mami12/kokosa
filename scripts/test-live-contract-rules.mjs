@@ -30,6 +30,18 @@ assert.deepEqual({kind:sendingOff?.kind,event:sendingOff?.event,color:sendingOff
  {kind:'window',event:'card',color:'red',from:0,to:90,choice:true});
 assert.deepEqual(parseSendingOffMarket({market_name:'Sending off?',outcome_name:'No'})?.choice,false);
 
+const firstCornerWindow=liveContract({market_name:'Who takes first corner in minutes 21-30 (10-minute interval)',outcome_name:'1'});
+assert.deepEqual({kind:firstCornerWindow?.kind,event:firstCornerWindow?.event,
+ side:firstCornerWindow?.side,from:firstCornerWindow?.from,to:firstCornerWindow?.to},
+ {kind:'window-first-event',event:'corner',side:'home',from:21,to:30});
+const intervalCornerHandicap=liveContract({market_name:'Corner handicap in minutes 21-30 (10-minute interval)',
+ outcome_name:'1',line:'-0.5'});
+assert.deepEqual({kind:intervalCornerHandicap?.kind,event:intervalCornerHandicap?.event,
+ side:intervalCornerHandicap?.side,handicap:intervalCornerHandicap?.handicap,
+ from:intervalCornerHandicap?.from,to:intervalCornerHandicap?.to},
+ {kind:'interval-handicap',event:'corner',side:'home',handicap:-0.5,from:21,to:30});
+
+
 for(const [market,target]of [['Full Time 1UP',1],['Full Time 2UP',2],['Full Time 3UP',3]]){
  const home=liveContract({market_name:market,outcome_name:'1'});
  const draw=liveContract({market_name:market,outcome_name:'X'});
@@ -258,6 +270,26 @@ assert.equal(await gradeLeadUp(oneUpHome,{...drawFacts,max_home_lead_since_entry
  ambiguous_order_since_entry:true},
  {home_score:1,away_score:1,corners_home:0,corners_away:0,cards_home:0,cards_away:0}),null,
  'Ambiguous same-time goal order cannot prove an early lead');
+
+const cornerFacts={...confirmedGoalFacts,count_home:2,count_away:1,home:2,away:1,total:3,
+ window_home:2,window_away:1,window_first_team:'home',window_first_minute:22};
+const gradeCornerContract=async(contract,facts=cornerFacts,result={home_score:0,away_score:0,
+ corners_home:2,corners_away:1,cards_home:0,cards_away:0})=>gradeStoredEventContract({
+ id:'line-corner-interval',match_id:11,live_contract:contract
+ },result,{execute:async()=>({rows:[facts]})});
+assert.equal(await gradeCornerContract(firstCornerWindow),'WON',
+ 'First corner in a quoted interval is graded from the first corner inside that interval');
+assert.equal(await gradeCornerContract({...firstCornerWindow,side:'away'}),'LOST');
+assert.equal(await gradeCornerContract({...firstCornerWindow,side:'none'}),'LOST');
+assert.equal(await gradeCornerContract({...firstCornerWindow,side:'none'},
+ {...cornerFacts,window_first_team:null,window_first_minute:null,window_home:0,window_away:0,
+  count_home:0,count_away:0,home:0,away:0,total:0},
+ {home_score:0,away_score:0,corners_home:0,corners_away:0,cards_home:0,cards_away:0}),'WON',
+ 'Neither wins only when the interval closes with no corner');
+assert.equal(await gradeCornerContract(intervalCornerHandicap),'WON',
+ 'A corner handicap uses only corners inside its quoted interval');
+assert.equal(await gradeCornerContract({...intervalCornerHandicap,handicap:-1.5}),'LOST');
+
 
 
 
