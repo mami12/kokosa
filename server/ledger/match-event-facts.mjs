@@ -439,6 +439,4630 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
        ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1',
         '2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2',
         'regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime','90','stoppage','stoppagetime','injurytime')
+       or lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^45[0-9]{1,2}
+     case
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1') then 1
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2') then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^45[0-9]{1,2}
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=45 then 1
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90 then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf') then 3
+       else 4
+     end as phase_order
+   from app_match_event_fact f
+   where f.match_id=$1 and f.provider=$16::text and f.kind=$2 and f.active
+ ), ordered as (
+   select raw_events.*,
+     row_number() over(order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as ordinal,
+     row_number() over(partition by team order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as team_ordinal,
+     count(*) over(partition by phase_order,coalesce(seconds,minute*60)) as same_time
+   from raw_events
+ ), normal_ordered as (
+   select * from ordered where normal_time ), aggregate as (
+   select count(*)::int as total,
+    count(*) filter(where team='home')::int as home,
+    count(*) filter(where team='away')::int as away,
+    (select count(*)::int from normal_ordered where team='home') as normal_home,
+    (select count(*)::int from normal_ordered where team='away') as normal_away,
+    bool_or(minute>90 and nullif(trim(coalesce(phase,'')),'') is null) as phase_ambiguous,
+    count(*) filter(where card_color=$15::text)::int as color_total,
+    count(*) filter(where team='home' and card_color=$15::text)::int as color_home,
+    count(*) filter(where team='away' and card_color=$15::text)::int as color_away,
+    -- Fixed 10-20 minute markets use inclusive provider minutes.
+    -- Rolling windows and clock-formatted score intervals instead use seconds.
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or minute >= $3)
+         and ($4::numeric is null or minute <= $4)))
+      and ($5::text is null or team=$5)
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as window_count,
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or minute >= $3)
+         and ($4::numeric is null or minute <= $4)))
+      and ($5::text is null or team=$5)
+      and card_color=$15::text
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as color_window_count,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
+      and team='home' and ($17::boolean=false or team_ordinal>$18::int)
+      and ($20::boolean=false or normal_time))::int as window_home,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
+      and team='away' and ($17::boolean=false or team_ordinal>$19::int)
+      and ($20::boolean=false or normal_time))::int as window_away,
+    bool_or($10::boolean=true and seconds is null
+      and (minute=floor($11::numeric/60) or minute=floor($12::numeric/60))) as rolling_boundary_uncertain,
+    count(*) filter(where (own_goal=false or (own_goal is null and aiscore_verified=true))
+     and (($6::text is not null and (
+       (player_id is not null and player_id=$6) or
+       (aiscore_verified=true and aiscore_player_id is not null and aiscore_player_id=$6)))
+      or ($6::text is null and (
+       (player_name is not null and lower(player_name)=lower($7)) or
+       (aiscore_verified=true and aiscore_player_name is not null
+         and lower(aiscore_player_name)=lower($7)) or
+       (own_goal=false and fotmob_verified=true and fotmob_player_name is not null
+         and lower(fotmob_player_name)=lower($7)) or
+       (own_goal=false and supplemental_verified=true and supplemental_player_name is not null
+         and lower(supplemental_player_name)=lower($7))))))::int as player_goals,
+    bool_or(same_time>1) as ambiguous_order,
+    (select bool_or(same_time>1 and ((team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))) from normal_ordered) as ambiguous_order_since_entry,
+    bool_or(seconds is null) as minute_only
+   from ordered
+ )
+ select a.*,c.through_minute,c.count_home,c.count_away,c.complete,c.observed_at,c.confirmed_at,c.card_colors_verified,
+  -- Each valid writer has its own timestamp. Do NOT use greatest() here:
+  -- the watched gap cursor may be updated after the archive proof but
+  -- before the next settlement pass, and must not hide valid evidence.
+  (select last_seen_at from app_live_event_cursor where match_id=$1) as second_poll_at,
+  (select evidence_observed_at from app_zizobet_match_history where match_id=$1) as archive_poll_at,
+  exists(select 1 from app_live_event_recovery g
+    where g.match_id=$1 and g.status='AWAITING_BACKUP_API' and $9::uuid=any(g.line_ids)
+      and $16::text='zizobet') as open_recovery_gap,
+   (select team from ordered where ordinal=(select max(ordinal) from ordered)) as last_team,
+   (select same_time from ordered where ordinal=(select max(ordinal) from ordered)) as last_same_time,
+   (select team from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_team,
+   (select same_time from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_same_time,
+   (select bool_or(same_time>1) from normal_ordered) as normal_ambiguous_order,
+   (select team from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_team,
+   (select minute from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_minute,
+   (select same_time from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_same_time,
+   (select minute from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_minute,   (select max(lead.home_after-lead.away_after) from (
+     select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
+       coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
+     from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+   ) lead) as max_home_lead_since_entry,
+   (select max(lead.away_after-lead.home_after) from (
+     select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
+       coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
+     from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+   ) lead) as max_away_lead_since_entry,
+
+   (select same_time from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_same_time,
+   (select team from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_team,
+   (select minute from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_minute,
+   (select same_time from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_same_time,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='home') as race_home,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='away') as race_away,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='home'
+   )) as race_home_time,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='away'
+   )) as race_away_time
+ from aggregate a left join covered c on true`,
+ [line.match_id,c.event,
+  c.kind==='interval-result'?c.fromSeconds/60:c.from??null,
+  c.kind==='interval-result'?(c.toExclusiveSeconds-1)/60:c.to??null,
+  c.side??null,c.playerId??null,c.playerName??null,c.target??1,line.id,
+  c.kind==='window'&&c.startExclusive===true,
+  c.kind==='interval-result'?c.fromSeconds:c.kind==='window'?c.from*60:null,
+  c.kind==='interval-result'?c.toExclusiveSeconds:c.kind==='window'?c.to*60:null,
+  c.kind==='interval-result',c.kind==='interval-leader'||c.kind==='interval-handicap',c.cardColor??null,provider,
+  c.entryBaseline!=null||c.baseline!=null,
+  c.entryBaseline?.home??c.baseline?.home??0,
+  c.entryBaseline?.away??c.baseline?.away??0,c.normalTimeOnly===true]);
+ const data=rows[0];
+ if(!data||data.through_minute==null||data.open_recovery_gap===true)return null;
+ // A partial/corrected frame must not silently reclassify a missing event.
+ if(Number(data.home)!==Number(data.count_home)||
+    Number(data.away)!==Number(data.count_away)||
+    Number(data.total)!==Number(data.home)+Number(data.away))return null;
+ // After provider corrections, the accepted counters cannot exceed the
+ // present complete chronology. Hold the ticket for review if they do.
+ const acceptedBaseline=c.entryBaseline??c.baseline;
+ if(acceptedBaseline!=null&&(
+    !Number.isSafeInteger(acceptedBaseline.home)||acceptedBaseline.home<0||
+    !Number.isSafeInteger(acceptedBaseline.away)||acceptedBaseline.away<0||
+    acceptedBaseline.home>Number(data.count_home)||
+    acceptedBaseline.away>Number(data.count_away)))return null;
+ const stats=typeof result?.statistics==='string'?(()=>{
+  try{return JSON.parse(result.statistics);}catch{return null;}
+ })():result?.statistics;
+ const totalFor=kind=>kind==='goal'?[result?.home_score,result?.away_score]:
+   kind==='corner'?[result?.corners_home,result?.corners_away]:
+   kind==='card'?[result?.cards_home,result?.cards_away]:
+   kind==='foul'?[stats?.fouls?.home,stats?.fouls?.away]:
+   kind==='offside'?[stats?.offsides?.home,stats?.offsides?.away]:[null,null];
+ const expectedTotals=totalFor(c.event);
+ const finalCounts=expectedTotals.every(x=>x!=null&&Number.isSafeInteger(Number(x))&&Number(x)>=0);
+ const full=!!(result&&data.complete===true&&finalCounts&&
+   Number(data.home)===Number(expectedTotals[0])&&Number(data.away)===Number(expectedTotals[1]));
+ const matchFinished=!!(result&&data.complete===true);
+ const normalFull=c.normalTimeOnly===true?matchFinished:full;
+ // Only the confirmed Zizobet timeline and its own second-poll/archive
+ // cursor can authorize a settlement decision.
+ if(data.confirmed_at==null||data.observed_at==null)return null;
+ const confirmed=new Date(data.confirmed_at).getTime();
+ const stored=new Date(data.observed_at).getTime();
+ if(![confirmed,stored].every(Number.isFinite)||confirmed>stored)return null;
+ const watcher=data.second_poll_at==null?NaN:new Date(data.second_poll_at).getTime();
+ const archive=data.archive_poll_at==null?NaN:new Date(data.archive_poll_at).getTime();
+ if(stored!==watcher&&stored!==archive)return null;
+ if(c.cardColor!=null&&
+   (c.event!=='card'||!['yellow','red'].includes(c.cardColor)||
+    data.card_colors_verified!==true))return null;
+ const through=Number(data.through_minute);
+ // Half-time is a valid end of the FIRST-HALF event scope, but only once
+ // a separately confirmed Zizobet HT score exists AND the chronological
+ // coverage has been reconfirmed by another primary poll at/after that HT.
+ // The entire match is still unfinished: 2H/FT contracts remain untouched.
+ let firstHalfComplete=false;
+ if(!full&&provider==='zizobet'&&c.half===1&&Number.isFinite(through)&&through>=45){
+  const ht=(await execute(
+   "select h.confirmed_at from app_match_half_result h where h.match_id=$1 and h.source='ZIZOBET' and h.confirmed_at is not null and exists(select 1 from app_match_snapshot s where s.match_id=h.match_id and s.snapshot->'raw'->>'provider'='ZIZOBET' and s.snapshot->'periods_score'->0->>'t1'=h.half_home_score::text and s.snapshot->'periods_score'->0->>'t2'=h.half_away_score::text)",
+   [line.match_id])).rows[0];
+  const at=ht?.confirmed_at==null?NaN:new Date(ht.confirmed_at).getTime();
+  firstHalfComplete=Number.isFinite(at)&&stored>=at;
+ }
+ const completedScope=full||firstHalfComplete;
+ if(c.kind==='score-handicap'&&c.event==='corner'&&c.half){
+  if(!completedScope)return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeHalfCornerHandicapFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='corner-comparison'){
+  if(!full||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeCornerComparisonFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='multi-corners'){
+  if(!full||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeMultiCornerFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='half-parity'){
+  if(!completedScope||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeHalfParityFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='half-exact-count'){
+  if(!completedScope||!['corner','card'].includes(c.event))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,card_color
+    from app_match_event_fact
+    where match_id=$1 and provider=$2 and kind=$3 and active=true`,
+    [line.match_id,provider,c.event]);
+  return gradeHalfExactFacts(c,facts,{complete:true,
+    cardColorsVerified:data.card_colors_verified===true});
+ }
+ if(c.kind==='half-total'){
+  if(!completedScope||!['corner','card'].includes(c.event))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,card_color
+    from app_match_event_fact
+    where match_id=$1 and provider=$2 and kind=$3 and active=true`,
+    [line.match_id,provider,c.event]);
+  return gradeHalfTotalFacts(c,facts,{complete:true,
+    cardColorsVerified:data.card_colors_verified===true});
+ }
+ if(['half-first-event','half-last-event','half-race','half-next-event'].includes(c.kind)){
+  if(!completedScope||!['goal','corner','card'].includes(c.event))return null;
+  const events=(await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind=$3 and active=true`,[line.match_id,provider,c.event])).rows;
+  // Historical 1H first-corner contracts preserve their existing
+  // proven three-way "None" settlement semantics.
+  if(c.kind==='half-first-event'&&c.event==='corner'&&c.half===1&&
+     c.noneOffered===undefined)
+    return gradeFirstHalfCornerFacts(c,events,{complete:true});
+  return gradeHalfEventFacts(c,events,{complete:true});
+ }
+ const scopeEnded=full||(Number.isFinite(c.to)&&through>Number(c.to));
+ const count=Number(c.cardColor?(c.side==='home'?data.color_home:c.side==='away'?data.color_away:data.color_total):
+   (c.side==='home'?data.home:c.side==='away'?data.away:data.total));
+ const expected=Number(c.target??c.threshold);
+ const decision=truth=>truth?'WON':'LOST';
+ if(c.kind==='window'){
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  // A proven event decides YES immediately and NO as lost; a verified
+  // absence cannot win until the full quoted time window is complete.
+  const closesAt=c.startExclusive===true?Number(c.to):Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||typeof c.choice!=='boolean')return null;
+  // A rolling exact-second market cannot be judged from minute-only boundary
+  // incidents. Hold for the provider's precise timestamp.
+  if(c.startExclusive===true&&data.rolling_boundary_uncertain===true)return null;
+  const num=Number(c.cardColor?data.color_window_count:data.window_count);
+  if(num>0)return decision(c.choice);
+  if(c.normalTimeOnly===true&&c.to>=90&&data.phase_ambiguous===true)return null;
+  return normalFull||through>=closesAt?decision(!c.choice):null;
+ }
+ if(c.kind==='interval-result'){
+  if(!Number.isSafeInteger(c.toExclusiveSeconds)||(!normalFull&&through*60<c.toExclusiveSeconds)||
+     c.to>=90&&data.phase_ambiguous===true)return null;
+  const h=Number(data.window_home),a=Number(data.window_away);
+  return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='window-parity'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||c.event!=='corner'||!['odd','even'].includes(c.choice)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(!normalFull&&through<closesAt)return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const found=Number(data.window_count);
+  if(!Number.isSafeInteger(found)||found<0)return null;
+  return (found%2===1?'odd':'even')===c.choice?'WON':'LOST';
+ }
+ if(c.kind==='window-first-event'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(c.event!=='corner'||!Number.isFinite(closesAt)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from||
+     !['home','away','none'].includes(c.side))return null;
+  if(data.window_first_team!=null){
+   if(Number(data.window_first_same_time)>1)return null;
+   return c.side==='none'?'LOST':data.window_first_team===c.side?'WON':'LOST';
+  }
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  if(normalFull||through>=closesAt)return c.side==='none'?'WON':'LOST';
+  return null;
+ }
+ if(c.kind==='interval-handicap'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||c.event!=='corner'||
+     !['home','away','none'].includes(c.side)||!Number.isFinite(Number(c.handicap)))return null;
+  const h=Number(data.window_home),a=Number(data.window_away),handicap=Number(c.handicap);
+  if(!Number.isSafeInteger(h)||h<0||!Number.isSafeInteger(a)||a<0||
+     !Number.isSafeInteger(handicap*2))return null;
+  const signed=h+handicap-a;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  if(c.side==='none')return signed===0?'WON':'LOST';
+  const delta=c.side==='away'?a+handicap-h:signed;
+  if(c.threeWay)return delta>0?'WON':'LOST';
+  if(delta===0)return 'VOID';
+  return delta>0?'WON':'LOST';
+ }
+ if(c.kind==='interval-leader'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||
+     !['home','away','none'].includes(c.side))return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const h=Number(data.window_home),a=Number(data.window_away);
+  return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='window-total'){
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt))return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const found=Number(c.cardColor?data.color_window_count:data.window_count);
+  const closed=normalFull||through>=closesAt;
+  if(c.choice==='over'||c.choice==='under'){
+   if(!Number.isFinite(c.threshold)||!Number.isInteger(c.threshold*2))return null;
+   // Once the accepted-event count crosses the line it can only increase.
+   // Over is already WON; Under is already LOST.
+   if(found>c.threshold)return c.choice==='over'?'WON':'LOST';
+   if(!closed)return null;
+   if(found===c.threshold&&Number.isInteger(c.threshold))return 'VOID';
+   return c.choice==='over'?'LOST':'WON';
+  }
+  if(c.choice==='exact'&&Number.isInteger(c.target)){
+   if(found>c.target)return 'LOST';
+   return closed?decision(found===c.target):null;
+  }
+  if(c.choice==='atLeast'&&Number.isInteger(c.target)){
+   if(found>=c.target)return 'WON';
+   return closed?'LOST':null;
+  }
+  return null;
+ }
+ if(c.kind==='lead-up'){
+  const base=c.baseline;
+  if(c.event!=='goal'||!Number.isInteger(c.target)||c.target<1||c.target>3||
+     !base||!Number.isSafeInteger(base.home)||base.home<0||
+     !Number.isSafeInteger(base.away)||base.away<0||
+     !['home','away','draw'].includes(c.side))return null;
+  const normalHome=Number(data.normal_home),normalAway=Number(data.normal_away);
+  if(!Number.isSafeInteger(normalHome)||!Number.isSafeInteger(normalAway)||
+     normalHome<base.home||normalAway<base.away)return null;
+  if(c.side==='draw')return normalFull&&data.phase_ambiguous!==true?
+   decision(normalHome===normalAway):null;
+  const afterHome=normalHome-base.home,afterAway=normalAway-base.away;
+  const currentLead=c.side==='home'?afterHome-afterAway:afterAway-afterHome;
+  if(currentLead>=c.target)return 'WON';
+  const maximum=Number(c.side==='home'?data.max_home_lead_since_entry:data.max_away_lead_since_entry);
+  if(Number.isFinite(maximum)&&maximum>=c.target){
+   if(data.ambiguous_order_since_entry===true)return null;
+   return 'WON';
+  }
+  if(!normalFull||data.phase_ambiguous===true||data.ambiguous_order_since_entry===true)return null;
+  return 'LOST';
+ }
+ if(c.kind==='team-nth-time'){
+  if(c.event!=='goal'||!['home','away'].includes(c.side)||
+     !Number.isInteger(c.target)||c.target<1||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(data.team_nth_minute!=null){
+   const minute=Number(data.team_nth_minute);
+   if(!Number.isInteger(minute)||minute<0||minute>130)return null;
+   return decision(minute>=c.from&&minute<=c.to);
+  }
+  // Once the requested team's event window is completely covered, the
+  // absence of that team's next goal is a loss even if the match continues.
+  if(normalFull||through>=c.to){
+   if(c.to>=90&&data.phase_ambiguous===true)return null;
+   return 'LOST';
+  }
+  return null;
+ }
+ if(c.kind==='nth-time'){
+  if(!Number.isInteger(c.target)||c.target<1)return null;
+  const isPrematch = (line?.accepted_contract?.acceptedLiveSnapshot == null && c.entryBaseline == null && line?.accepted_contract != null);
+  if(isPrematch && !normalFull) return null;
+  if(data.nth_team!=null){
+   if(Number(data.nth_same_time)>1)return null;
+   // A fixed "Who scores goal N in minutes A-B" three-way quote uses
+   // Neither when goal N is outside THAT window. General goal-N time
+   // markets without a window still mean "no Nth goal before FT".
+   if(c.choice==='none'&&Number.isInteger(c.from)&&Number.isInteger(c.to))
+    return decision(!(Number(data.nth_minute)>=c.from&&Number(data.nth_minute)<=c.to));
+   if(c.choice==='none')return 'LOST';
+   if(!Number.isInteger(c.from)||!Number.isInteger(c.to))return null;
+   const inside=Number(data.nth_minute)>=c.from&&Number(data.nth_minute)<=c.to;
+   if(c.choice==='team-window')
+     return ['home','away'].includes(c.side)?decision(inside&&data.nth_team===c.side):null;
+   if(c.choice!=='range')return null;
+   return decision(inside);
+  }
+  // No positive evidence yet — wait for coverage window to elapse before
+  // declaring LOST (goal N did not happen within range).
+  const scopeClosed=normalFull||(Number.isInteger(c.to)&&through>=c.to);
+  if(!scopeClosed||c.to>=90&&data.phase_ambiguous===true)return null;
+  return c.choice==='none'?'WON':'LOST';
+ }
+ if(c.kind==='last-event'){
+  if(!normalFull||data.phase_ambiguous===true||!['home','away','none'].includes(c.side))return null;
+  const lastTeam=c.normalTimeOnly===true?data.normal_last_team:data.last_team;
+  const lastSameTime=c.normalTimeOnly===true?data.normal_last_same_time:data.last_same_time;
+  if(lastTeam!=null){
+   if(Number(lastSameTime)>1)return null;
+   return decision(lastTeam===c.side);
+  }
+  return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
+ }
+ if(c.kind==='sequence'){
+  if(data.nth_team!=null){
+   if(Number(data.nth_same_time)>1)return null;
+   return decision(data.nth_team===c.side);
+  }
+  if(!normalFull||data.phase_ambiguous===true)return null;
+  // A Next Goal selection is not refundable merely because no further goal
+  // was scored. Home/Away lose at confirmed FT; the explicit No Goal outcome
+  // wins only when that outcome was actually offered and accepted. Corner/card
+  // sequence markets retain their provider no-event VOID rule unless Neither
+  // was explicitly quoted.
+  if(c.event==='goal')return c.noneOffered===true&&c.side==='none'?'WON':'LOST';
+  return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
+ }
+ if(c.kind==='race'){
+  if(!Number.isInteger(c.target)||c.target<1||
+     !['home','away','none'].includes(c.side))return null;
+  const h=data.race_home_time==null?null:Number(data.race_home_time);
+  const a=data.race_away_time==null?null:Number(data.race_away_time);
+  // The quoted third selection is a real outcome, not a refundable push:
+  // neither side reached X => None wins after confirmed FT completeness.
+  // A reached threshold proves None lost without knowing which side was first.
+  if(c.side==='none'){
+   if(h!==null||a!==null)return 'LOST';
+   return normalFull&&data.phase_ambiguous!==true&&c.noneOffered===true?'WON':null;
+  }
+  if(h===null&&a===null)return normalFull&&data.phase_ambiguous!==true?(c.noneOffered===true?'LOST':'VOID'):null;
+  // Simultaneous or minute-only indistinguishable milestones require review.
+  if(h!==null&&a!==null&&h===a)return null;
+  return decision(c.side===(h!==null&&(a===null||h<a)?'home':'away'));
+ }
+ if(c.kind==='player-goal-special'){
+  // Proven positive 2+/3+ and already-exceeded totals can settle before FT
+  // from reconfirmed primary scorer facts. An UNDER/no/exact that still
+  // depends on future events stays PENDING until the relevant scope ends.
+  if(c.event!=='goal'||(!full&&provider!=='zizobet'))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,player_id,
+    player_name,aiscore_player_id,aiscore_player_name,aiscore_verified,
+    fotmob_player_name,fotmob_verified,supplemental_player_name,
+    supplemental_verified,own_goal
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='goal' and active=true`,[line.match_id,provider]);
+  return gradePlayerGoalSpecial(c,facts,{complete:full});
+ }
+ if(c.kind==='player-ordinal-goal'){
+  // FIRST scorer becomes irreversible when the verified first eligible
+  // scorer is known. LAST scorer and "none won" still require FT.
+  if(c.event!=='goal'||(!full&&(provider!=='zizobet'||c.position!=='first')))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,player_id,
+    player_name,aiscore_player_id,aiscore_player_name,aiscore_verified,
+    fotmob_player_name,fotmob_verified,supplemental_player_name,
+    supplemental_verified,own_goal
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='goal' and active=true`,[line.match_id,provider]);
+  const result=gradePlayerOrdinalScorerFacts(c,facts,{complete:true});
+  if(!full)return c.choice==='none'?(result==='LOST'?'LOST':null):
+    result==='WON'?'WON':null;
+  return result;
+ }
+ if(c.kind==='player-card'){
+  if(typeof c.choice!=='boolean'||(!c.playerName&&!c.playerId))return null;
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  const person=v=>{
+   const raw=String(v??'').trim();
+   const pieces=raw.includes(',')?raw.split(',').map(x=>x.trim()).reverse():[raw];
+   return pieces.join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+     .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  };
+  const expected=person(c.playerName);
+  const {rows:actors}=await execute(
+    "select player_id,player_name,card_color,supplemental_player_name,supplemental_verified from app_match_event_fact "+
+    "where match_id=$1 and provider=$2 and kind='card' and active=true",
+    [line.match_id,provider]);
+  const booked=actors.some(actor=>
+    (!c.cardColor||actor.card_color===c.cardColor)&&
+    (c.playerId!=null&&actor.player_id!=null?
+      String(c.playerId)===String(actor.player_id):
+      !!expected&&(person(actor.player_name)===expected||
+       actor.supplemental_verified===true&&person(actor.supplemental_player_name)===expected)));
+  if(booked)return c.choice?'WON':'LOST';
+  // Absent bookings do not prove that the named player entered the pitch.
+  // The non-participation/void rule still needs verified lineup facts.
+  return null;
+ }
+ if(c.kind==='player-goal'){
+  if((!c.playerName&&!c.playerId)||typeof c.choice!=='boolean')return null;
+  // A verified scorer proves YES/NO immediately; absence does not prove
+  // participation, an own goal, or a losing player proposition.
+  if(Number(data.player_goals)>0)return c.choice?'WON':'LOST';
+  // A missing scorer name does not prove a player played or failed to score.
+  // Require verified player participation before a negative settlement.
+  return null;
+ }
+ if(c.kind==='team-total-goals'){
+  if(!Number.isFinite(c.threshold)||!['over','under'].includes(c.choice))return null;
+  if(count>c.threshold)return c.choice==='over'?'WON':'LOST';
+  if(!full)return null;
+  if(count===c.threshold&&Number.isInteger(c.threshold))return 'VOID';
+  return c.choice==='under'?'WON':'LOST';
+ }
+ if(c.kind==='over'||c.kind==='under'){
+  if(!Number.isFinite(expected))return null;
+  if(count>expected)return c.kind==='over'?'WON':'LOST';
+  if(!full)return null;
+  if(count===expected&&Number.isInteger(expected))return 'VOID';
+  return c.kind==='under'?'WON':'LOST';
+ }
+ if(c.kind==='atLeast'){
+  if(!Number.isInteger(c.target))return null;
+  if(count>=c.target)return 'WON';
+  return full?'LOST':null;
+ }
+ if(c.kind==='exact'){
+  if(!Number.isInteger(c.target))return null;
+  if(count>c.target)return 'LOST';
+  return full?decision(count===c.target):null;
+ }
+ if(c.kind==='range'&&Number.isFinite(c.min)&&Number.isFinite(c.max)){
+  if(count>c.max)return 'LOST';
+  return full?decision(count>=c.min&&count<=c.max):null;
+ }
+ return null;
+}
+
+/** Keep historical incidents in their own provider rows. A verified primary
+ * decision wins; a complete historical FT may fill a genuinely missing
+ * primary timeline. Conflicting historical verdicts are never paid.
+ */
+export async function gradeStoredEventContract(line,result,{execute}={}){
+ if(line?.live_contract?.kind==='half-combo')
+  return gradeHalfCombination(line.live_contract,result);
+ if(line?.live_contract?.kind==='period-goal-total')
+  return gradePeriodGoalTotal(line.live_contract,result);
+ if(line?.live_contract?.kind==='score-handicap'&&
+    !(line.live_contract.event==='corner'&&line.live_contract.half))
+  return gradeHandicapContract(line.live_contract,result);
+ const primary=await gradeSingleEventProvider(line,result,{execute,provider:'zizobet'});
+ if(primary!==null)return primary;
+ // Zizobet is the only settlement authority. Enrichment providers may add
+ // display metadata, but cannot decide or confirm a financial result.
+ return null;
+}
+
+       or lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^90[0-9]{1,2}
+     case
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1') then 1
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2') then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime','90','stoppage','stoppagetime','injurytime')
+        then case when f.minute<=45 then 1 else 2 end
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=45 then 1
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90 then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf') then 3
+       else 4
+     end as phase_order
+   from app_match_event_fact f
+   where f.match_id=$1 and f.provider=$16::text and f.kind=$2 and f.active
+ ), ordered as (
+   select raw_events.*,
+     row_number() over(order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as ordinal,
+     row_number() over(partition by team order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as team_ordinal,
+     count(*) over(partition by phase_order,coalesce(seconds,minute*60)) as same_time
+   from raw_events
+ ), normal_ordered as (
+   select * from ordered where normal_time ), aggregate as (
+   select count(*)::int as total,
+    count(*) filter(where team='home')::int as home,
+    count(*) filter(where team='away')::int as away,
+    (select count(*)::int from normal_ordered where team='home') as normal_home,
+    (select count(*)::int from normal_ordered where team='away') as normal_away,
+    bool_or(minute>90 and nullif(trim(coalesce(phase,'')),'') is null) as phase_ambiguous,
+    count(*) filter(where card_color=$15::text)::int as color_total,
+    count(*) filter(where team='home' and card_color=$15::text)::int as color_home,
+    count(*) filter(where team='away' and card_color=$15::text)::int as color_away,
+    -- Fixed 10-20 minute markets use inclusive provider minutes.
+    -- Rolling windows and clock-formatted score intervals instead use seconds.
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or minute >= $3)
+         and ($4::numeric is null or minute <= $4)))
+      and ($5::text is null or team=$5)
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as window_count,
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or minute >= $3)
+         and ($4::numeric is null or minute <= $4)))
+      and ($5::text is null or team=$5)
+      and card_color=$15::text
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as color_window_count,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
+      and team='home' and ($17::boolean=false or team_ordinal>$18::int)
+      and ($20::boolean=false or normal_time))::int as window_home,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
+      and team='away' and ($17::boolean=false or team_ordinal>$19::int)
+      and ($20::boolean=false or normal_time))::int as window_away,
+    bool_or($10::boolean=true and seconds is null
+      and (minute=floor($11::numeric/60) or minute=floor($12::numeric/60))) as rolling_boundary_uncertain,
+    count(*) filter(where (own_goal=false or (own_goal is null and aiscore_verified=true))
+     and (($6::text is not null and (
+       (player_id is not null and player_id=$6) or
+       (aiscore_verified=true and aiscore_player_id is not null and aiscore_player_id=$6)))
+      or ($6::text is null and (
+       (player_name is not null and lower(player_name)=lower($7)) or
+       (aiscore_verified=true and aiscore_player_name is not null
+         and lower(aiscore_player_name)=lower($7)) or
+       (own_goal=false and fotmob_verified=true and fotmob_player_name is not null
+         and lower(fotmob_player_name)=lower($7)) or
+       (own_goal=false and supplemental_verified=true and supplemental_player_name is not null
+         and lower(supplemental_player_name)=lower($7))))))::int as player_goals,
+    bool_or(same_time>1) as ambiguous_order,
+    (select bool_or(same_time>1 and ((team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))) from normal_ordered) as ambiguous_order_since_entry,
+    bool_or(seconds is null) as minute_only
+   from ordered
+ )
+ select a.*,c.through_minute,c.count_home,c.count_away,c.complete,c.observed_at,c.confirmed_at,c.card_colors_verified,
+  -- Each valid writer has its own timestamp. Do NOT use greatest() here:
+  -- the watched gap cursor may be updated after the archive proof but
+  -- before the next settlement pass, and must not hide valid evidence.
+  (select last_seen_at from app_live_event_cursor where match_id=$1) as second_poll_at,
+  (select evidence_observed_at from app_zizobet_match_history where match_id=$1) as archive_poll_at,
+  exists(select 1 from app_live_event_recovery g
+    where g.match_id=$1 and g.status='AWAITING_BACKUP_API' and $9::uuid=any(g.line_ids)
+      and $16::text='zizobet') as open_recovery_gap,
+   (select team from ordered where ordinal=(select max(ordinal) from ordered)) as last_team,
+   (select same_time from ordered where ordinal=(select max(ordinal) from ordered)) as last_same_time,
+   (select team from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_team,
+   (select same_time from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_same_time,
+   (select bool_or(same_time>1) from normal_ordered) as normal_ambiguous_order,
+   (select team from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_team,
+   (select minute from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_minute,
+   (select same_time from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_same_time,
+   (select minute from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_minute,   (select max(lead.home_after-lead.away_after) from (
+     select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
+       coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
+     from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+   ) lead) as max_home_lead_since_entry,
+   (select max(lead.away_after-lead.home_after) from (
+     select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
+       coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
+     from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+   ) lead) as max_away_lead_since_entry,
+
+   (select same_time from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_same_time,
+   (select team from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_team,
+   (select minute from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_minute,
+   (select same_time from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_same_time,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='home') as race_home,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='away') as race_away,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='home'
+   )) as race_home_time,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='away'
+   )) as race_away_time
+ from aggregate a left join covered c on true`,
+ [line.match_id,c.event,
+  c.kind==='interval-result'?c.fromSeconds/60:c.from??null,
+  c.kind==='interval-result'?(c.toExclusiveSeconds-1)/60:c.to??null,
+  c.side??null,c.playerId??null,c.playerName??null,c.target??1,line.id,
+  c.kind==='window'&&c.startExclusive===true,
+  c.kind==='interval-result'?c.fromSeconds:c.kind==='window'?c.from*60:null,
+  c.kind==='interval-result'?c.toExclusiveSeconds:c.kind==='window'?c.to*60:null,
+  c.kind==='interval-result',c.kind==='interval-leader'||c.kind==='interval-handicap',c.cardColor??null,provider,
+  c.entryBaseline!=null||c.baseline!=null,
+  c.entryBaseline?.home??c.baseline?.home??0,
+  c.entryBaseline?.away??c.baseline?.away??0,c.normalTimeOnly===true]);
+ const data=rows[0];
+ if(!data||data.through_minute==null||data.open_recovery_gap===true)return null;
+ // A partial/corrected frame must not silently reclassify a missing event.
+ if(Number(data.home)!==Number(data.count_home)||
+    Number(data.away)!==Number(data.count_away)||
+    Number(data.total)!==Number(data.home)+Number(data.away))return null;
+ // After provider corrections, the accepted counters cannot exceed the
+ // present complete chronology. Hold the ticket for review if they do.
+ const acceptedBaseline=c.entryBaseline??c.baseline;
+ if(acceptedBaseline!=null&&(
+    !Number.isSafeInteger(acceptedBaseline.home)||acceptedBaseline.home<0||
+    !Number.isSafeInteger(acceptedBaseline.away)||acceptedBaseline.away<0||
+    acceptedBaseline.home>Number(data.count_home)||
+    acceptedBaseline.away>Number(data.count_away)))return null;
+ const stats=typeof result?.statistics==='string'?(()=>{
+  try{return JSON.parse(result.statistics);}catch{return null;}
+ })():result?.statistics;
+ const totalFor=kind=>kind==='goal'?[result?.home_score,result?.away_score]:
+   kind==='corner'?[result?.corners_home,result?.corners_away]:
+   kind==='card'?[result?.cards_home,result?.cards_away]:
+   kind==='foul'?[stats?.fouls?.home,stats?.fouls?.away]:
+   kind==='offside'?[stats?.offsides?.home,stats?.offsides?.away]:[null,null];
+ const expectedTotals=totalFor(c.event);
+ const finalCounts=expectedTotals.every(x=>x!=null&&Number.isSafeInteger(Number(x))&&Number(x)>=0);
+ const full=!!(result&&data.complete===true&&finalCounts&&
+   Number(data.home)===Number(expectedTotals[0])&&Number(data.away)===Number(expectedTotals[1]));
+ const matchFinished=!!(result&&data.complete===true);
+ const normalFull=c.normalTimeOnly===true?matchFinished:full;
+ // Only the confirmed Zizobet timeline and its own second-poll/archive
+ // cursor can authorize a settlement decision.
+ if(data.confirmed_at==null||data.observed_at==null)return null;
+ const confirmed=new Date(data.confirmed_at).getTime();
+ const stored=new Date(data.observed_at).getTime();
+ if(![confirmed,stored].every(Number.isFinite)||confirmed>stored)return null;
+ const watcher=data.second_poll_at==null?NaN:new Date(data.second_poll_at).getTime();
+ const archive=data.archive_poll_at==null?NaN:new Date(data.archive_poll_at).getTime();
+ if(stored!==watcher&&stored!==archive)return null;
+ if(c.cardColor!=null&&
+   (c.event!=='card'||!['yellow','red'].includes(c.cardColor)||
+    data.card_colors_verified!==true))return null;
+ const through=Number(data.through_minute);
+ // Half-time is a valid end of the FIRST-HALF event scope, but only once
+ // a separately confirmed Zizobet HT score exists AND the chronological
+ // coverage has been reconfirmed by another primary poll at/after that HT.
+ // The entire match is still unfinished: 2H/FT contracts remain untouched.
+ let firstHalfComplete=false;
+ if(!full&&provider==='zizobet'&&c.half===1&&Number.isFinite(through)&&through>=45){
+  const ht=(await execute(
+   "select h.confirmed_at from app_match_half_result h where h.match_id=$1 and h.source='ZIZOBET' and h.confirmed_at is not null and exists(select 1 from app_match_snapshot s where s.match_id=h.match_id and s.snapshot->'raw'->>'provider'='ZIZOBET' and s.snapshot->'periods_score'->0->>'t1'=h.half_home_score::text and s.snapshot->'periods_score'->0->>'t2'=h.half_away_score::text)",
+   [line.match_id])).rows[0];
+  const at=ht?.confirmed_at==null?NaN:new Date(ht.confirmed_at).getTime();
+  firstHalfComplete=Number.isFinite(at)&&stored>=at;
+ }
+ const completedScope=full||firstHalfComplete;
+ if(c.kind==='score-handicap'&&c.event==='corner'&&c.half){
+  if(!completedScope)return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeHalfCornerHandicapFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='corner-comparison'){
+  if(!full||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeCornerComparisonFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='multi-corners'){
+  if(!full||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeMultiCornerFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='half-parity'){
+  if(!completedScope||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeHalfParityFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='half-exact-count'){
+  if(!completedScope||!['corner','card'].includes(c.event))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,card_color
+    from app_match_event_fact
+    where match_id=$1 and provider=$2 and kind=$3 and active=true`,
+    [line.match_id,provider,c.event]);
+  return gradeHalfExactFacts(c,facts,{complete:true,
+    cardColorsVerified:data.card_colors_verified===true});
+ }
+ if(c.kind==='half-total'){
+  if(!completedScope||!['corner','card'].includes(c.event))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,card_color
+    from app_match_event_fact
+    where match_id=$1 and provider=$2 and kind=$3 and active=true`,
+    [line.match_id,provider,c.event]);
+  return gradeHalfTotalFacts(c,facts,{complete:true,
+    cardColorsVerified:data.card_colors_verified===true});
+ }
+ if(['half-first-event','half-last-event','half-race','half-next-event'].includes(c.kind)){
+  if(!completedScope||!['goal','corner','card'].includes(c.event))return null;
+  const events=(await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind=$3 and active=true`,[line.match_id,provider,c.event])).rows;
+  // Historical 1H first-corner contracts preserve their existing
+  // proven three-way "None" settlement semantics.
+  if(c.kind==='half-first-event'&&c.event==='corner'&&c.half===1&&
+     c.noneOffered===undefined)
+    return gradeFirstHalfCornerFacts(c,events,{complete:true});
+  return gradeHalfEventFacts(c,events,{complete:true});
+ }
+ const scopeEnded=full||(Number.isFinite(c.to)&&through>Number(c.to));
+ const count=Number(c.cardColor?(c.side==='home'?data.color_home:c.side==='away'?data.color_away:data.color_total):
+   (c.side==='home'?data.home:c.side==='away'?data.away:data.total));
+ const expected=Number(c.target??c.threshold);
+ const decision=truth=>truth?'WON':'LOST';
+ if(c.kind==='window'){
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  // A proven event decides YES immediately and NO as lost; a verified
+  // absence cannot win until the full quoted time window is complete.
+  const closesAt=c.startExclusive===true?Number(c.to):Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||typeof c.choice!=='boolean')return null;
+  // A rolling exact-second market cannot be judged from minute-only boundary
+  // incidents. Hold for the provider's precise timestamp.
+  if(c.startExclusive===true&&data.rolling_boundary_uncertain===true)return null;
+  const num=Number(c.cardColor?data.color_window_count:data.window_count);
+  if(num>0)return decision(c.choice);
+  if(c.normalTimeOnly===true&&c.to>=90&&data.phase_ambiguous===true)return null;
+  return normalFull||through>=closesAt?decision(!c.choice):null;
+ }
+ if(c.kind==='interval-result'){
+  if(!Number.isSafeInteger(c.toExclusiveSeconds)||(!normalFull&&through*60<c.toExclusiveSeconds)||
+     c.to>=90&&data.phase_ambiguous===true)return null;
+  const h=Number(data.window_home),a=Number(data.window_away);
+  return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='window-parity'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||c.event!=='corner'||!['odd','even'].includes(c.choice)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(!normalFull&&through<closesAt)return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const found=Number(data.window_count);
+  if(!Number.isSafeInteger(found)||found<0)return null;
+  return (found%2===1?'odd':'even')===c.choice?'WON':'LOST';
+ }
+ if(c.kind==='window-first-event'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(c.event!=='corner'||!Number.isFinite(closesAt)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from||
+     !['home','away','none'].includes(c.side))return null;
+  if(data.window_first_team!=null){
+   if(Number(data.window_first_same_time)>1)return null;
+   return c.side==='none'?'LOST':data.window_first_team===c.side?'WON':'LOST';
+  }
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  if(normalFull||through>=closesAt)return c.side==='none'?'WON':'LOST';
+  return null;
+ }
+ if(c.kind==='interval-handicap'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||c.event!=='corner'||
+     !['home','away','none'].includes(c.side)||!Number.isFinite(Number(c.handicap)))return null;
+  const h=Number(data.window_home),a=Number(data.window_away),handicap=Number(c.handicap);
+  if(!Number.isSafeInteger(h)||h<0||!Number.isSafeInteger(a)||a<0||
+     !Number.isSafeInteger(handicap*2))return null;
+  const signed=h+handicap-a;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  if(c.side==='none')return signed===0?'WON':'LOST';
+  const delta=c.side==='away'?a+handicap-h:signed;
+  if(c.threeWay)return delta>0?'WON':'LOST';
+  if(delta===0)return 'VOID';
+  return delta>0?'WON':'LOST';
+ }
+ if(c.kind==='interval-leader'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||
+     !['home','away','none'].includes(c.side))return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const h=Number(data.window_home),a=Number(data.window_away);
+  return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='window-total'){
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt))return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const found=Number(c.cardColor?data.color_window_count:data.window_count);
+  const closed=normalFull||through>=closesAt;
+  if(c.choice==='over'||c.choice==='under'){
+   if(!Number.isFinite(c.threshold)||!Number.isInteger(c.threshold*2))return null;
+   // Once the accepted-event count crosses the line it can only increase.
+   // Over is already WON; Under is already LOST.
+   if(found>c.threshold)return c.choice==='over'?'WON':'LOST';
+   if(!closed)return null;
+   if(found===c.threshold&&Number.isInteger(c.threshold))return 'VOID';
+   return c.choice==='over'?'LOST':'WON';
+  }
+  if(c.choice==='exact'&&Number.isInteger(c.target)){
+   if(found>c.target)return 'LOST';
+   return closed?decision(found===c.target):null;
+  }
+  if(c.choice==='atLeast'&&Number.isInteger(c.target)){
+   if(found>=c.target)return 'WON';
+   return closed?'LOST':null;
+  }
+  return null;
+ }
+ if(c.kind==='lead-up'){
+  const base=c.baseline;
+  if(c.event!=='goal'||!Number.isInteger(c.target)||c.target<1||c.target>3||
+     !base||!Number.isSafeInteger(base.home)||base.home<0||
+     !Number.isSafeInteger(base.away)||base.away<0||
+     !['home','away','draw'].includes(c.side))return null;
+  const normalHome=Number(data.normal_home),normalAway=Number(data.normal_away);
+  if(!Number.isSafeInteger(normalHome)||!Number.isSafeInteger(normalAway)||
+     normalHome<base.home||normalAway<base.away)return null;
+  if(c.side==='draw')return normalFull&&data.phase_ambiguous!==true?
+   decision(normalHome===normalAway):null;
+  const afterHome=normalHome-base.home,afterAway=normalAway-base.away;
+  const currentLead=c.side==='home'?afterHome-afterAway:afterAway-afterHome;
+  if(currentLead>=c.target)return 'WON';
+  const maximum=Number(c.side==='home'?data.max_home_lead_since_entry:data.max_away_lead_since_entry);
+  if(Number.isFinite(maximum)&&maximum>=c.target){
+   if(data.ambiguous_order_since_entry===true)return null;
+   return 'WON';
+  }
+  if(!normalFull||data.phase_ambiguous===true||data.ambiguous_order_since_entry===true)return null;
+  return 'LOST';
+ }
+ if(c.kind==='team-nth-time'){
+  if(c.event!=='goal'||!['home','away'].includes(c.side)||
+     !Number.isInteger(c.target)||c.target<1||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(data.team_nth_minute!=null){
+   const minute=Number(data.team_nth_minute);
+   if(!Number.isInteger(minute)||minute<0||minute>130)return null;
+   return decision(minute>=c.from&&minute<=c.to);
+  }
+  // Once the requested team's event window is completely covered, the
+  // absence of that team's next goal is a loss even if the match continues.
+  if(normalFull||through>=c.to){
+   if(c.to>=90&&data.phase_ambiguous===true)return null;
+   return 'LOST';
+  }
+  return null;
+ }
+ if(c.kind==='nth-time'){
+  if(!Number.isInteger(c.target)||c.target<1)return null;
+  const isPrematch = (line?.accepted_contract?.acceptedLiveSnapshot == null && c.entryBaseline == null && line?.accepted_contract != null);
+  if(isPrematch && !normalFull) return null;
+  if(data.nth_team!=null){
+   if(Number(data.nth_same_time)>1)return null;
+   // A fixed "Who scores goal N in minutes A-B" three-way quote uses
+   // Neither when goal N is outside THAT window. General goal-N time
+   // markets without a window still mean "no Nth goal before FT".
+   if(c.choice==='none'&&Number.isInteger(c.from)&&Number.isInteger(c.to))
+    return decision(!(Number(data.nth_minute)>=c.from&&Number(data.nth_minute)<=c.to));
+   if(c.choice==='none')return 'LOST';
+   if(!Number.isInteger(c.from)||!Number.isInteger(c.to))return null;
+   const inside=Number(data.nth_minute)>=c.from&&Number(data.nth_minute)<=c.to;
+   if(c.choice==='team-window')
+     return ['home','away'].includes(c.side)?decision(inside&&data.nth_team===c.side):null;
+   if(c.choice!=='range')return null;
+   return decision(inside);
+  }
+  // No positive evidence yet — wait for coverage window to elapse before
+  // declaring LOST (goal N did not happen within range).
+  const scopeClosed=normalFull||(Number.isInteger(c.to)&&through>=c.to);
+  if(!scopeClosed||c.to>=90&&data.phase_ambiguous===true)return null;
+  return c.choice==='none'?'WON':'LOST';
+ }
+ if(c.kind==='last-event'){
+  if(!normalFull||data.phase_ambiguous===true||!['home','away','none'].includes(c.side))return null;
+  const lastTeam=c.normalTimeOnly===true?data.normal_last_team:data.last_team;
+  const lastSameTime=c.normalTimeOnly===true?data.normal_last_same_time:data.last_same_time;
+  if(lastTeam!=null){
+   if(Number(lastSameTime)>1)return null;
+   return decision(lastTeam===c.side);
+  }
+  return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
+ }
+ if(c.kind==='sequence'){
+  if(data.nth_team!=null){
+   if(Number(data.nth_same_time)>1)return null;
+   return decision(data.nth_team===c.side);
+  }
+  if(!normalFull||data.phase_ambiguous===true)return null;
+  // A Next Goal selection is not refundable merely because no further goal
+  // was scored. Home/Away lose at confirmed FT; the explicit No Goal outcome
+  // wins only when that outcome was actually offered and accepted. Corner/card
+  // sequence markets retain their provider no-event VOID rule unless Neither
+  // was explicitly quoted.
+  if(c.event==='goal')return c.noneOffered===true&&c.side==='none'?'WON':'LOST';
+  return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
+ }
+ if(c.kind==='race'){
+  if(!Number.isInteger(c.target)||c.target<1||
+     !['home','away','none'].includes(c.side))return null;
+  const h=data.race_home_time==null?null:Number(data.race_home_time);
+  const a=data.race_away_time==null?null:Number(data.race_away_time);
+  // The quoted third selection is a real outcome, not a refundable push:
+  // neither side reached X => None wins after confirmed FT completeness.
+  // A reached threshold proves None lost without knowing which side was first.
+  if(c.side==='none'){
+   if(h!==null||a!==null)return 'LOST';
+   return normalFull&&data.phase_ambiguous!==true&&c.noneOffered===true?'WON':null;
+  }
+  if(h===null&&a===null)return normalFull&&data.phase_ambiguous!==true?(c.noneOffered===true?'LOST':'VOID'):null;
+  // Simultaneous or minute-only indistinguishable milestones require review.
+  if(h!==null&&a!==null&&h===a)return null;
+  return decision(c.side===(h!==null&&(a===null||h<a)?'home':'away'));
+ }
+ if(c.kind==='player-goal-special'){
+  // Proven positive 2+/3+ and already-exceeded totals can settle before FT
+  // from reconfirmed primary scorer facts. An UNDER/no/exact that still
+  // depends on future events stays PENDING until the relevant scope ends.
+  if(c.event!=='goal'||(!full&&provider!=='zizobet'))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,player_id,
+    player_name,aiscore_player_id,aiscore_player_name,aiscore_verified,
+    fotmob_player_name,fotmob_verified,supplemental_player_name,
+    supplemental_verified,own_goal
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='goal' and active=true`,[line.match_id,provider]);
+  return gradePlayerGoalSpecial(c,facts,{complete:full});
+ }
+ if(c.kind==='player-ordinal-goal'){
+  // FIRST scorer becomes irreversible when the verified first eligible
+  // scorer is known. LAST scorer and "none won" still require FT.
+  if(c.event!=='goal'||(!full&&(provider!=='zizobet'||c.position!=='first')))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,player_id,
+    player_name,aiscore_player_id,aiscore_player_name,aiscore_verified,
+    fotmob_player_name,fotmob_verified,supplemental_player_name,
+    supplemental_verified,own_goal
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='goal' and active=true`,[line.match_id,provider]);
+  const result=gradePlayerOrdinalScorerFacts(c,facts,{complete:true});
+  if(!full)return c.choice==='none'?(result==='LOST'?'LOST':null):
+    result==='WON'?'WON':null;
+  return result;
+ }
+ if(c.kind==='player-card'){
+  if(typeof c.choice!=='boolean'||(!c.playerName&&!c.playerId))return null;
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  const person=v=>{
+   const raw=String(v??'').trim();
+   const pieces=raw.includes(',')?raw.split(',').map(x=>x.trim()).reverse():[raw];
+   return pieces.join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+     .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  };
+  const expected=person(c.playerName);
+  const {rows:actors}=await execute(
+    "select player_id,player_name,card_color,supplemental_player_name,supplemental_verified from app_match_event_fact "+
+    "where match_id=$1 and provider=$2 and kind='card' and active=true",
+    [line.match_id,provider]);
+  const booked=actors.some(actor=>
+    (!c.cardColor||actor.card_color===c.cardColor)&&
+    (c.playerId!=null&&actor.player_id!=null?
+      String(c.playerId)===String(actor.player_id):
+      !!expected&&(person(actor.player_name)===expected||
+       actor.supplemental_verified===true&&person(actor.supplemental_player_name)===expected)));
+  if(booked)return c.choice?'WON':'LOST';
+  // Absent bookings do not prove that the named player entered the pitch.
+  // The non-participation/void rule still needs verified lineup facts.
+  return null;
+ }
+ if(c.kind==='player-goal'){
+  if((!c.playerName&&!c.playerId)||typeof c.choice!=='boolean')return null;
+  // A verified scorer proves YES/NO immediately; absence does not prove
+  // participation, an own goal, or a losing player proposition.
+  if(Number(data.player_goals)>0)return c.choice?'WON':'LOST';
+  // A missing scorer name does not prove a player played or failed to score.
+  // Require verified player participation before a negative settlement.
+  return null;
+ }
+ if(c.kind==='team-total-goals'){
+  if(!Number.isFinite(c.threshold)||!['over','under'].includes(c.choice))return null;
+  if(count>c.threshold)return c.choice==='over'?'WON':'LOST';
+  if(!full)return null;
+  if(count===c.threshold&&Number.isInteger(c.threshold))return 'VOID';
+  return c.choice==='under'?'WON':'LOST';
+ }
+ if(c.kind==='over'||c.kind==='under'){
+  if(!Number.isFinite(expected))return null;
+  if(count>expected)return c.kind==='over'?'WON':'LOST';
+  if(!full)return null;
+  if(count===expected&&Number.isInteger(expected))return 'VOID';
+  return c.kind==='under'?'WON':'LOST';
+ }
+ if(c.kind==='atLeast'){
+  if(!Number.isInteger(c.target))return null;
+  if(count>=c.target)return 'WON';
+  return full?'LOST':null;
+ }
+ if(c.kind==='exact'){
+  if(!Number.isInteger(c.target))return null;
+  if(count>c.target)return 'LOST';
+  return full?decision(count===c.target):null;
+ }
+ if(c.kind==='range'&&Number.isFinite(c.min)&&Number.isFinite(c.max)){
+  if(count>c.max)return 'LOST';
+  return full?decision(count>=c.min&&count<=c.max):null;
+ }
+ return null;
+}
+
+/** Keep historical incidents in their own provider rows. A verified primary
+ * decision wins; a complete historical FT may fill a genuinely missing
+ * primary timeline. Conflicting historical verdicts are never paid.
+ */
+export async function gradeStoredEventContract(line,result,{execute}={}){
+ if(line?.live_contract?.kind==='half-combo')
+  return gradeHalfCombination(line.live_contract,result);
+ if(line?.live_contract?.kind==='period-goal-total')
+  return gradePeriodGoalTotal(line.live_contract,result);
+ if(line?.live_contract?.kind==='score-handicap'&&
+    !(line.live_contract.event==='corner'&&line.live_contract.half))
+  return gradeHandicapContract(line.live_contract,result);
+ const primary=await gradeSingleEventProvider(line,result,{execute,provider:'zizobet'});
+ if(primary!==null)return primary;
+ // Zizobet is the only settlement authority. Enrichment providers may add
+ // display metadata, but cannot decide or confirm a financial result.
+ return null;
+}
+
+       or (nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90)) as normal_time,
+     case
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1') then 1
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2') then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime','90','stoppage','stoppagetime','injurytime')
+        then case when f.minute<=45 then 1 else 2 end
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=45 then 1
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90 then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf') then 3
+       else 4
+     end as phase_order
+   from app_match_event_fact f
+   where f.match_id=$1 and f.provider=$16::text and f.kind=$2 and f.active
+ ), ordered as (
+   select raw_events.*,
+     row_number() over(order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as ordinal,
+     row_number() over(partition by team order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as team_ordinal,
+     count(*) over(partition by phase_order,coalesce(seconds,minute*60)) as same_time
+   from raw_events
+ ), normal_ordered as (
+   select * from ordered where normal_time ), aggregate as (
+   select count(*)::int as total,
+    count(*) filter(where team='home')::int as home,
+    count(*) filter(where team='away')::int as away,
+    (select count(*)::int from normal_ordered where team='home') as normal_home,
+    (select count(*)::int from normal_ordered where team='away') as normal_away,
+    bool_or(minute>90 and nullif(trim(coalesce(phase,'')),'') is null) as phase_ambiguous,
+    count(*) filter(where card_color=$15::text)::int as color_total,
+    count(*) filter(where team='home' and card_color=$15::text)::int as color_home,
+    count(*) filter(where team='away' and card_color=$15::text)::int as color_away,
+    -- Fixed 10-20 minute markets use inclusive provider minutes.
+    -- Rolling windows and clock-formatted score intervals instead use seconds.
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or minute >= $3)
+         and ($4::numeric is null or minute <= $4)))
+      and ($5::text is null or team=$5)
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as window_count,
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or minute >= $3)
+         and ($4::numeric is null or minute <= $4)))
+      and ($5::text is null or team=$5)
+      and card_color=$15::text
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as color_window_count,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
+      and team='home' and ($17::boolean=false or team_ordinal>$18::int)
+      and ($20::boolean=false or normal_time))::int as window_home,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
+      and team='away' and ($17::boolean=false or team_ordinal>$19::int)
+      and ($20::boolean=false or normal_time))::int as window_away,
+    bool_or($10::boolean=true and seconds is null
+      and (minute=floor($11::numeric/60) or minute=floor($12::numeric/60))) as rolling_boundary_uncertain,
+    count(*) filter(where (own_goal=false or (own_goal is null and aiscore_verified=true))
+     and (($6::text is not null and (
+       (player_id is not null and player_id=$6) or
+       (aiscore_verified=true and aiscore_player_id is not null and aiscore_player_id=$6)))
+      or ($6::text is null and (
+       (player_name is not null and lower(player_name)=lower($7)) or
+       (aiscore_verified=true and aiscore_player_name is not null
+         and lower(aiscore_player_name)=lower($7)) or
+       (own_goal=false and fotmob_verified=true and fotmob_player_name is not null
+         and lower(fotmob_player_name)=lower($7)) or
+       (own_goal=false and supplemental_verified=true and supplemental_player_name is not null
+         and lower(supplemental_player_name)=lower($7))))))::int as player_goals,
+    bool_or(same_time>1) as ambiguous_order,
+    (select bool_or(same_time>1 and ((team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))) from normal_ordered) as ambiguous_order_since_entry,
+    bool_or(seconds is null) as minute_only
+   from ordered
+ )
+ select a.*,c.through_minute,c.count_home,c.count_away,c.complete,c.observed_at,c.confirmed_at,c.card_colors_verified,
+  -- Each valid writer has its own timestamp. Do NOT use greatest() here:
+  -- the watched gap cursor may be updated after the archive proof but
+  -- before the next settlement pass, and must not hide valid evidence.
+  (select last_seen_at from app_live_event_cursor where match_id=$1) as second_poll_at,
+  (select evidence_observed_at from app_zizobet_match_history where match_id=$1) as archive_poll_at,
+  exists(select 1 from app_live_event_recovery g
+    where g.match_id=$1 and g.status='AWAITING_BACKUP_API' and $9::uuid=any(g.line_ids)
+      and $16::text='zizobet') as open_recovery_gap,
+   (select team from ordered where ordinal=(select max(ordinal) from ordered)) as last_team,
+   (select same_time from ordered where ordinal=(select max(ordinal) from ordered)) as last_same_time,
+   (select team from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_team,
+   (select same_time from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_same_time,
+   (select bool_or(same_time>1) from normal_ordered) as normal_ambiguous_order,
+   (select team from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_team,
+   (select minute from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_minute,
+   (select same_time from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_same_time,
+   (select minute from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_minute,   (select max(lead.home_after-lead.away_after) from (
+     select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
+       coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
+     from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+   ) lead) as max_home_lead_since_entry,
+   (select max(lead.away_after-lead.home_after) from (
+     select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
+       coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
+     from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+   ) lead) as max_away_lead_since_entry,
+
+   (select same_time from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_same_time,
+   (select team from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_team,
+   (select minute from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_minute,
+   (select same_time from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_same_time,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='home') as race_home,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='away') as race_away,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='home'
+   )) as race_home_time,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='away'
+   )) as race_away_time
+ from aggregate a left join covered c on true`,
+ [line.match_id,c.event,
+  c.kind==='interval-result'?c.fromSeconds/60:c.from??null,
+  c.kind==='interval-result'?(c.toExclusiveSeconds-1)/60:c.to??null,
+  c.side??null,c.playerId??null,c.playerName??null,c.target??1,line.id,
+  c.kind==='window'&&c.startExclusive===true,
+  c.kind==='interval-result'?c.fromSeconds:c.kind==='window'?c.from*60:null,
+  c.kind==='interval-result'?c.toExclusiveSeconds:c.kind==='window'?c.to*60:null,
+  c.kind==='interval-result',c.kind==='interval-leader'||c.kind==='interval-handicap',c.cardColor??null,provider,
+  c.entryBaseline!=null||c.baseline!=null,
+  c.entryBaseline?.home??c.baseline?.home??0,
+  c.entryBaseline?.away??c.baseline?.away??0,c.normalTimeOnly===true]);
+ const data=rows[0];
+ if(!data||data.through_minute==null||data.open_recovery_gap===true)return null;
+ // A partial/corrected frame must not silently reclassify a missing event.
+ if(Number(data.home)!==Number(data.count_home)||
+    Number(data.away)!==Number(data.count_away)||
+    Number(data.total)!==Number(data.home)+Number(data.away))return null;
+ // After provider corrections, the accepted counters cannot exceed the
+ // present complete chronology. Hold the ticket for review if they do.
+ const acceptedBaseline=c.entryBaseline??c.baseline;
+ if(acceptedBaseline!=null&&(
+    !Number.isSafeInteger(acceptedBaseline.home)||acceptedBaseline.home<0||
+    !Number.isSafeInteger(acceptedBaseline.away)||acceptedBaseline.away<0||
+    acceptedBaseline.home>Number(data.count_home)||
+    acceptedBaseline.away>Number(data.count_away)))return null;
+ const stats=typeof result?.statistics==='string'?(()=>{
+  try{return JSON.parse(result.statistics);}catch{return null;}
+ })():result?.statistics;
+ const totalFor=kind=>kind==='goal'?[result?.home_score,result?.away_score]:
+   kind==='corner'?[result?.corners_home,result?.corners_away]:
+   kind==='card'?[result?.cards_home,result?.cards_away]:
+   kind==='foul'?[stats?.fouls?.home,stats?.fouls?.away]:
+   kind==='offside'?[stats?.offsides?.home,stats?.offsides?.away]:[null,null];
+ const expectedTotals=totalFor(c.event);
+ const finalCounts=expectedTotals.every(x=>x!=null&&Number.isSafeInteger(Number(x))&&Number(x)>=0);
+ const full=!!(result&&data.complete===true&&finalCounts&&
+   Number(data.home)===Number(expectedTotals[0])&&Number(data.away)===Number(expectedTotals[1]));
+ const matchFinished=!!(result&&data.complete===true);
+ const normalFull=c.normalTimeOnly===true?matchFinished:full;
+ // Only the confirmed Zizobet timeline and its own second-poll/archive
+ // cursor can authorize a settlement decision.
+ if(data.confirmed_at==null||data.observed_at==null)return null;
+ const confirmed=new Date(data.confirmed_at).getTime();
+ const stored=new Date(data.observed_at).getTime();
+ if(![confirmed,stored].every(Number.isFinite)||confirmed>stored)return null;
+ const watcher=data.second_poll_at==null?NaN:new Date(data.second_poll_at).getTime();
+ const archive=data.archive_poll_at==null?NaN:new Date(data.archive_poll_at).getTime();
+ if(stored!==watcher&&stored!==archive)return null;
+ if(c.cardColor!=null&&
+   (c.event!=='card'||!['yellow','red'].includes(c.cardColor)||
+    data.card_colors_verified!==true))return null;
+ const through=Number(data.through_minute);
+ // Half-time is a valid end of the FIRST-HALF event scope, but only once
+ // a separately confirmed Zizobet HT score exists AND the chronological
+ // coverage has been reconfirmed by another primary poll at/after that HT.
+ // The entire match is still unfinished: 2H/FT contracts remain untouched.
+ let firstHalfComplete=false;
+ if(!full&&provider==='zizobet'&&c.half===1&&Number.isFinite(through)&&through>=45){
+  const ht=(await execute(
+   "select h.confirmed_at from app_match_half_result h where h.match_id=$1 and h.source='ZIZOBET' and h.confirmed_at is not null and exists(select 1 from app_match_snapshot s where s.match_id=h.match_id and s.snapshot->'raw'->>'provider'='ZIZOBET' and s.snapshot->'periods_score'->0->>'t1'=h.half_home_score::text and s.snapshot->'periods_score'->0->>'t2'=h.half_away_score::text)",
+   [line.match_id])).rows[0];
+  const at=ht?.confirmed_at==null?NaN:new Date(ht.confirmed_at).getTime();
+  firstHalfComplete=Number.isFinite(at)&&stored>=at;
+ }
+ const completedScope=full||firstHalfComplete;
+ if(c.kind==='score-handicap'&&c.event==='corner'&&c.half){
+  if(!completedScope)return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeHalfCornerHandicapFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='corner-comparison'){
+  if(!full||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeCornerComparisonFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='multi-corners'){
+  if(!full||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeMultiCornerFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='half-parity'){
+  if(!completedScope||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeHalfParityFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='half-exact-count'){
+  if(!completedScope||!['corner','card'].includes(c.event))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,card_color
+    from app_match_event_fact
+    where match_id=$1 and provider=$2 and kind=$3 and active=true`,
+    [line.match_id,provider,c.event]);
+  return gradeHalfExactFacts(c,facts,{complete:true,
+    cardColorsVerified:data.card_colors_verified===true});
+ }
+ if(c.kind==='half-total'){
+  if(!completedScope||!['corner','card'].includes(c.event))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,card_color
+    from app_match_event_fact
+    where match_id=$1 and provider=$2 and kind=$3 and active=true`,
+    [line.match_id,provider,c.event]);
+  return gradeHalfTotalFacts(c,facts,{complete:true,
+    cardColorsVerified:data.card_colors_verified===true});
+ }
+ if(['half-first-event','half-last-event','half-race','half-next-event'].includes(c.kind)){
+  if(!completedScope||!['goal','corner','card'].includes(c.event))return null;
+  const events=(await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind=$3 and active=true`,[line.match_id,provider,c.event])).rows;
+  // Historical 1H first-corner contracts preserve their existing
+  // proven three-way "None" settlement semantics.
+  if(c.kind==='half-first-event'&&c.event==='corner'&&c.half===1&&
+     c.noneOffered===undefined)
+    return gradeFirstHalfCornerFacts(c,events,{complete:true});
+  return gradeHalfEventFacts(c,events,{complete:true});
+ }
+ const scopeEnded=full||(Number.isFinite(c.to)&&through>Number(c.to));
+ const count=Number(c.cardColor?(c.side==='home'?data.color_home:c.side==='away'?data.color_away:data.color_total):
+   (c.side==='home'?data.home:c.side==='away'?data.away:data.total));
+ const expected=Number(c.target??c.threshold);
+ const decision=truth=>truth?'WON':'LOST';
+ if(c.kind==='window'){
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  // A proven event decides YES immediately and NO as lost; a verified
+  // absence cannot win until the full quoted time window is complete.
+  const closesAt=c.startExclusive===true?Number(c.to):Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||typeof c.choice!=='boolean')return null;
+  // A rolling exact-second market cannot be judged from minute-only boundary
+  // incidents. Hold for the provider's precise timestamp.
+  if(c.startExclusive===true&&data.rolling_boundary_uncertain===true)return null;
+  const num=Number(c.cardColor?data.color_window_count:data.window_count);
+  if(num>0)return decision(c.choice);
+  if(c.normalTimeOnly===true&&c.to>=90&&data.phase_ambiguous===true)return null;
+  return normalFull||through>=closesAt?decision(!c.choice):null;
+ }
+ if(c.kind==='interval-result'){
+  if(!Number.isSafeInteger(c.toExclusiveSeconds)||(!normalFull&&through*60<c.toExclusiveSeconds)||
+     c.to>=90&&data.phase_ambiguous===true)return null;
+  const h=Number(data.window_home),a=Number(data.window_away);
+  return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='window-parity'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||c.event!=='corner'||!['odd','even'].includes(c.choice)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(!normalFull&&through<closesAt)return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const found=Number(data.window_count);
+  if(!Number.isSafeInteger(found)||found<0)return null;
+  return (found%2===1?'odd':'even')===c.choice?'WON':'LOST';
+ }
+ if(c.kind==='window-first-event'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(c.event!=='corner'||!Number.isFinite(closesAt)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from||
+     !['home','away','none'].includes(c.side))return null;
+  if(data.window_first_team!=null){
+   if(Number(data.window_first_same_time)>1)return null;
+   return c.side==='none'?'LOST':data.window_first_team===c.side?'WON':'LOST';
+  }
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  if(normalFull||through>=closesAt)return c.side==='none'?'WON':'LOST';
+  return null;
+ }
+ if(c.kind==='interval-handicap'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||c.event!=='corner'||
+     !['home','away','none'].includes(c.side)||!Number.isFinite(Number(c.handicap)))return null;
+  const h=Number(data.window_home),a=Number(data.window_away),handicap=Number(c.handicap);
+  if(!Number.isSafeInteger(h)||h<0||!Number.isSafeInteger(a)||a<0||
+     !Number.isSafeInteger(handicap*2))return null;
+  const signed=h+handicap-a;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  if(c.side==='none')return signed===0?'WON':'LOST';
+  const delta=c.side==='away'?a+handicap-h:signed;
+  if(c.threeWay)return delta>0?'WON':'LOST';
+  if(delta===0)return 'VOID';
+  return delta>0?'WON':'LOST';
+ }
+ if(c.kind==='interval-leader'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||
+     !['home','away','none'].includes(c.side))return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const h=Number(data.window_home),a=Number(data.window_away);
+  return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='window-total'){
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt))return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const found=Number(c.cardColor?data.color_window_count:data.window_count);
+  const closed=normalFull||through>=closesAt;
+  if(c.choice==='over'||c.choice==='under'){
+   if(!Number.isFinite(c.threshold)||!Number.isInteger(c.threshold*2))return null;
+   // Once the accepted-event count crosses the line it can only increase.
+   // Over is already WON; Under is already LOST.
+   if(found>c.threshold)return c.choice==='over'?'WON':'LOST';
+   if(!closed)return null;
+   if(found===c.threshold&&Number.isInteger(c.threshold))return 'VOID';
+   return c.choice==='over'?'LOST':'WON';
+  }
+  if(c.choice==='exact'&&Number.isInteger(c.target)){
+   if(found>c.target)return 'LOST';
+   return closed?decision(found===c.target):null;
+  }
+  if(c.choice==='atLeast'&&Number.isInteger(c.target)){
+   if(found>=c.target)return 'WON';
+   return closed?'LOST':null;
+  }
+  return null;
+ }
+ if(c.kind==='lead-up'){
+  const base=c.baseline;
+  if(c.event!=='goal'||!Number.isInteger(c.target)||c.target<1||c.target>3||
+     !base||!Number.isSafeInteger(base.home)||base.home<0||
+     !Number.isSafeInteger(base.away)||base.away<0||
+     !['home','away','draw'].includes(c.side))return null;
+  const normalHome=Number(data.normal_home),normalAway=Number(data.normal_away);
+  if(!Number.isSafeInteger(normalHome)||!Number.isSafeInteger(normalAway)||
+     normalHome<base.home||normalAway<base.away)return null;
+  if(c.side==='draw')return normalFull&&data.phase_ambiguous!==true?
+   decision(normalHome===normalAway):null;
+  const afterHome=normalHome-base.home,afterAway=normalAway-base.away;
+  const currentLead=c.side==='home'?afterHome-afterAway:afterAway-afterHome;
+  if(currentLead>=c.target)return 'WON';
+  const maximum=Number(c.side==='home'?data.max_home_lead_since_entry:data.max_away_lead_since_entry);
+  if(Number.isFinite(maximum)&&maximum>=c.target){
+   if(data.ambiguous_order_since_entry===true)return null;
+   return 'WON';
+  }
+  if(!normalFull||data.phase_ambiguous===true||data.ambiguous_order_since_entry===true)return null;
+  return 'LOST';
+ }
+ if(c.kind==='team-nth-time'){
+  if(c.event!=='goal'||!['home','away'].includes(c.side)||
+     !Number.isInteger(c.target)||c.target<1||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(data.team_nth_minute!=null){
+   const minute=Number(data.team_nth_minute);
+   if(!Number.isInteger(minute)||minute<0||minute>130)return null;
+   return decision(minute>=c.from&&minute<=c.to);
+  }
+  // Once the requested team's event window is completely covered, the
+  // absence of that team's next goal is a loss even if the match continues.
+  if(normalFull||through>=c.to){
+   if(c.to>=90&&data.phase_ambiguous===true)return null;
+   return 'LOST';
+  }
+  return null;
+ }
+ if(c.kind==='nth-time'){
+  if(!Number.isInteger(c.target)||c.target<1)return null;
+  const isPrematch = (line?.accepted_contract?.acceptedLiveSnapshot == null && c.entryBaseline == null && line?.accepted_contract != null);
+  if(isPrematch && !normalFull) return null;
+  if(data.nth_team!=null){
+   if(Number(data.nth_same_time)>1)return null;
+   // A fixed "Who scores goal N in minutes A-B" three-way quote uses
+   // Neither when goal N is outside THAT window. General goal-N time
+   // markets without a window still mean "no Nth goal before FT".
+   if(c.choice==='none'&&Number.isInteger(c.from)&&Number.isInteger(c.to))
+    return decision(!(Number(data.nth_minute)>=c.from&&Number(data.nth_minute)<=c.to));
+   if(c.choice==='none')return 'LOST';
+   if(!Number.isInteger(c.from)||!Number.isInteger(c.to))return null;
+   const inside=Number(data.nth_minute)>=c.from&&Number(data.nth_minute)<=c.to;
+   if(c.choice==='team-window')
+     return ['home','away'].includes(c.side)?decision(inside&&data.nth_team===c.side):null;
+   if(c.choice!=='range')return null;
+   return decision(inside);
+  }
+  // No positive evidence yet — wait for coverage window to elapse before
+  // declaring LOST (goal N did not happen within range).
+  const scopeClosed=normalFull||(Number.isInteger(c.to)&&through>=c.to);
+  if(!scopeClosed||c.to>=90&&data.phase_ambiguous===true)return null;
+  return c.choice==='none'?'WON':'LOST';
+ }
+ if(c.kind==='last-event'){
+  if(!normalFull||data.phase_ambiguous===true||!['home','away','none'].includes(c.side))return null;
+  const lastTeam=c.normalTimeOnly===true?data.normal_last_team:data.last_team;
+  const lastSameTime=c.normalTimeOnly===true?data.normal_last_same_time:data.last_same_time;
+  if(lastTeam!=null){
+   if(Number(lastSameTime)>1)return null;
+   return decision(lastTeam===c.side);
+  }
+  return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
+ }
+ if(c.kind==='sequence'){
+  if(data.nth_team!=null){
+   if(Number(data.nth_same_time)>1)return null;
+   return decision(data.nth_team===c.side);
+  }
+  if(!normalFull||data.phase_ambiguous===true)return null;
+  // A Next Goal selection is not refundable merely because no further goal
+  // was scored. Home/Away lose at confirmed FT; the explicit No Goal outcome
+  // wins only when that outcome was actually offered and accepted. Corner/card
+  // sequence markets retain their provider no-event VOID rule unless Neither
+  // was explicitly quoted.
+  if(c.event==='goal')return c.noneOffered===true&&c.side==='none'?'WON':'LOST';
+  return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
+ }
+ if(c.kind==='race'){
+  if(!Number.isInteger(c.target)||c.target<1||
+     !['home','away','none'].includes(c.side))return null;
+  const h=data.race_home_time==null?null:Number(data.race_home_time);
+  const a=data.race_away_time==null?null:Number(data.race_away_time);
+  // The quoted third selection is a real outcome, not a refundable push:
+  // neither side reached X => None wins after confirmed FT completeness.
+  // A reached threshold proves None lost without knowing which side was first.
+  if(c.side==='none'){
+   if(h!==null||a!==null)return 'LOST';
+   return normalFull&&data.phase_ambiguous!==true&&c.noneOffered===true?'WON':null;
+  }
+  if(h===null&&a===null)return normalFull&&data.phase_ambiguous!==true?(c.noneOffered===true?'LOST':'VOID'):null;
+  // Simultaneous or minute-only indistinguishable milestones require review.
+  if(h!==null&&a!==null&&h===a)return null;
+  return decision(c.side===(h!==null&&(a===null||h<a)?'home':'away'));
+ }
+ if(c.kind==='player-goal-special'){
+  // Proven positive 2+/3+ and already-exceeded totals can settle before FT
+  // from reconfirmed primary scorer facts. An UNDER/no/exact that still
+  // depends on future events stays PENDING until the relevant scope ends.
+  if(c.event!=='goal'||(!full&&provider!=='zizobet'))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,player_id,
+    player_name,aiscore_player_id,aiscore_player_name,aiscore_verified,
+    fotmob_player_name,fotmob_verified,supplemental_player_name,
+    supplemental_verified,own_goal
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='goal' and active=true`,[line.match_id,provider]);
+  return gradePlayerGoalSpecial(c,facts,{complete:full});
+ }
+ if(c.kind==='player-ordinal-goal'){
+  // FIRST scorer becomes irreversible when the verified first eligible
+  // scorer is known. LAST scorer and "none won" still require FT.
+  if(c.event!=='goal'||(!full&&(provider!=='zizobet'||c.position!=='first')))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,player_id,
+    player_name,aiscore_player_id,aiscore_player_name,aiscore_verified,
+    fotmob_player_name,fotmob_verified,supplemental_player_name,
+    supplemental_verified,own_goal
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='goal' and active=true`,[line.match_id,provider]);
+  const result=gradePlayerOrdinalScorerFacts(c,facts,{complete:true});
+  if(!full)return c.choice==='none'?(result==='LOST'?'LOST':null):
+    result==='WON'?'WON':null;
+  return result;
+ }
+ if(c.kind==='player-card'){
+  if(typeof c.choice!=='boolean'||(!c.playerName&&!c.playerId))return null;
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  const person=v=>{
+   const raw=String(v??'').trim();
+   const pieces=raw.includes(',')?raw.split(',').map(x=>x.trim()).reverse():[raw];
+   return pieces.join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+     .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  };
+  const expected=person(c.playerName);
+  const {rows:actors}=await execute(
+    "select player_id,player_name,card_color,supplemental_player_name,supplemental_verified from app_match_event_fact "+
+    "where match_id=$1 and provider=$2 and kind='card' and active=true",
+    [line.match_id,provider]);
+  const booked=actors.some(actor=>
+    (!c.cardColor||actor.card_color===c.cardColor)&&
+    (c.playerId!=null&&actor.player_id!=null?
+      String(c.playerId)===String(actor.player_id):
+      !!expected&&(person(actor.player_name)===expected||
+       actor.supplemental_verified===true&&person(actor.supplemental_player_name)===expected)));
+  if(booked)return c.choice?'WON':'LOST';
+  // Absent bookings do not prove that the named player entered the pitch.
+  // The non-participation/void rule still needs verified lineup facts.
+  return null;
+ }
+ if(c.kind==='player-goal'){
+  if((!c.playerName&&!c.playerId)||typeof c.choice!=='boolean')return null;
+  // A verified scorer proves YES/NO immediately; absence does not prove
+  // participation, an own goal, or a losing player proposition.
+  if(Number(data.player_goals)>0)return c.choice?'WON':'LOST';
+  // A missing scorer name does not prove a player played or failed to score.
+  // Require verified player participation before a negative settlement.
+  return null;
+ }
+ if(c.kind==='team-total-goals'){
+  if(!Number.isFinite(c.threshold)||!['over','under'].includes(c.choice))return null;
+  if(count>c.threshold)return c.choice==='over'?'WON':'LOST';
+  if(!full)return null;
+  if(count===c.threshold&&Number.isInteger(c.threshold))return 'VOID';
+  return c.choice==='under'?'WON':'LOST';
+ }
+ if(c.kind==='over'||c.kind==='under'){
+  if(!Number.isFinite(expected))return null;
+  if(count>expected)return c.kind==='over'?'WON':'LOST';
+  if(!full)return null;
+  if(count===expected&&Number.isInteger(expected))return 'VOID';
+  return c.kind==='under'?'WON':'LOST';
+ }
+ if(c.kind==='atLeast'){
+  if(!Number.isInteger(c.target))return null;
+  if(count>=c.target)return 'WON';
+  return full?'LOST':null;
+ }
+ if(c.kind==='exact'){
+  if(!Number.isInteger(c.target))return null;
+  if(count>c.target)return 'LOST';
+  return full?decision(count===c.target):null;
+ }
+ if(c.kind==='range'&&Number.isFinite(c.min)&&Number.isFinite(c.max)){
+  if(count>c.max)return 'LOST';
+  return full?decision(count>=c.min&&count<=c.max):null;
+ }
+ return null;
+}
+
+/** Keep historical incidents in their own provider rows. A verified primary
+ * decision wins; a complete historical FT may fill a genuinely missing
+ * primary timeline. Conflicting historical verdicts are never paid.
+ */
+export async function gradeStoredEventContract(line,result,{execute}={}){
+ if(line?.live_contract?.kind==='half-combo')
+  return gradeHalfCombination(line.live_contract,result);
+ if(line?.live_contract?.kind==='period-goal-total')
+  return gradePeriodGoalTotal(line.live_contract,result);
+ if(line?.live_contract?.kind==='score-handicap'&&
+    !(line.live_contract.event==='corner'&&line.live_contract.half))
+  return gradeHandicapContract(line.live_contract,result);
+ const primary=await gradeSingleEventProvider(line,result,{execute,provider:'zizobet'});
+ if(primary!==null)return primary;
+ // Zizobet is the only settlement authority. Enrichment providers may add
+ // display metadata, but cannot decide or confirm a financial result.
+ return null;
+}
+ then 1
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^90[0-9]{1,2}
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=45 then 1
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90 then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf') then 3
+       else 4
+     end as phase_order
+   from app_match_event_fact f
+   where f.match_id=$1 and f.provider=$16::text and f.kind=$2 and f.active
+ ), ordered as (
+   select raw_events.*,
+     row_number() over(order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as ordinal,
+     row_number() over(partition by team order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as team_ordinal,
+     count(*) over(partition by phase_order,coalesce(seconds,minute*60)) as same_time
+   from raw_events
+ ), normal_ordered as (
+   select * from ordered where normal_time ), aggregate as (
+   select count(*)::int as total,
+    count(*) filter(where team='home')::int as home,
+    count(*) filter(where team='away')::int as away,
+    (select count(*)::int from normal_ordered where team='home') as normal_home,
+    (select count(*)::int from normal_ordered where team='away') as normal_away,
+    bool_or(minute>90 and nullif(trim(coalesce(phase,'')),'') is null) as phase_ambiguous,
+    count(*) filter(where card_color=$15::text)::int as color_total,
+    count(*) filter(where team='home' and card_color=$15::text)::int as color_home,
+    count(*) filter(where team='away' and card_color=$15::text)::int as color_away,
+    -- Fixed 10-20 minute markets use inclusive provider minutes.
+    -- Rolling windows and clock-formatted score intervals instead use seconds.
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or minute >= $3)
+         and ($4::numeric is null or minute <= $4)))
+      and ($5::text is null or team=$5)
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as window_count,
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or minute >= $3)
+         and ($4::numeric is null or minute <= $4)))
+      and ($5::text is null or team=$5)
+      and card_color=$15::text
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as color_window_count,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
+      and team='home' and ($17::boolean=false or team_ordinal>$18::int)
+      and ($20::boolean=false or normal_time))::int as window_home,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
+      and team='away' and ($17::boolean=false or team_ordinal>$19::int)
+      and ($20::boolean=false or normal_time))::int as window_away,
+    bool_or($10::boolean=true and seconds is null
+      and (minute=floor($11::numeric/60) or minute=floor($12::numeric/60))) as rolling_boundary_uncertain,
+    count(*) filter(where (own_goal=false or (own_goal is null and aiscore_verified=true))
+     and (($6::text is not null and (
+       (player_id is not null and player_id=$6) or
+       (aiscore_verified=true and aiscore_player_id is not null and aiscore_player_id=$6)))
+      or ($6::text is null and (
+       (player_name is not null and lower(player_name)=lower($7)) or
+       (aiscore_verified=true and aiscore_player_name is not null
+         and lower(aiscore_player_name)=lower($7)) or
+       (own_goal=false and fotmob_verified=true and fotmob_player_name is not null
+         and lower(fotmob_player_name)=lower($7)) or
+       (own_goal=false and supplemental_verified=true and supplemental_player_name is not null
+         and lower(supplemental_player_name)=lower($7))))))::int as player_goals,
+    bool_or(same_time>1) as ambiguous_order,
+    (select bool_or(same_time>1 and ((team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))) from normal_ordered) as ambiguous_order_since_entry,
+    bool_or(seconds is null) as minute_only
+   from ordered
+ )
+ select a.*,c.through_minute,c.count_home,c.count_away,c.complete,c.observed_at,c.confirmed_at,c.card_colors_verified,
+  -- Each valid writer has its own timestamp. Do NOT use greatest() here:
+  -- the watched gap cursor may be updated after the archive proof but
+  -- before the next settlement pass, and must not hide valid evidence.
+  (select last_seen_at from app_live_event_cursor where match_id=$1) as second_poll_at,
+  (select evidence_observed_at from app_zizobet_match_history where match_id=$1) as archive_poll_at,
+  exists(select 1 from app_live_event_recovery g
+    where g.match_id=$1 and g.status='AWAITING_BACKUP_API' and $9::uuid=any(g.line_ids)
+      and $16::text='zizobet') as open_recovery_gap,
+   (select team from ordered where ordinal=(select max(ordinal) from ordered)) as last_team,
+   (select same_time from ordered where ordinal=(select max(ordinal) from ordered)) as last_same_time,
+   (select team from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_team,
+   (select same_time from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_same_time,
+   (select bool_or(same_time>1) from normal_ordered) as normal_ambiguous_order,
+   (select team from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_team,
+   (select minute from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_minute,
+   (select same_time from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_same_time,
+   (select minute from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_minute,   (select max(lead.home_after-lead.away_after) from (
+     select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
+       coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
+     from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+   ) lead) as max_home_lead_since_entry,
+   (select max(lead.away_after-lead.home_after) from (
+     select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
+       coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
+     from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+   ) lead) as max_away_lead_since_entry,
+
+   (select same_time from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_same_time,
+   (select team from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_team,
+   (select minute from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_minute,
+   (select same_time from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_same_time,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='home') as race_home,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='away') as race_away,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='home'
+   )) as race_home_time,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='away'
+   )) as race_away_time
+ from aggregate a left join covered c on true`,
+ [line.match_id,c.event,
+  c.kind==='interval-result'?c.fromSeconds/60:c.from??null,
+  c.kind==='interval-result'?(c.toExclusiveSeconds-1)/60:c.to??null,
+  c.side??null,c.playerId??null,c.playerName??null,c.target??1,line.id,
+  c.kind==='window'&&c.startExclusive===true,
+  c.kind==='interval-result'?c.fromSeconds:c.kind==='window'?c.from*60:null,
+  c.kind==='interval-result'?c.toExclusiveSeconds:c.kind==='window'?c.to*60:null,
+  c.kind==='interval-result',c.kind==='interval-leader'||c.kind==='interval-handicap',c.cardColor??null,provider,
+  c.entryBaseline!=null||c.baseline!=null,
+  c.entryBaseline?.home??c.baseline?.home??0,
+  c.entryBaseline?.away??c.baseline?.away??0,c.normalTimeOnly===true]);
+ const data=rows[0];
+ if(!data||data.through_minute==null||data.open_recovery_gap===true)return null;
+ // A partial/corrected frame must not silently reclassify a missing event.
+ if(Number(data.home)!==Number(data.count_home)||
+    Number(data.away)!==Number(data.count_away)||
+    Number(data.total)!==Number(data.home)+Number(data.away))return null;
+ // After provider corrections, the accepted counters cannot exceed the
+ // present complete chronology. Hold the ticket for review if they do.
+ const acceptedBaseline=c.entryBaseline??c.baseline;
+ if(acceptedBaseline!=null&&(
+    !Number.isSafeInteger(acceptedBaseline.home)||acceptedBaseline.home<0||
+    !Number.isSafeInteger(acceptedBaseline.away)||acceptedBaseline.away<0||
+    acceptedBaseline.home>Number(data.count_home)||
+    acceptedBaseline.away>Number(data.count_away)))return null;
+ const stats=typeof result?.statistics==='string'?(()=>{
+  try{return JSON.parse(result.statistics);}catch{return null;}
+ })():result?.statistics;
+ const totalFor=kind=>kind==='goal'?[result?.home_score,result?.away_score]:
+   kind==='corner'?[result?.corners_home,result?.corners_away]:
+   kind==='card'?[result?.cards_home,result?.cards_away]:
+   kind==='foul'?[stats?.fouls?.home,stats?.fouls?.away]:
+   kind==='offside'?[stats?.offsides?.home,stats?.offsides?.away]:[null,null];
+ const expectedTotals=totalFor(c.event);
+ const finalCounts=expectedTotals.every(x=>x!=null&&Number.isSafeInteger(Number(x))&&Number(x)>=0);
+ const full=!!(result&&data.complete===true&&finalCounts&&
+   Number(data.home)===Number(expectedTotals[0])&&Number(data.away)===Number(expectedTotals[1]));
+ const matchFinished=!!(result&&data.complete===true);
+ const normalFull=c.normalTimeOnly===true?matchFinished:full;
+ // Only the confirmed Zizobet timeline and its own second-poll/archive
+ // cursor can authorize a settlement decision.
+ if(data.confirmed_at==null||data.observed_at==null)return null;
+ const confirmed=new Date(data.confirmed_at).getTime();
+ const stored=new Date(data.observed_at).getTime();
+ if(![confirmed,stored].every(Number.isFinite)||confirmed>stored)return null;
+ const watcher=data.second_poll_at==null?NaN:new Date(data.second_poll_at).getTime();
+ const archive=data.archive_poll_at==null?NaN:new Date(data.archive_poll_at).getTime();
+ if(stored!==watcher&&stored!==archive)return null;
+ if(c.cardColor!=null&&
+   (c.event!=='card'||!['yellow','red'].includes(c.cardColor)||
+    data.card_colors_verified!==true))return null;
+ const through=Number(data.through_minute);
+ // Half-time is a valid end of the FIRST-HALF event scope, but only once
+ // a separately confirmed Zizobet HT score exists AND the chronological
+ // coverage has been reconfirmed by another primary poll at/after that HT.
+ // The entire match is still unfinished: 2H/FT contracts remain untouched.
+ let firstHalfComplete=false;
+ if(!full&&provider==='zizobet'&&c.half===1&&Number.isFinite(through)&&through>=45){
+  const ht=(await execute(
+   "select h.confirmed_at from app_match_half_result h where h.match_id=$1 and h.source='ZIZOBET' and h.confirmed_at is not null and exists(select 1 from app_match_snapshot s where s.match_id=h.match_id and s.snapshot->'raw'->>'provider'='ZIZOBET' and s.snapshot->'periods_score'->0->>'t1'=h.half_home_score::text and s.snapshot->'periods_score'->0->>'t2'=h.half_away_score::text)",
+   [line.match_id])).rows[0];
+  const at=ht?.confirmed_at==null?NaN:new Date(ht.confirmed_at).getTime();
+  firstHalfComplete=Number.isFinite(at)&&stored>=at;
+ }
+ const completedScope=full||firstHalfComplete;
+ if(c.kind==='score-handicap'&&c.event==='corner'&&c.half){
+  if(!completedScope)return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeHalfCornerHandicapFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='corner-comparison'){
+  if(!full||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeCornerComparisonFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='multi-corners'){
+  if(!full||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeMultiCornerFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='half-parity'){
+  if(!completedScope||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeHalfParityFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='half-exact-count'){
+  if(!completedScope||!['corner','card'].includes(c.event))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,card_color
+    from app_match_event_fact
+    where match_id=$1 and provider=$2 and kind=$3 and active=true`,
+    [line.match_id,provider,c.event]);
+  return gradeHalfExactFacts(c,facts,{complete:true,
+    cardColorsVerified:data.card_colors_verified===true});
+ }
+ if(c.kind==='half-total'){
+  if(!completedScope||!['corner','card'].includes(c.event))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,card_color
+    from app_match_event_fact
+    where match_id=$1 and provider=$2 and kind=$3 and active=true`,
+    [line.match_id,provider,c.event]);
+  return gradeHalfTotalFacts(c,facts,{complete:true,
+    cardColorsVerified:data.card_colors_verified===true});
+ }
+ if(['half-first-event','half-last-event','half-race','half-next-event'].includes(c.kind)){
+  if(!completedScope||!['goal','corner','card'].includes(c.event))return null;
+  const events=(await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind=$3 and active=true`,[line.match_id,provider,c.event])).rows;
+  // Historical 1H first-corner contracts preserve their existing
+  // proven three-way "None" settlement semantics.
+  if(c.kind==='half-first-event'&&c.event==='corner'&&c.half===1&&
+     c.noneOffered===undefined)
+    return gradeFirstHalfCornerFacts(c,events,{complete:true});
+  return gradeHalfEventFacts(c,events,{complete:true});
+ }
+ const scopeEnded=full||(Number.isFinite(c.to)&&through>Number(c.to));
+ const count=Number(c.cardColor?(c.side==='home'?data.color_home:c.side==='away'?data.color_away:data.color_total):
+   (c.side==='home'?data.home:c.side==='away'?data.away:data.total));
+ const expected=Number(c.target??c.threshold);
+ const decision=truth=>truth?'WON':'LOST';
+ if(c.kind==='window'){
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  // A proven event decides YES immediately and NO as lost; a verified
+  // absence cannot win until the full quoted time window is complete.
+  const closesAt=c.startExclusive===true?Number(c.to):Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||typeof c.choice!=='boolean')return null;
+  // A rolling exact-second market cannot be judged from minute-only boundary
+  // incidents. Hold for the provider's precise timestamp.
+  if(c.startExclusive===true&&data.rolling_boundary_uncertain===true)return null;
+  const num=Number(c.cardColor?data.color_window_count:data.window_count);
+  if(num>0)return decision(c.choice);
+  if(c.normalTimeOnly===true&&c.to>=90&&data.phase_ambiguous===true)return null;
+  return normalFull||through>=closesAt?decision(!c.choice):null;
+ }
+ if(c.kind==='interval-result'){
+  if(!Number.isSafeInteger(c.toExclusiveSeconds)||(!normalFull&&through*60<c.toExclusiveSeconds)||
+     c.to>=90&&data.phase_ambiguous===true)return null;
+  const h=Number(data.window_home),a=Number(data.window_away);
+  return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='window-parity'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||c.event!=='corner'||!['odd','even'].includes(c.choice)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(!normalFull&&through<closesAt)return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const found=Number(data.window_count);
+  if(!Number.isSafeInteger(found)||found<0)return null;
+  return (found%2===1?'odd':'even')===c.choice?'WON':'LOST';
+ }
+ if(c.kind==='window-first-event'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(c.event!=='corner'||!Number.isFinite(closesAt)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from||
+     !['home','away','none'].includes(c.side))return null;
+  if(data.window_first_team!=null){
+   if(Number(data.window_first_same_time)>1)return null;
+   return c.side==='none'?'LOST':data.window_first_team===c.side?'WON':'LOST';
+  }
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  if(normalFull||through>=closesAt)return c.side==='none'?'WON':'LOST';
+  return null;
+ }
+ if(c.kind==='interval-handicap'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||c.event!=='corner'||
+     !['home','away','none'].includes(c.side)||!Number.isFinite(Number(c.handicap)))return null;
+  const h=Number(data.window_home),a=Number(data.window_away),handicap=Number(c.handicap);
+  if(!Number.isSafeInteger(h)||h<0||!Number.isSafeInteger(a)||a<0||
+     !Number.isSafeInteger(handicap*2))return null;
+  const signed=h+handicap-a;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  if(c.side==='none')return signed===0?'WON':'LOST';
+  const delta=c.side==='away'?a+handicap-h:signed;
+  if(c.threeWay)return delta>0?'WON':'LOST';
+  if(delta===0)return 'VOID';
+  return delta>0?'WON':'LOST';
+ }
+ if(c.kind==='interval-leader'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||
+     !['home','away','none'].includes(c.side))return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const h=Number(data.window_home),a=Number(data.window_away);
+  return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='window-total'){
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt))return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const found=Number(c.cardColor?data.color_window_count:data.window_count);
+  const closed=normalFull||through>=closesAt;
+  if(c.choice==='over'||c.choice==='under'){
+   if(!Number.isFinite(c.threshold)||!Number.isInteger(c.threshold*2))return null;
+   // Once the accepted-event count crosses the line it can only increase.
+   // Over is already WON; Under is already LOST.
+   if(found>c.threshold)return c.choice==='over'?'WON':'LOST';
+   if(!closed)return null;
+   if(found===c.threshold&&Number.isInteger(c.threshold))return 'VOID';
+   return c.choice==='over'?'LOST':'WON';
+  }
+  if(c.choice==='exact'&&Number.isInteger(c.target)){
+   if(found>c.target)return 'LOST';
+   return closed?decision(found===c.target):null;
+  }
+  if(c.choice==='atLeast'&&Number.isInteger(c.target)){
+   if(found>=c.target)return 'WON';
+   return closed?'LOST':null;
+  }
+  return null;
+ }
+ if(c.kind==='lead-up'){
+  const base=c.baseline;
+  if(c.event!=='goal'||!Number.isInteger(c.target)||c.target<1||c.target>3||
+     !base||!Number.isSafeInteger(base.home)||base.home<0||
+     !Number.isSafeInteger(base.away)||base.away<0||
+     !['home','away','draw'].includes(c.side))return null;
+  const normalHome=Number(data.normal_home),normalAway=Number(data.normal_away);
+  if(!Number.isSafeInteger(normalHome)||!Number.isSafeInteger(normalAway)||
+     normalHome<base.home||normalAway<base.away)return null;
+  if(c.side==='draw')return normalFull&&data.phase_ambiguous!==true?
+   decision(normalHome===normalAway):null;
+  const afterHome=normalHome-base.home,afterAway=normalAway-base.away;
+  const currentLead=c.side==='home'?afterHome-afterAway:afterAway-afterHome;
+  if(currentLead>=c.target)return 'WON';
+  const maximum=Number(c.side==='home'?data.max_home_lead_since_entry:data.max_away_lead_since_entry);
+  if(Number.isFinite(maximum)&&maximum>=c.target){
+   if(data.ambiguous_order_since_entry===true)return null;
+   return 'WON';
+  }
+  if(!normalFull||data.phase_ambiguous===true||data.ambiguous_order_since_entry===true)return null;
+  return 'LOST';
+ }
+ if(c.kind==='team-nth-time'){
+  if(c.event!=='goal'||!['home','away'].includes(c.side)||
+     !Number.isInteger(c.target)||c.target<1||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(data.team_nth_minute!=null){
+   const minute=Number(data.team_nth_minute);
+   if(!Number.isInteger(minute)||minute<0||minute>130)return null;
+   return decision(minute>=c.from&&minute<=c.to);
+  }
+  // Once the requested team's event window is completely covered, the
+  // absence of that team's next goal is a loss even if the match continues.
+  if(normalFull||through>=c.to){
+   if(c.to>=90&&data.phase_ambiguous===true)return null;
+   return 'LOST';
+  }
+  return null;
+ }
+ if(c.kind==='nth-time'){
+  if(!Number.isInteger(c.target)||c.target<1)return null;
+  const isPrematch = (line?.accepted_contract?.acceptedLiveSnapshot == null && c.entryBaseline == null && line?.accepted_contract != null);
+  if(isPrematch && !normalFull) return null;
+  if(data.nth_team!=null){
+   if(Number(data.nth_same_time)>1)return null;
+   // A fixed "Who scores goal N in minutes A-B" three-way quote uses
+   // Neither when goal N is outside THAT window. General goal-N time
+   // markets without a window still mean "no Nth goal before FT".
+   if(c.choice==='none'&&Number.isInteger(c.from)&&Number.isInteger(c.to))
+    return decision(!(Number(data.nth_minute)>=c.from&&Number(data.nth_minute)<=c.to));
+   if(c.choice==='none')return 'LOST';
+   if(!Number.isInteger(c.from)||!Number.isInteger(c.to))return null;
+   const inside=Number(data.nth_minute)>=c.from&&Number(data.nth_minute)<=c.to;
+   if(c.choice==='team-window')
+     return ['home','away'].includes(c.side)?decision(inside&&data.nth_team===c.side):null;
+   if(c.choice!=='range')return null;
+   return decision(inside);
+  }
+  // No positive evidence yet — wait for coverage window to elapse before
+  // declaring LOST (goal N did not happen within range).
+  const scopeClosed=normalFull||(Number.isInteger(c.to)&&through>=c.to);
+  if(!scopeClosed||c.to>=90&&data.phase_ambiguous===true)return null;
+  return c.choice==='none'?'WON':'LOST';
+ }
+ if(c.kind==='last-event'){
+  if(!normalFull||data.phase_ambiguous===true||!['home','away','none'].includes(c.side))return null;
+  const lastTeam=c.normalTimeOnly===true?data.normal_last_team:data.last_team;
+  const lastSameTime=c.normalTimeOnly===true?data.normal_last_same_time:data.last_same_time;
+  if(lastTeam!=null){
+   if(Number(lastSameTime)>1)return null;
+   return decision(lastTeam===c.side);
+  }
+  return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
+ }
+ if(c.kind==='sequence'){
+  if(data.nth_team!=null){
+   if(Number(data.nth_same_time)>1)return null;
+   return decision(data.nth_team===c.side);
+  }
+  if(!normalFull||data.phase_ambiguous===true)return null;
+  // A Next Goal selection is not refundable merely because no further goal
+  // was scored. Home/Away lose at confirmed FT; the explicit No Goal outcome
+  // wins only when that outcome was actually offered and accepted. Corner/card
+  // sequence markets retain their provider no-event VOID rule unless Neither
+  // was explicitly quoted.
+  if(c.event==='goal')return c.noneOffered===true&&c.side==='none'?'WON':'LOST';
+  return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
+ }
+ if(c.kind==='race'){
+  if(!Number.isInteger(c.target)||c.target<1||
+     !['home','away','none'].includes(c.side))return null;
+  const h=data.race_home_time==null?null:Number(data.race_home_time);
+  const a=data.race_away_time==null?null:Number(data.race_away_time);
+  // The quoted third selection is a real outcome, not a refundable push:
+  // neither side reached X => None wins after confirmed FT completeness.
+  // A reached threshold proves None lost without knowing which side was first.
+  if(c.side==='none'){
+   if(h!==null||a!==null)return 'LOST';
+   return normalFull&&data.phase_ambiguous!==true&&c.noneOffered===true?'WON':null;
+  }
+  if(h===null&&a===null)return normalFull&&data.phase_ambiguous!==true?(c.noneOffered===true?'LOST':'VOID'):null;
+  // Simultaneous or minute-only indistinguishable milestones require review.
+  if(h!==null&&a!==null&&h===a)return null;
+  return decision(c.side===(h!==null&&(a===null||h<a)?'home':'away'));
+ }
+ if(c.kind==='player-goal-special'){
+  // Proven positive 2+/3+ and already-exceeded totals can settle before FT
+  // from reconfirmed primary scorer facts. An UNDER/no/exact that still
+  // depends on future events stays PENDING until the relevant scope ends.
+  if(c.event!=='goal'||(!full&&provider!=='zizobet'))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,player_id,
+    player_name,aiscore_player_id,aiscore_player_name,aiscore_verified,
+    fotmob_player_name,fotmob_verified,supplemental_player_name,
+    supplemental_verified,own_goal
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='goal' and active=true`,[line.match_id,provider]);
+  return gradePlayerGoalSpecial(c,facts,{complete:full});
+ }
+ if(c.kind==='player-ordinal-goal'){
+  // FIRST scorer becomes irreversible when the verified first eligible
+  // scorer is known. LAST scorer and "none won" still require FT.
+  if(c.event!=='goal'||(!full&&(provider!=='zizobet'||c.position!=='first')))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,player_id,
+    player_name,aiscore_player_id,aiscore_player_name,aiscore_verified,
+    fotmob_player_name,fotmob_verified,supplemental_player_name,
+    supplemental_verified,own_goal
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='goal' and active=true`,[line.match_id,provider]);
+  const result=gradePlayerOrdinalScorerFacts(c,facts,{complete:true});
+  if(!full)return c.choice==='none'?(result==='LOST'?'LOST':null):
+    result==='WON'?'WON':null;
+  return result;
+ }
+ if(c.kind==='player-card'){
+  if(typeof c.choice!=='boolean'||(!c.playerName&&!c.playerId))return null;
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  const person=v=>{
+   const raw=String(v??'').trim();
+   const pieces=raw.includes(',')?raw.split(',').map(x=>x.trim()).reverse():[raw];
+   return pieces.join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+     .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  };
+  const expected=person(c.playerName);
+  const {rows:actors}=await execute(
+    "select player_id,player_name,card_color,supplemental_player_name,supplemental_verified from app_match_event_fact "+
+    "where match_id=$1 and provider=$2 and kind='card' and active=true",
+    [line.match_id,provider]);
+  const booked=actors.some(actor=>
+    (!c.cardColor||actor.card_color===c.cardColor)&&
+    (c.playerId!=null&&actor.player_id!=null?
+      String(c.playerId)===String(actor.player_id):
+      !!expected&&(person(actor.player_name)===expected||
+       actor.supplemental_verified===true&&person(actor.supplemental_player_name)===expected)));
+  if(booked)return c.choice?'WON':'LOST';
+  // Absent bookings do not prove that the named player entered the pitch.
+  // The non-participation/void rule still needs verified lineup facts.
+  return null;
+ }
+ if(c.kind==='player-goal'){
+  if((!c.playerName&&!c.playerId)||typeof c.choice!=='boolean')return null;
+  // A verified scorer proves YES/NO immediately; absence does not prove
+  // participation, an own goal, or a losing player proposition.
+  if(Number(data.player_goals)>0)return c.choice?'WON':'LOST';
+  // A missing scorer name does not prove a player played or failed to score.
+  // Require verified player participation before a negative settlement.
+  return null;
+ }
+ if(c.kind==='team-total-goals'){
+  if(!Number.isFinite(c.threshold)||!['over','under'].includes(c.choice))return null;
+  if(count>c.threshold)return c.choice==='over'?'WON':'LOST';
+  if(!full)return null;
+  if(count===c.threshold&&Number.isInteger(c.threshold))return 'VOID';
+  return c.choice==='under'?'WON':'LOST';
+ }
+ if(c.kind==='over'||c.kind==='under'){
+  if(!Number.isFinite(expected))return null;
+  if(count>expected)return c.kind==='over'?'WON':'LOST';
+  if(!full)return null;
+  if(count===expected&&Number.isInteger(expected))return 'VOID';
+  return c.kind==='under'?'WON':'LOST';
+ }
+ if(c.kind==='atLeast'){
+  if(!Number.isInteger(c.target))return null;
+  if(count>=c.target)return 'WON';
+  return full?'LOST':null;
+ }
+ if(c.kind==='exact'){
+  if(!Number.isInteger(c.target))return null;
+  if(count>c.target)return 'LOST';
+  return full?decision(count===c.target):null;
+ }
+ if(c.kind==='range'&&Number.isFinite(c.min)&&Number.isFinite(c.max)){
+  if(count>c.max)return 'LOST';
+  return full?decision(count>=c.min&&count<=c.max):null;
+ }
+ return null;
+}
+
+/** Keep historical incidents in their own provider rows. A verified primary
+ * decision wins; a complete historical FT may fill a genuinely missing
+ * primary timeline. Conflicting historical verdicts are never paid.
+ */
+export async function gradeStoredEventContract(line,result,{execute}={}){
+ if(line?.live_contract?.kind==='half-combo')
+  return gradeHalfCombination(line.live_contract,result);
+ if(line?.live_contract?.kind==='period-goal-total')
+  return gradePeriodGoalTotal(line.live_contract,result);
+ if(line?.live_contract?.kind==='score-handicap'&&
+    !(line.live_contract.event==='corner'&&line.live_contract.half))
+  return gradeHandicapContract(line.live_contract,result);
+ const primary=await gradeSingleEventProvider(line,result,{execute,provider:'zizobet'});
+ if(primary!==null)return primary;
+ // Zizobet is the only settlement authority. Enrichment providers may add
+ // display metadata, but cannot decide or confirm a financial result.
+ return null;
+}
+
+       or lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^90[0-9]{1,2}
+     case
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1') then 1
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2') then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime','90','stoppage','stoppagetime','injurytime')
+        then case when f.minute<=45 then 1 else 2 end
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=45 then 1
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90 then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf') then 3
+       else 4
+     end as phase_order
+   from app_match_event_fact f
+   where f.match_id=$1 and f.provider=$16::text and f.kind=$2 and f.active
+ ), ordered as (
+   select raw_events.*,
+     row_number() over(order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as ordinal,
+     row_number() over(partition by team order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as team_ordinal,
+     count(*) over(partition by phase_order,coalesce(seconds,minute*60)) as same_time
+   from raw_events
+ ), normal_ordered as (
+   select * from ordered where normal_time ), aggregate as (
+   select count(*)::int as total,
+    count(*) filter(where team='home')::int as home,
+    count(*) filter(where team='away')::int as away,
+    (select count(*)::int from normal_ordered where team='home') as normal_home,
+    (select count(*)::int from normal_ordered where team='away') as normal_away,
+    bool_or(minute>90 and nullif(trim(coalesce(phase,'')),'') is null) as phase_ambiguous,
+    count(*) filter(where card_color=$15::text)::int as color_total,
+    count(*) filter(where team='home' and card_color=$15::text)::int as color_home,
+    count(*) filter(where team='away' and card_color=$15::text)::int as color_away,
+    -- Fixed 10-20 minute markets use inclusive provider minutes.
+    -- Rolling windows and clock-formatted score intervals instead use seconds.
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or minute >= $3)
+         and ($4::numeric is null or minute <= $4)))
+      and ($5::text is null or team=$5)
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as window_count,
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or minute >= $3)
+         and ($4::numeric is null or minute <= $4)))
+      and ($5::text is null or team=$5)
+      and card_color=$15::text
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as color_window_count,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
+      and team='home' and ($17::boolean=false or team_ordinal>$18::int)
+      and ($20::boolean=false or normal_time))::int as window_home,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
+      and team='away' and ($17::boolean=false or team_ordinal>$19::int)
+      and ($20::boolean=false or normal_time))::int as window_away,
+    bool_or($10::boolean=true and seconds is null
+      and (minute=floor($11::numeric/60) or minute=floor($12::numeric/60))) as rolling_boundary_uncertain,
+    count(*) filter(where (own_goal=false or (own_goal is null and aiscore_verified=true))
+     and (($6::text is not null and (
+       (player_id is not null and player_id=$6) or
+       (aiscore_verified=true and aiscore_player_id is not null and aiscore_player_id=$6)))
+      or ($6::text is null and (
+       (player_name is not null and lower(player_name)=lower($7)) or
+       (aiscore_verified=true and aiscore_player_name is not null
+         and lower(aiscore_player_name)=lower($7)) or
+       (own_goal=false and fotmob_verified=true and fotmob_player_name is not null
+         and lower(fotmob_player_name)=lower($7)) or
+       (own_goal=false and supplemental_verified=true and supplemental_player_name is not null
+         and lower(supplemental_player_name)=lower($7))))))::int as player_goals,
+    bool_or(same_time>1) as ambiguous_order,
+    (select bool_or(same_time>1 and ((team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))) from normal_ordered) as ambiguous_order_since_entry,
+    bool_or(seconds is null) as minute_only
+   from ordered
+ )
+ select a.*,c.through_minute,c.count_home,c.count_away,c.complete,c.observed_at,c.confirmed_at,c.card_colors_verified,
+  -- Each valid writer has its own timestamp. Do NOT use greatest() here:
+  -- the watched gap cursor may be updated after the archive proof but
+  -- before the next settlement pass, and must not hide valid evidence.
+  (select last_seen_at from app_live_event_cursor where match_id=$1) as second_poll_at,
+  (select evidence_observed_at from app_zizobet_match_history where match_id=$1) as archive_poll_at,
+  exists(select 1 from app_live_event_recovery g
+    where g.match_id=$1 and g.status='AWAITING_BACKUP_API' and $9::uuid=any(g.line_ids)
+      and $16::text='zizobet') as open_recovery_gap,
+   (select team from ordered where ordinal=(select max(ordinal) from ordered)) as last_team,
+   (select same_time from ordered where ordinal=(select max(ordinal) from ordered)) as last_same_time,
+   (select team from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_team,
+   (select same_time from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_same_time,
+   (select bool_or(same_time>1) from normal_ordered) as normal_ambiguous_order,
+   (select team from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_team,
+   (select minute from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_minute,
+   (select same_time from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_same_time,
+   (select minute from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_minute,   (select max(lead.home_after-lead.away_after) from (
+     select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
+       coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
+     from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+   ) lead) as max_home_lead_since_entry,
+   (select max(lead.away_after-lead.home_after) from (
+     select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
+       coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
+     from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+   ) lead) as max_away_lead_since_entry,
+
+   (select same_time from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_same_time,
+   (select team from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_team,
+   (select minute from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_minute,
+   (select same_time from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_same_time,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='home') as race_home,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='away') as race_away,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='home'
+   )) as race_home_time,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='away'
+   )) as race_away_time
+ from aggregate a left join covered c on true`,
+ [line.match_id,c.event,
+  c.kind==='interval-result'?c.fromSeconds/60:c.from??null,
+  c.kind==='interval-result'?(c.toExclusiveSeconds-1)/60:c.to??null,
+  c.side??null,c.playerId??null,c.playerName??null,c.target??1,line.id,
+  c.kind==='window'&&c.startExclusive===true,
+  c.kind==='interval-result'?c.fromSeconds:c.kind==='window'?c.from*60:null,
+  c.kind==='interval-result'?c.toExclusiveSeconds:c.kind==='window'?c.to*60:null,
+  c.kind==='interval-result',c.kind==='interval-leader'||c.kind==='interval-handicap',c.cardColor??null,provider,
+  c.entryBaseline!=null||c.baseline!=null,
+  c.entryBaseline?.home??c.baseline?.home??0,
+  c.entryBaseline?.away??c.baseline?.away??0,c.normalTimeOnly===true]);
+ const data=rows[0];
+ if(!data||data.through_minute==null||data.open_recovery_gap===true)return null;
+ // A partial/corrected frame must not silently reclassify a missing event.
+ if(Number(data.home)!==Number(data.count_home)||
+    Number(data.away)!==Number(data.count_away)||
+    Number(data.total)!==Number(data.home)+Number(data.away))return null;
+ // After provider corrections, the accepted counters cannot exceed the
+ // present complete chronology. Hold the ticket for review if they do.
+ const acceptedBaseline=c.entryBaseline??c.baseline;
+ if(acceptedBaseline!=null&&(
+    !Number.isSafeInteger(acceptedBaseline.home)||acceptedBaseline.home<0||
+    !Number.isSafeInteger(acceptedBaseline.away)||acceptedBaseline.away<0||
+    acceptedBaseline.home>Number(data.count_home)||
+    acceptedBaseline.away>Number(data.count_away)))return null;
+ const stats=typeof result?.statistics==='string'?(()=>{
+  try{return JSON.parse(result.statistics);}catch{return null;}
+ })():result?.statistics;
+ const totalFor=kind=>kind==='goal'?[result?.home_score,result?.away_score]:
+   kind==='corner'?[result?.corners_home,result?.corners_away]:
+   kind==='card'?[result?.cards_home,result?.cards_away]:
+   kind==='foul'?[stats?.fouls?.home,stats?.fouls?.away]:
+   kind==='offside'?[stats?.offsides?.home,stats?.offsides?.away]:[null,null];
+ const expectedTotals=totalFor(c.event);
+ const finalCounts=expectedTotals.every(x=>x!=null&&Number.isSafeInteger(Number(x))&&Number(x)>=0);
+ const full=!!(result&&data.complete===true&&finalCounts&&
+   Number(data.home)===Number(expectedTotals[0])&&Number(data.away)===Number(expectedTotals[1]));
+ const matchFinished=!!(result&&data.complete===true);
+ const normalFull=c.normalTimeOnly===true?matchFinished:full;
+ // Only the confirmed Zizobet timeline and its own second-poll/archive
+ // cursor can authorize a settlement decision.
+ if(data.confirmed_at==null||data.observed_at==null)return null;
+ const confirmed=new Date(data.confirmed_at).getTime();
+ const stored=new Date(data.observed_at).getTime();
+ if(![confirmed,stored].every(Number.isFinite)||confirmed>stored)return null;
+ const watcher=data.second_poll_at==null?NaN:new Date(data.second_poll_at).getTime();
+ const archive=data.archive_poll_at==null?NaN:new Date(data.archive_poll_at).getTime();
+ if(stored!==watcher&&stored!==archive)return null;
+ if(c.cardColor!=null&&
+   (c.event!=='card'||!['yellow','red'].includes(c.cardColor)||
+    data.card_colors_verified!==true))return null;
+ const through=Number(data.through_minute);
+ // Half-time is a valid end of the FIRST-HALF event scope, but only once
+ // a separately confirmed Zizobet HT score exists AND the chronological
+ // coverage has been reconfirmed by another primary poll at/after that HT.
+ // The entire match is still unfinished: 2H/FT contracts remain untouched.
+ let firstHalfComplete=false;
+ if(!full&&provider==='zizobet'&&c.half===1&&Number.isFinite(through)&&through>=45){
+  const ht=(await execute(
+   "select h.confirmed_at from app_match_half_result h where h.match_id=$1 and h.source='ZIZOBET' and h.confirmed_at is not null and exists(select 1 from app_match_snapshot s where s.match_id=h.match_id and s.snapshot->'raw'->>'provider'='ZIZOBET' and s.snapshot->'periods_score'->0->>'t1'=h.half_home_score::text and s.snapshot->'periods_score'->0->>'t2'=h.half_away_score::text)",
+   [line.match_id])).rows[0];
+  const at=ht?.confirmed_at==null?NaN:new Date(ht.confirmed_at).getTime();
+  firstHalfComplete=Number.isFinite(at)&&stored>=at;
+ }
+ const completedScope=full||firstHalfComplete;
+ if(c.kind==='score-handicap'&&c.event==='corner'&&c.half){
+  if(!completedScope)return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeHalfCornerHandicapFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='corner-comparison'){
+  if(!full||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeCornerComparisonFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='multi-corners'){
+  if(!full||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeMultiCornerFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='half-parity'){
+  if(!completedScope||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeHalfParityFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='half-exact-count'){
+  if(!completedScope||!['corner','card'].includes(c.event))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,card_color
+    from app_match_event_fact
+    where match_id=$1 and provider=$2 and kind=$3 and active=true`,
+    [line.match_id,provider,c.event]);
+  return gradeHalfExactFacts(c,facts,{complete:true,
+    cardColorsVerified:data.card_colors_verified===true});
+ }
+ if(c.kind==='half-total'){
+  if(!completedScope||!['corner','card'].includes(c.event))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,card_color
+    from app_match_event_fact
+    where match_id=$1 and provider=$2 and kind=$3 and active=true`,
+    [line.match_id,provider,c.event]);
+  return gradeHalfTotalFacts(c,facts,{complete:true,
+    cardColorsVerified:data.card_colors_verified===true});
+ }
+ if(['half-first-event','half-last-event','half-race','half-next-event'].includes(c.kind)){
+  if(!completedScope||!['goal','corner','card'].includes(c.event))return null;
+  const events=(await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind=$3 and active=true`,[line.match_id,provider,c.event])).rows;
+  // Historical 1H first-corner contracts preserve their existing
+  // proven three-way "None" settlement semantics.
+  if(c.kind==='half-first-event'&&c.event==='corner'&&c.half===1&&
+     c.noneOffered===undefined)
+    return gradeFirstHalfCornerFacts(c,events,{complete:true});
+  return gradeHalfEventFacts(c,events,{complete:true});
+ }
+ const scopeEnded=full||(Number.isFinite(c.to)&&through>Number(c.to));
+ const count=Number(c.cardColor?(c.side==='home'?data.color_home:c.side==='away'?data.color_away:data.color_total):
+   (c.side==='home'?data.home:c.side==='away'?data.away:data.total));
+ const expected=Number(c.target??c.threshold);
+ const decision=truth=>truth?'WON':'LOST';
+ if(c.kind==='window'){
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  // A proven event decides YES immediately and NO as lost; a verified
+  // absence cannot win until the full quoted time window is complete.
+  const closesAt=c.startExclusive===true?Number(c.to):Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||typeof c.choice!=='boolean')return null;
+  // A rolling exact-second market cannot be judged from minute-only boundary
+  // incidents. Hold for the provider's precise timestamp.
+  if(c.startExclusive===true&&data.rolling_boundary_uncertain===true)return null;
+  const num=Number(c.cardColor?data.color_window_count:data.window_count);
+  if(num>0)return decision(c.choice);
+  if(c.normalTimeOnly===true&&c.to>=90&&data.phase_ambiguous===true)return null;
+  return normalFull||through>=closesAt?decision(!c.choice):null;
+ }
+ if(c.kind==='interval-result'){
+  if(!Number.isSafeInteger(c.toExclusiveSeconds)||(!normalFull&&through*60<c.toExclusiveSeconds)||
+     c.to>=90&&data.phase_ambiguous===true)return null;
+  const h=Number(data.window_home),a=Number(data.window_away);
+  return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='window-parity'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||c.event!=='corner'||!['odd','even'].includes(c.choice)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(!normalFull&&through<closesAt)return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const found=Number(data.window_count);
+  if(!Number.isSafeInteger(found)||found<0)return null;
+  return (found%2===1?'odd':'even')===c.choice?'WON':'LOST';
+ }
+ if(c.kind==='window-first-event'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(c.event!=='corner'||!Number.isFinite(closesAt)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from||
+     !['home','away','none'].includes(c.side))return null;
+  if(data.window_first_team!=null){
+   if(Number(data.window_first_same_time)>1)return null;
+   return c.side==='none'?'LOST':data.window_first_team===c.side?'WON':'LOST';
+  }
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  if(normalFull||through>=closesAt)return c.side==='none'?'WON':'LOST';
+  return null;
+ }
+ if(c.kind==='interval-handicap'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||c.event!=='corner'||
+     !['home','away','none'].includes(c.side)||!Number.isFinite(Number(c.handicap)))return null;
+  const h=Number(data.window_home),a=Number(data.window_away),handicap=Number(c.handicap);
+  if(!Number.isSafeInteger(h)||h<0||!Number.isSafeInteger(a)||a<0||
+     !Number.isSafeInteger(handicap*2))return null;
+  const signed=h+handicap-a;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  if(c.side==='none')return signed===0?'WON':'LOST';
+  const delta=c.side==='away'?a+handicap-h:signed;
+  if(c.threeWay)return delta>0?'WON':'LOST';
+  if(delta===0)return 'VOID';
+  return delta>0?'WON':'LOST';
+ }
+ if(c.kind==='interval-leader'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||
+     !['home','away','none'].includes(c.side))return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const h=Number(data.window_home),a=Number(data.window_away);
+  return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='window-total'){
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt))return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const found=Number(c.cardColor?data.color_window_count:data.window_count);
+  const closed=normalFull||through>=closesAt;
+  if(c.choice==='over'||c.choice==='under'){
+   if(!Number.isFinite(c.threshold)||!Number.isInteger(c.threshold*2))return null;
+   // Once the accepted-event count crosses the line it can only increase.
+   // Over is already WON; Under is already LOST.
+   if(found>c.threshold)return c.choice==='over'?'WON':'LOST';
+   if(!closed)return null;
+   if(found===c.threshold&&Number.isInteger(c.threshold))return 'VOID';
+   return c.choice==='over'?'LOST':'WON';
+  }
+  if(c.choice==='exact'&&Number.isInteger(c.target)){
+   if(found>c.target)return 'LOST';
+   return closed?decision(found===c.target):null;
+  }
+  if(c.choice==='atLeast'&&Number.isInteger(c.target)){
+   if(found>=c.target)return 'WON';
+   return closed?'LOST':null;
+  }
+  return null;
+ }
+ if(c.kind==='lead-up'){
+  const base=c.baseline;
+  if(c.event!=='goal'||!Number.isInteger(c.target)||c.target<1||c.target>3||
+     !base||!Number.isSafeInteger(base.home)||base.home<0||
+     !Number.isSafeInteger(base.away)||base.away<0||
+     !['home','away','draw'].includes(c.side))return null;
+  const normalHome=Number(data.normal_home),normalAway=Number(data.normal_away);
+  if(!Number.isSafeInteger(normalHome)||!Number.isSafeInteger(normalAway)||
+     normalHome<base.home||normalAway<base.away)return null;
+  if(c.side==='draw')return normalFull&&data.phase_ambiguous!==true?
+   decision(normalHome===normalAway):null;
+  const afterHome=normalHome-base.home,afterAway=normalAway-base.away;
+  const currentLead=c.side==='home'?afterHome-afterAway:afterAway-afterHome;
+  if(currentLead>=c.target)return 'WON';
+  const maximum=Number(c.side==='home'?data.max_home_lead_since_entry:data.max_away_lead_since_entry);
+  if(Number.isFinite(maximum)&&maximum>=c.target){
+   if(data.ambiguous_order_since_entry===true)return null;
+   return 'WON';
+  }
+  if(!normalFull||data.phase_ambiguous===true||data.ambiguous_order_since_entry===true)return null;
+  return 'LOST';
+ }
+ if(c.kind==='team-nth-time'){
+  if(c.event!=='goal'||!['home','away'].includes(c.side)||
+     !Number.isInteger(c.target)||c.target<1||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(data.team_nth_minute!=null){
+   const minute=Number(data.team_nth_minute);
+   if(!Number.isInteger(minute)||minute<0||minute>130)return null;
+   return decision(minute>=c.from&&minute<=c.to);
+  }
+  // Once the requested team's event window is completely covered, the
+  // absence of that team's next goal is a loss even if the match continues.
+  if(normalFull||through>=c.to){
+   if(c.to>=90&&data.phase_ambiguous===true)return null;
+   return 'LOST';
+  }
+  return null;
+ }
+ if(c.kind==='nth-time'){
+  if(!Number.isInteger(c.target)||c.target<1)return null;
+  const isPrematch = (line?.accepted_contract?.acceptedLiveSnapshot == null && c.entryBaseline == null && line?.accepted_contract != null);
+  if(isPrematch && !normalFull) return null;
+  if(data.nth_team!=null){
+   if(Number(data.nth_same_time)>1)return null;
+   // A fixed "Who scores goal N in minutes A-B" three-way quote uses
+   // Neither when goal N is outside THAT window. General goal-N time
+   // markets without a window still mean "no Nth goal before FT".
+   if(c.choice==='none'&&Number.isInteger(c.from)&&Number.isInteger(c.to))
+    return decision(!(Number(data.nth_minute)>=c.from&&Number(data.nth_minute)<=c.to));
+   if(c.choice==='none')return 'LOST';
+   if(!Number.isInteger(c.from)||!Number.isInteger(c.to))return null;
+   const inside=Number(data.nth_minute)>=c.from&&Number(data.nth_minute)<=c.to;
+   if(c.choice==='team-window')
+     return ['home','away'].includes(c.side)?decision(inside&&data.nth_team===c.side):null;
+   if(c.choice!=='range')return null;
+   return decision(inside);
+  }
+  // No positive evidence yet — wait for coverage window to elapse before
+  // declaring LOST (goal N did not happen within range).
+  const scopeClosed=normalFull||(Number.isInteger(c.to)&&through>=c.to);
+  if(!scopeClosed||c.to>=90&&data.phase_ambiguous===true)return null;
+  return c.choice==='none'?'WON':'LOST';
+ }
+ if(c.kind==='last-event'){
+  if(!normalFull||data.phase_ambiguous===true||!['home','away','none'].includes(c.side))return null;
+  const lastTeam=c.normalTimeOnly===true?data.normal_last_team:data.last_team;
+  const lastSameTime=c.normalTimeOnly===true?data.normal_last_same_time:data.last_same_time;
+  if(lastTeam!=null){
+   if(Number(lastSameTime)>1)return null;
+   return decision(lastTeam===c.side);
+  }
+  return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
+ }
+ if(c.kind==='sequence'){
+  if(data.nth_team!=null){
+   if(Number(data.nth_same_time)>1)return null;
+   return decision(data.nth_team===c.side);
+  }
+  if(!normalFull||data.phase_ambiguous===true)return null;
+  // A Next Goal selection is not refundable merely because no further goal
+  // was scored. Home/Away lose at confirmed FT; the explicit No Goal outcome
+  // wins only when that outcome was actually offered and accepted. Corner/card
+  // sequence markets retain their provider no-event VOID rule unless Neither
+  // was explicitly quoted.
+  if(c.event==='goal')return c.noneOffered===true&&c.side==='none'?'WON':'LOST';
+  return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
+ }
+ if(c.kind==='race'){
+  if(!Number.isInteger(c.target)||c.target<1||
+     !['home','away','none'].includes(c.side))return null;
+  const h=data.race_home_time==null?null:Number(data.race_home_time);
+  const a=data.race_away_time==null?null:Number(data.race_away_time);
+  // The quoted third selection is a real outcome, not a refundable push:
+  // neither side reached X => None wins after confirmed FT completeness.
+  // A reached threshold proves None lost without knowing which side was first.
+  if(c.side==='none'){
+   if(h!==null||a!==null)return 'LOST';
+   return normalFull&&data.phase_ambiguous!==true&&c.noneOffered===true?'WON':null;
+  }
+  if(h===null&&a===null)return normalFull&&data.phase_ambiguous!==true?(c.noneOffered===true?'LOST':'VOID'):null;
+  // Simultaneous or minute-only indistinguishable milestones require review.
+  if(h!==null&&a!==null&&h===a)return null;
+  return decision(c.side===(h!==null&&(a===null||h<a)?'home':'away'));
+ }
+ if(c.kind==='player-goal-special'){
+  // Proven positive 2+/3+ and already-exceeded totals can settle before FT
+  // from reconfirmed primary scorer facts. An UNDER/no/exact that still
+  // depends on future events stays PENDING until the relevant scope ends.
+  if(c.event!=='goal'||(!full&&provider!=='zizobet'))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,player_id,
+    player_name,aiscore_player_id,aiscore_player_name,aiscore_verified,
+    fotmob_player_name,fotmob_verified,supplemental_player_name,
+    supplemental_verified,own_goal
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='goal' and active=true`,[line.match_id,provider]);
+  return gradePlayerGoalSpecial(c,facts,{complete:full});
+ }
+ if(c.kind==='player-ordinal-goal'){
+  // FIRST scorer becomes irreversible when the verified first eligible
+  // scorer is known. LAST scorer and "none won" still require FT.
+  if(c.event!=='goal'||(!full&&(provider!=='zizobet'||c.position!=='first')))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,player_id,
+    player_name,aiscore_player_id,aiscore_player_name,aiscore_verified,
+    fotmob_player_name,fotmob_verified,supplemental_player_name,
+    supplemental_verified,own_goal
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='goal' and active=true`,[line.match_id,provider]);
+  const result=gradePlayerOrdinalScorerFacts(c,facts,{complete:true});
+  if(!full)return c.choice==='none'?(result==='LOST'?'LOST':null):
+    result==='WON'?'WON':null;
+  return result;
+ }
+ if(c.kind==='player-card'){
+  if(typeof c.choice!=='boolean'||(!c.playerName&&!c.playerId))return null;
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  const person=v=>{
+   const raw=String(v??'').trim();
+   const pieces=raw.includes(',')?raw.split(',').map(x=>x.trim()).reverse():[raw];
+   return pieces.join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+     .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  };
+  const expected=person(c.playerName);
+  const {rows:actors}=await execute(
+    "select player_id,player_name,card_color,supplemental_player_name,supplemental_verified from app_match_event_fact "+
+    "where match_id=$1 and provider=$2 and kind='card' and active=true",
+    [line.match_id,provider]);
+  const booked=actors.some(actor=>
+    (!c.cardColor||actor.card_color===c.cardColor)&&
+    (c.playerId!=null&&actor.player_id!=null?
+      String(c.playerId)===String(actor.player_id):
+      !!expected&&(person(actor.player_name)===expected||
+       actor.supplemental_verified===true&&person(actor.supplemental_player_name)===expected)));
+  if(booked)return c.choice?'WON':'LOST';
+  // Absent bookings do not prove that the named player entered the pitch.
+  // The non-participation/void rule still needs verified lineup facts.
+  return null;
+ }
+ if(c.kind==='player-goal'){
+  if((!c.playerName&&!c.playerId)||typeof c.choice!=='boolean')return null;
+  // A verified scorer proves YES/NO immediately; absence does not prove
+  // participation, an own goal, or a losing player proposition.
+  if(Number(data.player_goals)>0)return c.choice?'WON':'LOST';
+  // A missing scorer name does not prove a player played or failed to score.
+  // Require verified player participation before a negative settlement.
+  return null;
+ }
+ if(c.kind==='team-total-goals'){
+  if(!Number.isFinite(c.threshold)||!['over','under'].includes(c.choice))return null;
+  if(count>c.threshold)return c.choice==='over'?'WON':'LOST';
+  if(!full)return null;
+  if(count===c.threshold&&Number.isInteger(c.threshold))return 'VOID';
+  return c.choice==='under'?'WON':'LOST';
+ }
+ if(c.kind==='over'||c.kind==='under'){
+  if(!Number.isFinite(expected))return null;
+  if(count>expected)return c.kind==='over'?'WON':'LOST';
+  if(!full)return null;
+  if(count===expected&&Number.isInteger(expected))return 'VOID';
+  return c.kind==='under'?'WON':'LOST';
+ }
+ if(c.kind==='atLeast'){
+  if(!Number.isInteger(c.target))return null;
+  if(count>=c.target)return 'WON';
+  return full?'LOST':null;
+ }
+ if(c.kind==='exact'){
+  if(!Number.isInteger(c.target))return null;
+  if(count>c.target)return 'LOST';
+  return full?decision(count===c.target):null;
+ }
+ if(c.kind==='range'&&Number.isFinite(c.min)&&Number.isFinite(c.max)){
+  if(count>c.max)return 'LOST';
+  return full?decision(count>=c.min&&count<=c.max):null;
+ }
+ return null;
+}
+
+/** Keep historical incidents in their own provider rows. A verified primary
+ * decision wins; a complete historical FT may fill a genuinely missing
+ * primary timeline. Conflicting historical verdicts are never paid.
+ */
+export async function gradeStoredEventContract(line,result,{execute}={}){
+ if(line?.live_contract?.kind==='half-combo')
+  return gradeHalfCombination(line.live_contract,result);
+ if(line?.live_contract?.kind==='period-goal-total')
+  return gradePeriodGoalTotal(line.live_contract,result);
+ if(line?.live_contract?.kind==='score-handicap'&&
+    !(line.live_contract.event==='corner'&&line.live_contract.half))
+  return gradeHandicapContract(line.live_contract,result);
+ const primary=await gradeSingleEventProvider(line,result,{execute,provider:'zizobet'});
+ if(primary!==null)return primary;
+ // Zizobet is the only settlement authority. Enrichment providers may add
+ // display metadata, but cannot decide or confirm a financial result.
+ return null;
+}
+
+       or (nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90)) as normal_time,
+     case
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1') then 1
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2') then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime','90','stoppage','stoppagetime','injurytime')
+        then case when f.minute<=45 then 1 else 2 end
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=45 then 1
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90 then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf') then 3
+       else 4
+     end as phase_order
+   from app_match_event_fact f
+   where f.match_id=$1 and f.provider=$16::text and f.kind=$2 and f.active
+ ), ordered as (
+   select raw_events.*,
+     row_number() over(order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as ordinal,
+     row_number() over(partition by team order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as team_ordinal,
+     count(*) over(partition by phase_order,coalesce(seconds,minute*60)) as same_time
+   from raw_events
+ ), normal_ordered as (
+   select * from ordered where normal_time ), aggregate as (
+   select count(*)::int as total,
+    count(*) filter(where team='home')::int as home,
+    count(*) filter(where team='away')::int as away,
+    (select count(*)::int from normal_ordered where team='home') as normal_home,
+    (select count(*)::int from normal_ordered where team='away') as normal_away,
+    bool_or(minute>90 and nullif(trim(coalesce(phase,'')),'') is null) as phase_ambiguous,
+    count(*) filter(where card_color=$15::text)::int as color_total,
+    count(*) filter(where team='home' and card_color=$15::text)::int as color_home,
+    count(*) filter(where team='away' and card_color=$15::text)::int as color_away,
+    -- Fixed 10-20 minute markets use inclusive provider minutes.
+    -- Rolling windows and clock-formatted score intervals instead use seconds.
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or minute >= $3)
+         and ($4::numeric is null or minute <= $4)))
+      and ($5::text is null or team=$5)
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as window_count,
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or minute >= $3)
+         and ($4::numeric is null or minute <= $4)))
+      and ($5::text is null or team=$5)
+      and card_color=$15::text
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as color_window_count,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
+      and team='home' and ($17::boolean=false or team_ordinal>$18::int)
+      and ($20::boolean=false or normal_time))::int as window_home,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
+      and team='away' and ($17::boolean=false or team_ordinal>$19::int)
+      and ($20::boolean=false or normal_time))::int as window_away,
+    bool_or($10::boolean=true and seconds is null
+      and (minute=floor($11::numeric/60) or minute=floor($12::numeric/60))) as rolling_boundary_uncertain,
+    count(*) filter(where (own_goal=false or (own_goal is null and aiscore_verified=true))
+     and (($6::text is not null and (
+       (player_id is not null and player_id=$6) or
+       (aiscore_verified=true and aiscore_player_id is not null and aiscore_player_id=$6)))
+      or ($6::text is null and (
+       (player_name is not null and lower(player_name)=lower($7)) or
+       (aiscore_verified=true and aiscore_player_name is not null
+         and lower(aiscore_player_name)=lower($7)) or
+       (own_goal=false and fotmob_verified=true and fotmob_player_name is not null
+         and lower(fotmob_player_name)=lower($7)) or
+       (own_goal=false and supplemental_verified=true and supplemental_player_name is not null
+         and lower(supplemental_player_name)=lower($7))))))::int as player_goals,
+    bool_or(same_time>1) as ambiguous_order,
+    (select bool_or(same_time>1 and ((team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))) from normal_ordered) as ambiguous_order_since_entry,
+    bool_or(seconds is null) as minute_only
+   from ordered
+ )
+ select a.*,c.through_minute,c.count_home,c.count_away,c.complete,c.observed_at,c.confirmed_at,c.card_colors_verified,
+  -- Each valid writer has its own timestamp. Do NOT use greatest() here:
+  -- the watched gap cursor may be updated after the archive proof but
+  -- before the next settlement pass, and must not hide valid evidence.
+  (select last_seen_at from app_live_event_cursor where match_id=$1) as second_poll_at,
+  (select evidence_observed_at from app_zizobet_match_history where match_id=$1) as archive_poll_at,
+  exists(select 1 from app_live_event_recovery g
+    where g.match_id=$1 and g.status='AWAITING_BACKUP_API' and $9::uuid=any(g.line_ids)
+      and $16::text='zizobet') as open_recovery_gap,
+   (select team from ordered where ordinal=(select max(ordinal) from ordered)) as last_team,
+   (select same_time from ordered where ordinal=(select max(ordinal) from ordered)) as last_same_time,
+   (select team from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_team,
+   (select same_time from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_same_time,
+   (select bool_or(same_time>1) from normal_ordered) as normal_ambiguous_order,
+   (select team from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_team,
+   (select minute from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_minute,
+   (select same_time from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_same_time,
+   (select minute from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_minute,   (select max(lead.home_after-lead.away_after) from (
+     select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
+       coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
+     from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+   ) lead) as max_home_lead_since_entry,
+   (select max(lead.away_after-lead.home_after) from (
+     select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
+       coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
+     from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+   ) lead) as max_away_lead_since_entry,
+
+   (select same_time from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_same_time,
+   (select team from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_team,
+   (select minute from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_minute,
+   (select same_time from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_same_time,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='home') as race_home,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='away') as race_away,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='home'
+   )) as race_home_time,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='away'
+   )) as race_away_time
+ from aggregate a left join covered c on true`,
+ [line.match_id,c.event,
+  c.kind==='interval-result'?c.fromSeconds/60:c.from??null,
+  c.kind==='interval-result'?(c.toExclusiveSeconds-1)/60:c.to??null,
+  c.side??null,c.playerId??null,c.playerName??null,c.target??1,line.id,
+  c.kind==='window'&&c.startExclusive===true,
+  c.kind==='interval-result'?c.fromSeconds:c.kind==='window'?c.from*60:null,
+  c.kind==='interval-result'?c.toExclusiveSeconds:c.kind==='window'?c.to*60:null,
+  c.kind==='interval-result',c.kind==='interval-leader'||c.kind==='interval-handicap',c.cardColor??null,provider,
+  c.entryBaseline!=null||c.baseline!=null,
+  c.entryBaseline?.home??c.baseline?.home??0,
+  c.entryBaseline?.away??c.baseline?.away??0,c.normalTimeOnly===true]);
+ const data=rows[0];
+ if(!data||data.through_minute==null||data.open_recovery_gap===true)return null;
+ // A partial/corrected frame must not silently reclassify a missing event.
+ if(Number(data.home)!==Number(data.count_home)||
+    Number(data.away)!==Number(data.count_away)||
+    Number(data.total)!==Number(data.home)+Number(data.away))return null;
+ // After provider corrections, the accepted counters cannot exceed the
+ // present complete chronology. Hold the ticket for review if they do.
+ const acceptedBaseline=c.entryBaseline??c.baseline;
+ if(acceptedBaseline!=null&&(
+    !Number.isSafeInteger(acceptedBaseline.home)||acceptedBaseline.home<0||
+    !Number.isSafeInteger(acceptedBaseline.away)||acceptedBaseline.away<0||
+    acceptedBaseline.home>Number(data.count_home)||
+    acceptedBaseline.away>Number(data.count_away)))return null;
+ const stats=typeof result?.statistics==='string'?(()=>{
+  try{return JSON.parse(result.statistics);}catch{return null;}
+ })():result?.statistics;
+ const totalFor=kind=>kind==='goal'?[result?.home_score,result?.away_score]:
+   kind==='corner'?[result?.corners_home,result?.corners_away]:
+   kind==='card'?[result?.cards_home,result?.cards_away]:
+   kind==='foul'?[stats?.fouls?.home,stats?.fouls?.away]:
+   kind==='offside'?[stats?.offsides?.home,stats?.offsides?.away]:[null,null];
+ const expectedTotals=totalFor(c.event);
+ const finalCounts=expectedTotals.every(x=>x!=null&&Number.isSafeInteger(Number(x))&&Number(x)>=0);
+ const full=!!(result&&data.complete===true&&finalCounts&&
+   Number(data.home)===Number(expectedTotals[0])&&Number(data.away)===Number(expectedTotals[1]));
+ const matchFinished=!!(result&&data.complete===true);
+ const normalFull=c.normalTimeOnly===true?matchFinished:full;
+ // Only the confirmed Zizobet timeline and its own second-poll/archive
+ // cursor can authorize a settlement decision.
+ if(data.confirmed_at==null||data.observed_at==null)return null;
+ const confirmed=new Date(data.confirmed_at).getTime();
+ const stored=new Date(data.observed_at).getTime();
+ if(![confirmed,stored].every(Number.isFinite)||confirmed>stored)return null;
+ const watcher=data.second_poll_at==null?NaN:new Date(data.second_poll_at).getTime();
+ const archive=data.archive_poll_at==null?NaN:new Date(data.archive_poll_at).getTime();
+ if(stored!==watcher&&stored!==archive)return null;
+ if(c.cardColor!=null&&
+   (c.event!=='card'||!['yellow','red'].includes(c.cardColor)||
+    data.card_colors_verified!==true))return null;
+ const through=Number(data.through_minute);
+ // Half-time is a valid end of the FIRST-HALF event scope, but only once
+ // a separately confirmed Zizobet HT score exists AND the chronological
+ // coverage has been reconfirmed by another primary poll at/after that HT.
+ // The entire match is still unfinished: 2H/FT contracts remain untouched.
+ let firstHalfComplete=false;
+ if(!full&&provider==='zizobet'&&c.half===1&&Number.isFinite(through)&&through>=45){
+  const ht=(await execute(
+   "select h.confirmed_at from app_match_half_result h where h.match_id=$1 and h.source='ZIZOBET' and h.confirmed_at is not null and exists(select 1 from app_match_snapshot s where s.match_id=h.match_id and s.snapshot->'raw'->>'provider'='ZIZOBET' and s.snapshot->'periods_score'->0->>'t1'=h.half_home_score::text and s.snapshot->'periods_score'->0->>'t2'=h.half_away_score::text)",
+   [line.match_id])).rows[0];
+  const at=ht?.confirmed_at==null?NaN:new Date(ht.confirmed_at).getTime();
+  firstHalfComplete=Number.isFinite(at)&&stored>=at;
+ }
+ const completedScope=full||firstHalfComplete;
+ if(c.kind==='score-handicap'&&c.event==='corner'&&c.half){
+  if(!completedScope)return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeHalfCornerHandicapFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='corner-comparison'){
+  if(!full||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeCornerComparisonFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='multi-corners'){
+  if(!full||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeMultiCornerFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='half-parity'){
+  if(!completedScope||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeHalfParityFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='half-exact-count'){
+  if(!completedScope||!['corner','card'].includes(c.event))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,card_color
+    from app_match_event_fact
+    where match_id=$1 and provider=$2 and kind=$3 and active=true`,
+    [line.match_id,provider,c.event]);
+  return gradeHalfExactFacts(c,facts,{complete:true,
+    cardColorsVerified:data.card_colors_verified===true});
+ }
+ if(c.kind==='half-total'){
+  if(!completedScope||!['corner','card'].includes(c.event))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,card_color
+    from app_match_event_fact
+    where match_id=$1 and provider=$2 and kind=$3 and active=true`,
+    [line.match_id,provider,c.event]);
+  return gradeHalfTotalFacts(c,facts,{complete:true,
+    cardColorsVerified:data.card_colors_verified===true});
+ }
+ if(['half-first-event','half-last-event','half-race','half-next-event'].includes(c.kind)){
+  if(!completedScope||!['goal','corner','card'].includes(c.event))return null;
+  const events=(await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind=$3 and active=true`,[line.match_id,provider,c.event])).rows;
+  // Historical 1H first-corner contracts preserve their existing
+  // proven three-way "None" settlement semantics.
+  if(c.kind==='half-first-event'&&c.event==='corner'&&c.half===1&&
+     c.noneOffered===undefined)
+    return gradeFirstHalfCornerFacts(c,events,{complete:true});
+  return gradeHalfEventFacts(c,events,{complete:true});
+ }
+ const scopeEnded=full||(Number.isFinite(c.to)&&through>Number(c.to));
+ const count=Number(c.cardColor?(c.side==='home'?data.color_home:c.side==='away'?data.color_away:data.color_total):
+   (c.side==='home'?data.home:c.side==='away'?data.away:data.total));
+ const expected=Number(c.target??c.threshold);
+ const decision=truth=>truth?'WON':'LOST';
+ if(c.kind==='window'){
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  // A proven event decides YES immediately and NO as lost; a verified
+  // absence cannot win until the full quoted time window is complete.
+  const closesAt=c.startExclusive===true?Number(c.to):Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||typeof c.choice!=='boolean')return null;
+  // A rolling exact-second market cannot be judged from minute-only boundary
+  // incidents. Hold for the provider's precise timestamp.
+  if(c.startExclusive===true&&data.rolling_boundary_uncertain===true)return null;
+  const num=Number(c.cardColor?data.color_window_count:data.window_count);
+  if(num>0)return decision(c.choice);
+  if(c.normalTimeOnly===true&&c.to>=90&&data.phase_ambiguous===true)return null;
+  return normalFull||through>=closesAt?decision(!c.choice):null;
+ }
+ if(c.kind==='interval-result'){
+  if(!Number.isSafeInteger(c.toExclusiveSeconds)||(!normalFull&&through*60<c.toExclusiveSeconds)||
+     c.to>=90&&data.phase_ambiguous===true)return null;
+  const h=Number(data.window_home),a=Number(data.window_away);
+  return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='window-parity'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||c.event!=='corner'||!['odd','even'].includes(c.choice)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(!normalFull&&through<closesAt)return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const found=Number(data.window_count);
+  if(!Number.isSafeInteger(found)||found<0)return null;
+  return (found%2===1?'odd':'even')===c.choice?'WON':'LOST';
+ }
+ if(c.kind==='window-first-event'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(c.event!=='corner'||!Number.isFinite(closesAt)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from||
+     !['home','away','none'].includes(c.side))return null;
+  if(data.window_first_team!=null){
+   if(Number(data.window_first_same_time)>1)return null;
+   return c.side==='none'?'LOST':data.window_first_team===c.side?'WON':'LOST';
+  }
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  if(normalFull||through>=closesAt)return c.side==='none'?'WON':'LOST';
+  return null;
+ }
+ if(c.kind==='interval-handicap'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||c.event!=='corner'||
+     !['home','away','none'].includes(c.side)||!Number.isFinite(Number(c.handicap)))return null;
+  const h=Number(data.window_home),a=Number(data.window_away),handicap=Number(c.handicap);
+  if(!Number.isSafeInteger(h)||h<0||!Number.isSafeInteger(a)||a<0||
+     !Number.isSafeInteger(handicap*2))return null;
+  const signed=h+handicap-a;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  if(c.side==='none')return signed===0?'WON':'LOST';
+  const delta=c.side==='away'?a+handicap-h:signed;
+  if(c.threeWay)return delta>0?'WON':'LOST';
+  if(delta===0)return 'VOID';
+  return delta>0?'WON':'LOST';
+ }
+ if(c.kind==='interval-leader'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||
+     !['home','away','none'].includes(c.side))return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const h=Number(data.window_home),a=Number(data.window_away);
+  return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='window-total'){
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt))return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const found=Number(c.cardColor?data.color_window_count:data.window_count);
+  const closed=normalFull||through>=closesAt;
+  if(c.choice==='over'||c.choice==='under'){
+   if(!Number.isFinite(c.threshold)||!Number.isInteger(c.threshold*2))return null;
+   // Once the accepted-event count crosses the line it can only increase.
+   // Over is already WON; Under is already LOST.
+   if(found>c.threshold)return c.choice==='over'?'WON':'LOST';
+   if(!closed)return null;
+   if(found===c.threshold&&Number.isInteger(c.threshold))return 'VOID';
+   return c.choice==='over'?'LOST':'WON';
+  }
+  if(c.choice==='exact'&&Number.isInteger(c.target)){
+   if(found>c.target)return 'LOST';
+   return closed?decision(found===c.target):null;
+  }
+  if(c.choice==='atLeast'&&Number.isInteger(c.target)){
+   if(found>=c.target)return 'WON';
+   return closed?'LOST':null;
+  }
+  return null;
+ }
+ if(c.kind==='lead-up'){
+  const base=c.baseline;
+  if(c.event!=='goal'||!Number.isInteger(c.target)||c.target<1||c.target>3||
+     !base||!Number.isSafeInteger(base.home)||base.home<0||
+     !Number.isSafeInteger(base.away)||base.away<0||
+     !['home','away','draw'].includes(c.side))return null;
+  const normalHome=Number(data.normal_home),normalAway=Number(data.normal_away);
+  if(!Number.isSafeInteger(normalHome)||!Number.isSafeInteger(normalAway)||
+     normalHome<base.home||normalAway<base.away)return null;
+  if(c.side==='draw')return normalFull&&data.phase_ambiguous!==true?
+   decision(normalHome===normalAway):null;
+  const afterHome=normalHome-base.home,afterAway=normalAway-base.away;
+  const currentLead=c.side==='home'?afterHome-afterAway:afterAway-afterHome;
+  if(currentLead>=c.target)return 'WON';
+  const maximum=Number(c.side==='home'?data.max_home_lead_since_entry:data.max_away_lead_since_entry);
+  if(Number.isFinite(maximum)&&maximum>=c.target){
+   if(data.ambiguous_order_since_entry===true)return null;
+   return 'WON';
+  }
+  if(!normalFull||data.phase_ambiguous===true||data.ambiguous_order_since_entry===true)return null;
+  return 'LOST';
+ }
+ if(c.kind==='team-nth-time'){
+  if(c.event!=='goal'||!['home','away'].includes(c.side)||
+     !Number.isInteger(c.target)||c.target<1||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(data.team_nth_minute!=null){
+   const minute=Number(data.team_nth_minute);
+   if(!Number.isInteger(minute)||minute<0||minute>130)return null;
+   return decision(minute>=c.from&&minute<=c.to);
+  }
+  // Once the requested team's event window is completely covered, the
+  // absence of that team's next goal is a loss even if the match continues.
+  if(normalFull||through>=c.to){
+   if(c.to>=90&&data.phase_ambiguous===true)return null;
+   return 'LOST';
+  }
+  return null;
+ }
+ if(c.kind==='nth-time'){
+  if(!Number.isInteger(c.target)||c.target<1)return null;
+  const isPrematch = (line?.accepted_contract?.acceptedLiveSnapshot == null && c.entryBaseline == null && line?.accepted_contract != null);
+  if(isPrematch && !normalFull) return null;
+  if(data.nth_team!=null){
+   if(Number(data.nth_same_time)>1)return null;
+   // A fixed "Who scores goal N in minutes A-B" three-way quote uses
+   // Neither when goal N is outside THAT window. General goal-N time
+   // markets without a window still mean "no Nth goal before FT".
+   if(c.choice==='none'&&Number.isInteger(c.from)&&Number.isInteger(c.to))
+    return decision(!(Number(data.nth_minute)>=c.from&&Number(data.nth_minute)<=c.to));
+   if(c.choice==='none')return 'LOST';
+   if(!Number.isInteger(c.from)||!Number.isInteger(c.to))return null;
+   const inside=Number(data.nth_minute)>=c.from&&Number(data.nth_minute)<=c.to;
+   if(c.choice==='team-window')
+     return ['home','away'].includes(c.side)?decision(inside&&data.nth_team===c.side):null;
+   if(c.choice!=='range')return null;
+   return decision(inside);
+  }
+  // No positive evidence yet — wait for coverage window to elapse before
+  // declaring LOST (goal N did not happen within range).
+  const scopeClosed=normalFull||(Number.isInteger(c.to)&&through>=c.to);
+  if(!scopeClosed||c.to>=90&&data.phase_ambiguous===true)return null;
+  return c.choice==='none'?'WON':'LOST';
+ }
+ if(c.kind==='last-event'){
+  if(!normalFull||data.phase_ambiguous===true||!['home','away','none'].includes(c.side))return null;
+  const lastTeam=c.normalTimeOnly===true?data.normal_last_team:data.last_team;
+  const lastSameTime=c.normalTimeOnly===true?data.normal_last_same_time:data.last_same_time;
+  if(lastTeam!=null){
+   if(Number(lastSameTime)>1)return null;
+   return decision(lastTeam===c.side);
+  }
+  return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
+ }
+ if(c.kind==='sequence'){
+  if(data.nth_team!=null){
+   if(Number(data.nth_same_time)>1)return null;
+   return decision(data.nth_team===c.side);
+  }
+  if(!normalFull||data.phase_ambiguous===true)return null;
+  // A Next Goal selection is not refundable merely because no further goal
+  // was scored. Home/Away lose at confirmed FT; the explicit No Goal outcome
+  // wins only when that outcome was actually offered and accepted. Corner/card
+  // sequence markets retain their provider no-event VOID rule unless Neither
+  // was explicitly quoted.
+  if(c.event==='goal')return c.noneOffered===true&&c.side==='none'?'WON':'LOST';
+  return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
+ }
+ if(c.kind==='race'){
+  if(!Number.isInteger(c.target)||c.target<1||
+     !['home','away','none'].includes(c.side))return null;
+  const h=data.race_home_time==null?null:Number(data.race_home_time);
+  const a=data.race_away_time==null?null:Number(data.race_away_time);
+  // The quoted third selection is a real outcome, not a refundable push:
+  // neither side reached X => None wins after confirmed FT completeness.
+  // A reached threshold proves None lost without knowing which side was first.
+  if(c.side==='none'){
+   if(h!==null||a!==null)return 'LOST';
+   return normalFull&&data.phase_ambiguous!==true&&c.noneOffered===true?'WON':null;
+  }
+  if(h===null&&a===null)return normalFull&&data.phase_ambiguous!==true?(c.noneOffered===true?'LOST':'VOID'):null;
+  // Simultaneous or minute-only indistinguishable milestones require review.
+  if(h!==null&&a!==null&&h===a)return null;
+  return decision(c.side===(h!==null&&(a===null||h<a)?'home':'away'));
+ }
+ if(c.kind==='player-goal-special'){
+  // Proven positive 2+/3+ and already-exceeded totals can settle before FT
+  // from reconfirmed primary scorer facts. An UNDER/no/exact that still
+  // depends on future events stays PENDING until the relevant scope ends.
+  if(c.event!=='goal'||(!full&&provider!=='zizobet'))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,player_id,
+    player_name,aiscore_player_id,aiscore_player_name,aiscore_verified,
+    fotmob_player_name,fotmob_verified,supplemental_player_name,
+    supplemental_verified,own_goal
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='goal' and active=true`,[line.match_id,provider]);
+  return gradePlayerGoalSpecial(c,facts,{complete:full});
+ }
+ if(c.kind==='player-ordinal-goal'){
+  // FIRST scorer becomes irreversible when the verified first eligible
+  // scorer is known. LAST scorer and "none won" still require FT.
+  if(c.event!=='goal'||(!full&&(provider!=='zizobet'||c.position!=='first')))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,player_id,
+    player_name,aiscore_player_id,aiscore_player_name,aiscore_verified,
+    fotmob_player_name,fotmob_verified,supplemental_player_name,
+    supplemental_verified,own_goal
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='goal' and active=true`,[line.match_id,provider]);
+  const result=gradePlayerOrdinalScorerFacts(c,facts,{complete:true});
+  if(!full)return c.choice==='none'?(result==='LOST'?'LOST':null):
+    result==='WON'?'WON':null;
+  return result;
+ }
+ if(c.kind==='player-card'){
+  if(typeof c.choice!=='boolean'||(!c.playerName&&!c.playerId))return null;
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  const person=v=>{
+   const raw=String(v??'').trim();
+   const pieces=raw.includes(',')?raw.split(',').map(x=>x.trim()).reverse():[raw];
+   return pieces.join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+     .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  };
+  const expected=person(c.playerName);
+  const {rows:actors}=await execute(
+    "select player_id,player_name,card_color,supplemental_player_name,supplemental_verified from app_match_event_fact "+
+    "where match_id=$1 and provider=$2 and kind='card' and active=true",
+    [line.match_id,provider]);
+  const booked=actors.some(actor=>
+    (!c.cardColor||actor.card_color===c.cardColor)&&
+    (c.playerId!=null&&actor.player_id!=null?
+      String(c.playerId)===String(actor.player_id):
+      !!expected&&(person(actor.player_name)===expected||
+       actor.supplemental_verified===true&&person(actor.supplemental_player_name)===expected)));
+  if(booked)return c.choice?'WON':'LOST';
+  // Absent bookings do not prove that the named player entered the pitch.
+  // The non-participation/void rule still needs verified lineup facts.
+  return null;
+ }
+ if(c.kind==='player-goal'){
+  if((!c.playerName&&!c.playerId)||typeof c.choice!=='boolean')return null;
+  // A verified scorer proves YES/NO immediately; absence does not prove
+  // participation, an own goal, or a losing player proposition.
+  if(Number(data.player_goals)>0)return c.choice?'WON':'LOST';
+  // A missing scorer name does not prove a player played or failed to score.
+  // Require verified player participation before a negative settlement.
+  return null;
+ }
+ if(c.kind==='team-total-goals'){
+  if(!Number.isFinite(c.threshold)||!['over','under'].includes(c.choice))return null;
+  if(count>c.threshold)return c.choice==='over'?'WON':'LOST';
+  if(!full)return null;
+  if(count===c.threshold&&Number.isInteger(c.threshold))return 'VOID';
+  return c.choice==='under'?'WON':'LOST';
+ }
+ if(c.kind==='over'||c.kind==='under'){
+  if(!Number.isFinite(expected))return null;
+  if(count>expected)return c.kind==='over'?'WON':'LOST';
+  if(!full)return null;
+  if(count===expected&&Number.isInteger(expected))return 'VOID';
+  return c.kind==='under'?'WON':'LOST';
+ }
+ if(c.kind==='atLeast'){
+  if(!Number.isInteger(c.target))return null;
+  if(count>=c.target)return 'WON';
+  return full?'LOST':null;
+ }
+ if(c.kind==='exact'){
+  if(!Number.isInteger(c.target))return null;
+  if(count>c.target)return 'LOST';
+  return full?decision(count===c.target):null;
+ }
+ if(c.kind==='range'&&Number.isFinite(c.min)&&Number.isFinite(c.max)){
+  if(count>c.max)return 'LOST';
+  return full?decision(count>=c.min&&count<=c.max):null;
+ }
+ return null;
+}
+
+/** Keep historical incidents in their own provider rows. A verified primary
+ * decision wins; a complete historical FT may fill a genuinely missing
+ * primary timeline. Conflicting historical verdicts are never paid.
+ */
+export async function gradeStoredEventContract(line,result,{execute}={}){
+ if(line?.live_contract?.kind==='half-combo')
+  return gradeHalfCombination(line.live_contract,result);
+ if(line?.live_contract?.kind==='period-goal-total')
+  return gradePeriodGoalTotal(line.live_contract,result);
+ if(line?.live_contract?.kind==='score-handicap'&&
+    !(line.live_contract.event==='corner'&&line.live_contract.half))
+  return gradeHandicapContract(line.live_contract,result);
+ const primary=await gradeSingleEventProvider(line,result,{execute,provider:'zizobet'});
+ if(primary!==null)return primary;
+ // Zizobet is the only settlement authority. Enrichment providers may add
+ // display metadata, but cannot decide or confirm a financial result.
+ return null;
+}
+ then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime','90','stoppage','stoppagetime','injurytime')
+        then case when f.minute<=45 then 1 else 2 end
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=45 then 1
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90 then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf') then 3
+       else 4
+     end as phase_order
+   from app_match_event_fact f
+   where f.match_id=$1 and f.provider=$16::text and f.kind=$2 and f.active
+ ), ordered as (
+   select raw_events.*,
+     row_number() over(order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as ordinal,
+     row_number() over(partition by team order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as team_ordinal,
+     count(*) over(partition by phase_order,coalesce(seconds,minute*60)) as same_time
+   from raw_events
+ ), normal_ordered as (
+   select * from ordered where normal_time ), aggregate as (
+   select count(*)::int as total,
+    count(*) filter(where team='home')::int as home,
+    count(*) filter(where team='away')::int as away,
+    (select count(*)::int from normal_ordered where team='home') as normal_home,
+    (select count(*)::int from normal_ordered where team='away') as normal_away,
+    bool_or(minute>90 and nullif(trim(coalesce(phase,'')),'') is null) as phase_ambiguous,
+    count(*) filter(where card_color=$15::text)::int as color_total,
+    count(*) filter(where team='home' and card_color=$15::text)::int as color_home,
+    count(*) filter(where team='away' and card_color=$15::text)::int as color_away,
+    -- Fixed 10-20 minute markets use inclusive provider minutes.
+    -- Rolling windows and clock-formatted score intervals instead use seconds.
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or minute >= $3)
+         and ($4::numeric is null or minute <= $4)))
+      and ($5::text is null or team=$5)
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as window_count,
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or minute >= $3)
+         and ($4::numeric is null or minute <= $4)))
+      and ($5::text is null or team=$5)
+      and card_color=$15::text
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as color_window_count,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
+      and team='home' and ($17::boolean=false or team_ordinal>$18::int)
+      and ($20::boolean=false or normal_time))::int as window_home,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
+      and team='away' and ($17::boolean=false or team_ordinal>$19::int)
+      and ($20::boolean=false or normal_time))::int as window_away,
+    bool_or($10::boolean=true and seconds is null
+      and (minute=floor($11::numeric/60) or minute=floor($12::numeric/60))) as rolling_boundary_uncertain,
+    count(*) filter(where (own_goal=false or (own_goal is null and aiscore_verified=true))
+     and (($6::text is not null and (
+       (player_id is not null and player_id=$6) or
+       (aiscore_verified=true and aiscore_player_id is not null and aiscore_player_id=$6)))
+      or ($6::text is null and (
+       (player_name is not null and lower(player_name)=lower($7)) or
+       (aiscore_verified=true and aiscore_player_name is not null
+         and lower(aiscore_player_name)=lower($7)) or
+       (own_goal=false and fotmob_verified=true and fotmob_player_name is not null
+         and lower(fotmob_player_name)=lower($7)) or
+       (own_goal=false and supplemental_verified=true and supplemental_player_name is not null
+         and lower(supplemental_player_name)=lower($7))))))::int as player_goals,
+    bool_or(same_time>1) as ambiguous_order,
+    (select bool_or(same_time>1 and ((team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))) from normal_ordered) as ambiguous_order_since_entry,
+    bool_or(seconds is null) as minute_only
+   from ordered
+ )
+ select a.*,c.through_minute,c.count_home,c.count_away,c.complete,c.observed_at,c.confirmed_at,c.card_colors_verified,
+  -- Each valid writer has its own timestamp. Do NOT use greatest() here:
+  -- the watched gap cursor may be updated after the archive proof but
+  -- before the next settlement pass, and must not hide valid evidence.
+  (select last_seen_at from app_live_event_cursor where match_id=$1) as second_poll_at,
+  (select evidence_observed_at from app_zizobet_match_history where match_id=$1) as archive_poll_at,
+  exists(select 1 from app_live_event_recovery g
+    where g.match_id=$1 and g.status='AWAITING_BACKUP_API' and $9::uuid=any(g.line_ids)
+      and $16::text='zizobet') as open_recovery_gap,
+   (select team from ordered where ordinal=(select max(ordinal) from ordered)) as last_team,
+   (select same_time from ordered where ordinal=(select max(ordinal) from ordered)) as last_same_time,
+   (select team from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_team,
+   (select same_time from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_same_time,
+   (select bool_or(same_time>1) from normal_ordered) as normal_ambiguous_order,
+   (select team from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_team,
+   (select minute from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_minute,
+   (select same_time from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_same_time,
+   (select minute from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_minute,   (select max(lead.home_after-lead.away_after) from (
+     select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
+       coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
+     from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+   ) lead) as max_home_lead_since_entry,
+   (select max(lead.away_after-lead.home_after) from (
+     select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
+       coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
+     from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+   ) lead) as max_away_lead_since_entry,
+
+   (select same_time from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_same_time,
+   (select team from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_team,
+   (select minute from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_minute,
+   (select same_time from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_same_time,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='home') as race_home,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='away') as race_away,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='home'
+   )) as race_home_time,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='away'
+   )) as race_away_time
+ from aggregate a left join covered c on true`,
+ [line.match_id,c.event,
+  c.kind==='interval-result'?c.fromSeconds/60:c.from??null,
+  c.kind==='interval-result'?(c.toExclusiveSeconds-1)/60:c.to??null,
+  c.side??null,c.playerId??null,c.playerName??null,c.target??1,line.id,
+  c.kind==='window'&&c.startExclusive===true,
+  c.kind==='interval-result'?c.fromSeconds:c.kind==='window'?c.from*60:null,
+  c.kind==='interval-result'?c.toExclusiveSeconds:c.kind==='window'?c.to*60:null,
+  c.kind==='interval-result',c.kind==='interval-leader'||c.kind==='interval-handicap',c.cardColor??null,provider,
+  c.entryBaseline!=null||c.baseline!=null,
+  c.entryBaseline?.home??c.baseline?.home??0,
+  c.entryBaseline?.away??c.baseline?.away??0,c.normalTimeOnly===true]);
+ const data=rows[0];
+ if(!data||data.through_minute==null||data.open_recovery_gap===true)return null;
+ // A partial/corrected frame must not silently reclassify a missing event.
+ if(Number(data.home)!==Number(data.count_home)||
+    Number(data.away)!==Number(data.count_away)||
+    Number(data.total)!==Number(data.home)+Number(data.away))return null;
+ // After provider corrections, the accepted counters cannot exceed the
+ // present complete chronology. Hold the ticket for review if they do.
+ const acceptedBaseline=c.entryBaseline??c.baseline;
+ if(acceptedBaseline!=null&&(
+    !Number.isSafeInteger(acceptedBaseline.home)||acceptedBaseline.home<0||
+    !Number.isSafeInteger(acceptedBaseline.away)||acceptedBaseline.away<0||
+    acceptedBaseline.home>Number(data.count_home)||
+    acceptedBaseline.away>Number(data.count_away)))return null;
+ const stats=typeof result?.statistics==='string'?(()=>{
+  try{return JSON.parse(result.statistics);}catch{return null;}
+ })():result?.statistics;
+ const totalFor=kind=>kind==='goal'?[result?.home_score,result?.away_score]:
+   kind==='corner'?[result?.corners_home,result?.corners_away]:
+   kind==='card'?[result?.cards_home,result?.cards_away]:
+   kind==='foul'?[stats?.fouls?.home,stats?.fouls?.away]:
+   kind==='offside'?[stats?.offsides?.home,stats?.offsides?.away]:[null,null];
+ const expectedTotals=totalFor(c.event);
+ const finalCounts=expectedTotals.every(x=>x!=null&&Number.isSafeInteger(Number(x))&&Number(x)>=0);
+ const full=!!(result&&data.complete===true&&finalCounts&&
+   Number(data.home)===Number(expectedTotals[0])&&Number(data.away)===Number(expectedTotals[1]));
+ const matchFinished=!!(result&&data.complete===true);
+ const normalFull=c.normalTimeOnly===true?matchFinished:full;
+ // Only the confirmed Zizobet timeline and its own second-poll/archive
+ // cursor can authorize a settlement decision.
+ if(data.confirmed_at==null||data.observed_at==null)return null;
+ const confirmed=new Date(data.confirmed_at).getTime();
+ const stored=new Date(data.observed_at).getTime();
+ if(![confirmed,stored].every(Number.isFinite)||confirmed>stored)return null;
+ const watcher=data.second_poll_at==null?NaN:new Date(data.second_poll_at).getTime();
+ const archive=data.archive_poll_at==null?NaN:new Date(data.archive_poll_at).getTime();
+ if(stored!==watcher&&stored!==archive)return null;
+ if(c.cardColor!=null&&
+   (c.event!=='card'||!['yellow','red'].includes(c.cardColor)||
+    data.card_colors_verified!==true))return null;
+ const through=Number(data.through_minute);
+ // Half-time is a valid end of the FIRST-HALF event scope, but only once
+ // a separately confirmed Zizobet HT score exists AND the chronological
+ // coverage has been reconfirmed by another primary poll at/after that HT.
+ // The entire match is still unfinished: 2H/FT contracts remain untouched.
+ let firstHalfComplete=false;
+ if(!full&&provider==='zizobet'&&c.half===1&&Number.isFinite(through)&&through>=45){
+  const ht=(await execute(
+   "select h.confirmed_at from app_match_half_result h where h.match_id=$1 and h.source='ZIZOBET' and h.confirmed_at is not null and exists(select 1 from app_match_snapshot s where s.match_id=h.match_id and s.snapshot->'raw'->>'provider'='ZIZOBET' and s.snapshot->'periods_score'->0->>'t1'=h.half_home_score::text and s.snapshot->'periods_score'->0->>'t2'=h.half_away_score::text)",
+   [line.match_id])).rows[0];
+  const at=ht?.confirmed_at==null?NaN:new Date(ht.confirmed_at).getTime();
+  firstHalfComplete=Number.isFinite(at)&&stored>=at;
+ }
+ const completedScope=full||firstHalfComplete;
+ if(c.kind==='score-handicap'&&c.event==='corner'&&c.half){
+  if(!completedScope)return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeHalfCornerHandicapFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='corner-comparison'){
+  if(!full||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeCornerComparisonFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='multi-corners'){
+  if(!full||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeMultiCornerFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='half-parity'){
+  if(!completedScope||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeHalfParityFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='half-exact-count'){
+  if(!completedScope||!['corner','card'].includes(c.event))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,card_color
+    from app_match_event_fact
+    where match_id=$1 and provider=$2 and kind=$3 and active=true`,
+    [line.match_id,provider,c.event]);
+  return gradeHalfExactFacts(c,facts,{complete:true,
+    cardColorsVerified:data.card_colors_verified===true});
+ }
+ if(c.kind==='half-total'){
+  if(!completedScope||!['corner','card'].includes(c.event))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,card_color
+    from app_match_event_fact
+    where match_id=$1 and provider=$2 and kind=$3 and active=true`,
+    [line.match_id,provider,c.event]);
+  return gradeHalfTotalFacts(c,facts,{complete:true,
+    cardColorsVerified:data.card_colors_verified===true});
+ }
+ if(['half-first-event','half-last-event','half-race','half-next-event'].includes(c.kind)){
+  if(!completedScope||!['goal','corner','card'].includes(c.event))return null;
+  const events=(await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind=$3 and active=true`,[line.match_id,provider,c.event])).rows;
+  // Historical 1H first-corner contracts preserve their existing
+  // proven three-way "None" settlement semantics.
+  if(c.kind==='half-first-event'&&c.event==='corner'&&c.half===1&&
+     c.noneOffered===undefined)
+    return gradeFirstHalfCornerFacts(c,events,{complete:true});
+  return gradeHalfEventFacts(c,events,{complete:true});
+ }
+ const scopeEnded=full||(Number.isFinite(c.to)&&through>Number(c.to));
+ const count=Number(c.cardColor?(c.side==='home'?data.color_home:c.side==='away'?data.color_away:data.color_total):
+   (c.side==='home'?data.home:c.side==='away'?data.away:data.total));
+ const expected=Number(c.target??c.threshold);
+ const decision=truth=>truth?'WON':'LOST';
+ if(c.kind==='window'){
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  // A proven event decides YES immediately and NO as lost; a verified
+  // absence cannot win until the full quoted time window is complete.
+  const closesAt=c.startExclusive===true?Number(c.to):Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||typeof c.choice!=='boolean')return null;
+  // A rolling exact-second market cannot be judged from minute-only boundary
+  // incidents. Hold for the provider's precise timestamp.
+  if(c.startExclusive===true&&data.rolling_boundary_uncertain===true)return null;
+  const num=Number(c.cardColor?data.color_window_count:data.window_count);
+  if(num>0)return decision(c.choice);
+  if(c.normalTimeOnly===true&&c.to>=90&&data.phase_ambiguous===true)return null;
+  return normalFull||through>=closesAt?decision(!c.choice):null;
+ }
+ if(c.kind==='interval-result'){
+  if(!Number.isSafeInteger(c.toExclusiveSeconds)||(!normalFull&&through*60<c.toExclusiveSeconds)||
+     c.to>=90&&data.phase_ambiguous===true)return null;
+  const h=Number(data.window_home),a=Number(data.window_away);
+  return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='window-parity'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||c.event!=='corner'||!['odd','even'].includes(c.choice)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(!normalFull&&through<closesAt)return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const found=Number(data.window_count);
+  if(!Number.isSafeInteger(found)||found<0)return null;
+  return (found%2===1?'odd':'even')===c.choice?'WON':'LOST';
+ }
+ if(c.kind==='window-first-event'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(c.event!=='corner'||!Number.isFinite(closesAt)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from||
+     !['home','away','none'].includes(c.side))return null;
+  if(data.window_first_team!=null){
+   if(Number(data.window_first_same_time)>1)return null;
+   return c.side==='none'?'LOST':data.window_first_team===c.side?'WON':'LOST';
+  }
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  if(normalFull||through>=closesAt)return c.side==='none'?'WON':'LOST';
+  return null;
+ }
+ if(c.kind==='interval-handicap'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||c.event!=='corner'||
+     !['home','away','none'].includes(c.side)||!Number.isFinite(Number(c.handicap)))return null;
+  const h=Number(data.window_home),a=Number(data.window_away),handicap=Number(c.handicap);
+  if(!Number.isSafeInteger(h)||h<0||!Number.isSafeInteger(a)||a<0||
+     !Number.isSafeInteger(handicap*2))return null;
+  const signed=h+handicap-a;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  if(c.side==='none')return signed===0?'WON':'LOST';
+  const delta=c.side==='away'?a+handicap-h:signed;
+  if(c.threeWay)return delta>0?'WON':'LOST';
+  if(delta===0)return 'VOID';
+  return delta>0?'WON':'LOST';
+ }
+ if(c.kind==='interval-leader'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||
+     !['home','away','none'].includes(c.side))return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const h=Number(data.window_home),a=Number(data.window_away);
+  return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='window-total'){
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt))return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const found=Number(c.cardColor?data.color_window_count:data.window_count);
+  const closed=normalFull||through>=closesAt;
+  if(c.choice==='over'||c.choice==='under'){
+   if(!Number.isFinite(c.threshold)||!Number.isInteger(c.threshold*2))return null;
+   // Once the accepted-event count crosses the line it can only increase.
+   // Over is already WON; Under is already LOST.
+   if(found>c.threshold)return c.choice==='over'?'WON':'LOST';
+   if(!closed)return null;
+   if(found===c.threshold&&Number.isInteger(c.threshold))return 'VOID';
+   return c.choice==='over'?'LOST':'WON';
+  }
+  if(c.choice==='exact'&&Number.isInteger(c.target)){
+   if(found>c.target)return 'LOST';
+   return closed?decision(found===c.target):null;
+  }
+  if(c.choice==='atLeast'&&Number.isInteger(c.target)){
+   if(found>=c.target)return 'WON';
+   return closed?'LOST':null;
+  }
+  return null;
+ }
+ if(c.kind==='lead-up'){
+  const base=c.baseline;
+  if(c.event!=='goal'||!Number.isInteger(c.target)||c.target<1||c.target>3||
+     !base||!Number.isSafeInteger(base.home)||base.home<0||
+     !Number.isSafeInteger(base.away)||base.away<0||
+     !['home','away','draw'].includes(c.side))return null;
+  const normalHome=Number(data.normal_home),normalAway=Number(data.normal_away);
+  if(!Number.isSafeInteger(normalHome)||!Number.isSafeInteger(normalAway)||
+     normalHome<base.home||normalAway<base.away)return null;
+  if(c.side==='draw')return normalFull&&data.phase_ambiguous!==true?
+   decision(normalHome===normalAway):null;
+  const afterHome=normalHome-base.home,afterAway=normalAway-base.away;
+  const currentLead=c.side==='home'?afterHome-afterAway:afterAway-afterHome;
+  if(currentLead>=c.target)return 'WON';
+  const maximum=Number(c.side==='home'?data.max_home_lead_since_entry:data.max_away_lead_since_entry);
+  if(Number.isFinite(maximum)&&maximum>=c.target){
+   if(data.ambiguous_order_since_entry===true)return null;
+   return 'WON';
+  }
+  if(!normalFull||data.phase_ambiguous===true||data.ambiguous_order_since_entry===true)return null;
+  return 'LOST';
+ }
+ if(c.kind==='team-nth-time'){
+  if(c.event!=='goal'||!['home','away'].includes(c.side)||
+     !Number.isInteger(c.target)||c.target<1||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(data.team_nth_minute!=null){
+   const minute=Number(data.team_nth_minute);
+   if(!Number.isInteger(minute)||minute<0||minute>130)return null;
+   return decision(minute>=c.from&&minute<=c.to);
+  }
+  // Once the requested team's event window is completely covered, the
+  // absence of that team's next goal is a loss even if the match continues.
+  if(normalFull||through>=c.to){
+   if(c.to>=90&&data.phase_ambiguous===true)return null;
+   return 'LOST';
+  }
+  return null;
+ }
+ if(c.kind==='nth-time'){
+  if(!Number.isInteger(c.target)||c.target<1)return null;
+  const isPrematch = (line?.accepted_contract?.acceptedLiveSnapshot == null && c.entryBaseline == null && line?.accepted_contract != null);
+  if(isPrematch && !normalFull) return null;
+  if(data.nth_team!=null){
+   if(Number(data.nth_same_time)>1)return null;
+   // A fixed "Who scores goal N in minutes A-B" three-way quote uses
+   // Neither when goal N is outside THAT window. General goal-N time
+   // markets without a window still mean "no Nth goal before FT".
+   if(c.choice==='none'&&Number.isInteger(c.from)&&Number.isInteger(c.to))
+    return decision(!(Number(data.nth_minute)>=c.from&&Number(data.nth_minute)<=c.to));
+   if(c.choice==='none')return 'LOST';
+   if(!Number.isInteger(c.from)||!Number.isInteger(c.to))return null;
+   const inside=Number(data.nth_minute)>=c.from&&Number(data.nth_minute)<=c.to;
+   if(c.choice==='team-window')
+     return ['home','away'].includes(c.side)?decision(inside&&data.nth_team===c.side):null;
+   if(c.choice!=='range')return null;
+   return decision(inside);
+  }
+  // No positive evidence yet — wait for coverage window to elapse before
+  // declaring LOST (goal N did not happen within range).
+  const scopeClosed=normalFull||(Number.isInteger(c.to)&&through>=c.to);
+  if(!scopeClosed||c.to>=90&&data.phase_ambiguous===true)return null;
+  return c.choice==='none'?'WON':'LOST';
+ }
+ if(c.kind==='last-event'){
+  if(!normalFull||data.phase_ambiguous===true||!['home','away','none'].includes(c.side))return null;
+  const lastTeam=c.normalTimeOnly===true?data.normal_last_team:data.last_team;
+  const lastSameTime=c.normalTimeOnly===true?data.normal_last_same_time:data.last_same_time;
+  if(lastTeam!=null){
+   if(Number(lastSameTime)>1)return null;
+   return decision(lastTeam===c.side);
+  }
+  return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
+ }
+ if(c.kind==='sequence'){
+  if(data.nth_team!=null){
+   if(Number(data.nth_same_time)>1)return null;
+   return decision(data.nth_team===c.side);
+  }
+  if(!normalFull||data.phase_ambiguous===true)return null;
+  // A Next Goal selection is not refundable merely because no further goal
+  // was scored. Home/Away lose at confirmed FT; the explicit No Goal outcome
+  // wins only when that outcome was actually offered and accepted. Corner/card
+  // sequence markets retain their provider no-event VOID rule unless Neither
+  // was explicitly quoted.
+  if(c.event==='goal')return c.noneOffered===true&&c.side==='none'?'WON':'LOST';
+  return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
+ }
+ if(c.kind==='race'){
+  if(!Number.isInteger(c.target)||c.target<1||
+     !['home','away','none'].includes(c.side))return null;
+  const h=data.race_home_time==null?null:Number(data.race_home_time);
+  const a=data.race_away_time==null?null:Number(data.race_away_time);
+  // The quoted third selection is a real outcome, not a refundable push:
+  // neither side reached X => None wins after confirmed FT completeness.
+  // A reached threshold proves None lost without knowing which side was first.
+  if(c.side==='none'){
+   if(h!==null||a!==null)return 'LOST';
+   return normalFull&&data.phase_ambiguous!==true&&c.noneOffered===true?'WON':null;
+  }
+  if(h===null&&a===null)return normalFull&&data.phase_ambiguous!==true?(c.noneOffered===true?'LOST':'VOID'):null;
+  // Simultaneous or minute-only indistinguishable milestones require review.
+  if(h!==null&&a!==null&&h===a)return null;
+  return decision(c.side===(h!==null&&(a===null||h<a)?'home':'away'));
+ }
+ if(c.kind==='player-goal-special'){
+  // Proven positive 2+/3+ and already-exceeded totals can settle before FT
+  // from reconfirmed primary scorer facts. An UNDER/no/exact that still
+  // depends on future events stays PENDING until the relevant scope ends.
+  if(c.event!=='goal'||(!full&&provider!=='zizobet'))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,player_id,
+    player_name,aiscore_player_id,aiscore_player_name,aiscore_verified,
+    fotmob_player_name,fotmob_verified,supplemental_player_name,
+    supplemental_verified,own_goal
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='goal' and active=true`,[line.match_id,provider]);
+  return gradePlayerGoalSpecial(c,facts,{complete:full});
+ }
+ if(c.kind==='player-ordinal-goal'){
+  // FIRST scorer becomes irreversible when the verified first eligible
+  // scorer is known. LAST scorer and "none won" still require FT.
+  if(c.event!=='goal'||(!full&&(provider!=='zizobet'||c.position!=='first')))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,player_id,
+    player_name,aiscore_player_id,aiscore_player_name,aiscore_verified,
+    fotmob_player_name,fotmob_verified,supplemental_player_name,
+    supplemental_verified,own_goal
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='goal' and active=true`,[line.match_id,provider]);
+  const result=gradePlayerOrdinalScorerFacts(c,facts,{complete:true});
+  if(!full)return c.choice==='none'?(result==='LOST'?'LOST':null):
+    result==='WON'?'WON':null;
+  return result;
+ }
+ if(c.kind==='player-card'){
+  if(typeof c.choice!=='boolean'||(!c.playerName&&!c.playerId))return null;
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  const person=v=>{
+   const raw=String(v??'').trim();
+   const pieces=raw.includes(',')?raw.split(',').map(x=>x.trim()).reverse():[raw];
+   return pieces.join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+     .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  };
+  const expected=person(c.playerName);
+  const {rows:actors}=await execute(
+    "select player_id,player_name,card_color,supplemental_player_name,supplemental_verified from app_match_event_fact "+
+    "where match_id=$1 and provider=$2 and kind='card' and active=true",
+    [line.match_id,provider]);
+  const booked=actors.some(actor=>
+    (!c.cardColor||actor.card_color===c.cardColor)&&
+    (c.playerId!=null&&actor.player_id!=null?
+      String(c.playerId)===String(actor.player_id):
+      !!expected&&(person(actor.player_name)===expected||
+       actor.supplemental_verified===true&&person(actor.supplemental_player_name)===expected)));
+  if(booked)return c.choice?'WON':'LOST';
+  // Absent bookings do not prove that the named player entered the pitch.
+  // The non-participation/void rule still needs verified lineup facts.
+  return null;
+ }
+ if(c.kind==='player-goal'){
+  if((!c.playerName&&!c.playerId)||typeof c.choice!=='boolean')return null;
+  // A verified scorer proves YES/NO immediately; absence does not prove
+  // participation, an own goal, or a losing player proposition.
+  if(Number(data.player_goals)>0)return c.choice?'WON':'LOST';
+  // A missing scorer name does not prove a player played or failed to score.
+  // Require verified player participation before a negative settlement.
+  return null;
+ }
+ if(c.kind==='team-total-goals'){
+  if(!Number.isFinite(c.threshold)||!['over','under'].includes(c.choice))return null;
+  if(count>c.threshold)return c.choice==='over'?'WON':'LOST';
+  if(!full)return null;
+  if(count===c.threshold&&Number.isInteger(c.threshold))return 'VOID';
+  return c.choice==='under'?'WON':'LOST';
+ }
+ if(c.kind==='over'||c.kind==='under'){
+  if(!Number.isFinite(expected))return null;
+  if(count>expected)return c.kind==='over'?'WON':'LOST';
+  if(!full)return null;
+  if(count===expected&&Number.isInteger(expected))return 'VOID';
+  return c.kind==='under'?'WON':'LOST';
+ }
+ if(c.kind==='atLeast'){
+  if(!Number.isInteger(c.target))return null;
+  if(count>=c.target)return 'WON';
+  return full?'LOST':null;
+ }
+ if(c.kind==='exact'){
+  if(!Number.isInteger(c.target))return null;
+  if(count>c.target)return 'LOST';
+  return full?decision(count===c.target):null;
+ }
+ if(c.kind==='range'&&Number.isFinite(c.min)&&Number.isFinite(c.max)){
+  if(count>c.max)return 'LOST';
+  return full?decision(count>=c.min&&count<=c.max):null;
+ }
+ return null;
+}
+
+/** Keep historical incidents in their own provider rows. A verified primary
+ * decision wins; a complete historical FT may fill a genuinely missing
+ * primary timeline. Conflicting historical verdicts are never paid.
+ */
+export async function gradeStoredEventContract(line,result,{execute}={}){
+ if(line?.live_contract?.kind==='half-combo')
+  return gradeHalfCombination(line.live_contract,result);
+ if(line?.live_contract?.kind==='period-goal-total')
+  return gradePeriodGoalTotal(line.live_contract,result);
+ if(line?.live_contract?.kind==='score-handicap'&&
+    !(line.live_contract.event==='corner'&&line.live_contract.half))
+  return gradeHandicapContract(line.live_contract,result);
+ const primary=await gradeSingleEventProvider(line,result,{execute,provider:'zizobet'});
+ if(primary!==null)return primary;
+ // Zizobet is the only settlement authority. Enrichment providers may add
+ // display metadata, but cannot decide or confirm a financial result.
+ return null;
+}
+
+       or lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^90[0-9]{1,2}
+     case
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1') then 1
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2') then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime','90','stoppage','stoppagetime','injurytime')
+        then case when f.minute<=45 then 1 else 2 end
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=45 then 1
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90 then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf') then 3
+       else 4
+     end as phase_order
+   from app_match_event_fact f
+   where f.match_id=$1 and f.provider=$16::text and f.kind=$2 and f.active
+ ), ordered as (
+   select raw_events.*,
+     row_number() over(order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as ordinal,
+     row_number() over(partition by team order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as team_ordinal,
+     count(*) over(partition by phase_order,coalesce(seconds,minute*60)) as same_time
+   from raw_events
+ ), normal_ordered as (
+   select * from ordered where normal_time ), aggregate as (
+   select count(*)::int as total,
+    count(*) filter(where team='home')::int as home,
+    count(*) filter(where team='away')::int as away,
+    (select count(*)::int from normal_ordered where team='home') as normal_home,
+    (select count(*)::int from normal_ordered where team='away') as normal_away,
+    bool_or(minute>90 and nullif(trim(coalesce(phase,'')),'') is null) as phase_ambiguous,
+    count(*) filter(where card_color=$15::text)::int as color_total,
+    count(*) filter(where team='home' and card_color=$15::text)::int as color_home,
+    count(*) filter(where team='away' and card_color=$15::text)::int as color_away,
+    -- Fixed 10-20 minute markets use inclusive provider minutes.
+    -- Rolling windows and clock-formatted score intervals instead use seconds.
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or minute >= $3)
+         and ($4::numeric is null or minute <= $4)))
+      and ($5::text is null or team=$5)
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as window_count,
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or minute >= $3)
+         and ($4::numeric is null or minute <= $4)))
+      and ($5::text is null or team=$5)
+      and card_color=$15::text
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as color_window_count,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
+      and team='home' and ($17::boolean=false or team_ordinal>$18::int)
+      and ($20::boolean=false or normal_time))::int as window_home,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
+      and team='away' and ($17::boolean=false or team_ordinal>$19::int)
+      and ($20::boolean=false or normal_time))::int as window_away,
+    bool_or($10::boolean=true and seconds is null
+      and (minute=floor($11::numeric/60) or minute=floor($12::numeric/60))) as rolling_boundary_uncertain,
+    count(*) filter(where (own_goal=false or (own_goal is null and aiscore_verified=true))
+     and (($6::text is not null and (
+       (player_id is not null and player_id=$6) or
+       (aiscore_verified=true and aiscore_player_id is not null and aiscore_player_id=$6)))
+      or ($6::text is null and (
+       (player_name is not null and lower(player_name)=lower($7)) or
+       (aiscore_verified=true and aiscore_player_name is not null
+         and lower(aiscore_player_name)=lower($7)) or
+       (own_goal=false and fotmob_verified=true and fotmob_player_name is not null
+         and lower(fotmob_player_name)=lower($7)) or
+       (own_goal=false and supplemental_verified=true and supplemental_player_name is not null
+         and lower(supplemental_player_name)=lower($7))))))::int as player_goals,
+    bool_or(same_time>1) as ambiguous_order,
+    (select bool_or(same_time>1 and ((team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))) from normal_ordered) as ambiguous_order_since_entry,
+    bool_or(seconds is null) as minute_only
+   from ordered
+ )
+ select a.*,c.through_minute,c.count_home,c.count_away,c.complete,c.observed_at,c.confirmed_at,c.card_colors_verified,
+  -- Each valid writer has its own timestamp. Do NOT use greatest() here:
+  -- the watched gap cursor may be updated after the archive proof but
+  -- before the next settlement pass, and must not hide valid evidence.
+  (select last_seen_at from app_live_event_cursor where match_id=$1) as second_poll_at,
+  (select evidence_observed_at from app_zizobet_match_history where match_id=$1) as archive_poll_at,
+  exists(select 1 from app_live_event_recovery g
+    where g.match_id=$1 and g.status='AWAITING_BACKUP_API' and $9::uuid=any(g.line_ids)
+      and $16::text='zizobet') as open_recovery_gap,
+   (select team from ordered where ordinal=(select max(ordinal) from ordered)) as last_team,
+   (select same_time from ordered where ordinal=(select max(ordinal) from ordered)) as last_same_time,
+   (select team from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_team,
+   (select same_time from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_same_time,
+   (select bool_or(same_time>1) from normal_ordered) as normal_ambiguous_order,
+   (select team from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_team,
+   (select minute from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_minute,
+   (select same_time from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_same_time,
+   (select minute from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_minute,   (select max(lead.home_after-lead.away_after) from (
+     select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
+       coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
+     from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+   ) lead) as max_home_lead_since_entry,
+   (select max(lead.away_after-lead.home_after) from (
+     select coalesce($18::int,0)+sum(case when team='home' and team_ordinal>$18::int then 1 else 0 end) over(order by ordinal) as home_after,
+       coalesce($19::int,0)+sum(case when team='away' and team_ordinal>$19::int then 1 else 0 end) over(order by ordinal) as away_after
+     from normal_ordered where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)
+   ) lead) as max_away_lead_since_entry,
+
+   (select same_time from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_same_time,
+   (select team from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_team,
+   (select minute from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_minute,
+   (select same_time from ordered where minute>=$3::numeric and minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_same_time,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='home') as race_home,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='away') as race_away,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='home'
+   )) as race_home_time,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='away'
+   )) as race_away_time
+ from aggregate a left join covered c on true`,
+ [line.match_id,c.event,
+  c.kind==='interval-result'?c.fromSeconds/60:c.from??null,
+  c.kind==='interval-result'?(c.toExclusiveSeconds-1)/60:c.to??null,
+  c.side??null,c.playerId??null,c.playerName??null,c.target??1,line.id,
+  c.kind==='window'&&c.startExclusive===true,
+  c.kind==='interval-result'?c.fromSeconds:c.kind==='window'?c.from*60:null,
+  c.kind==='interval-result'?c.toExclusiveSeconds:c.kind==='window'?c.to*60:null,
+  c.kind==='interval-result',c.kind==='interval-leader'||c.kind==='interval-handicap',c.cardColor??null,provider,
+  c.entryBaseline!=null||c.baseline!=null,
+  c.entryBaseline?.home??c.baseline?.home??0,
+  c.entryBaseline?.away??c.baseline?.away??0,c.normalTimeOnly===true]);
+ const data=rows[0];
+ if(!data||data.through_minute==null||data.open_recovery_gap===true)return null;
+ // A partial/corrected frame must not silently reclassify a missing event.
+ if(Number(data.home)!==Number(data.count_home)||
+    Number(data.away)!==Number(data.count_away)||
+    Number(data.total)!==Number(data.home)+Number(data.away))return null;
+ // After provider corrections, the accepted counters cannot exceed the
+ // present complete chronology. Hold the ticket for review if they do.
+ const acceptedBaseline=c.entryBaseline??c.baseline;
+ if(acceptedBaseline!=null&&(
+    !Number.isSafeInteger(acceptedBaseline.home)||acceptedBaseline.home<0||
+    !Number.isSafeInteger(acceptedBaseline.away)||acceptedBaseline.away<0||
+    acceptedBaseline.home>Number(data.count_home)||
+    acceptedBaseline.away>Number(data.count_away)))return null;
+ const stats=typeof result?.statistics==='string'?(()=>{
+  try{return JSON.parse(result.statistics);}catch{return null;}
+ })():result?.statistics;
+ const totalFor=kind=>kind==='goal'?[result?.home_score,result?.away_score]:
+   kind==='corner'?[result?.corners_home,result?.corners_away]:
+   kind==='card'?[result?.cards_home,result?.cards_away]:
+   kind==='foul'?[stats?.fouls?.home,stats?.fouls?.away]:
+   kind==='offside'?[stats?.offsides?.home,stats?.offsides?.away]:[null,null];
+ const expectedTotals=totalFor(c.event);
+ const finalCounts=expectedTotals.every(x=>x!=null&&Number.isSafeInteger(Number(x))&&Number(x)>=0);
+ const full=!!(result&&data.complete===true&&finalCounts&&
+   Number(data.home)===Number(expectedTotals[0])&&Number(data.away)===Number(expectedTotals[1]));
+ const matchFinished=!!(result&&data.complete===true);
+ const normalFull=c.normalTimeOnly===true?matchFinished:full;
+ // Only the confirmed Zizobet timeline and its own second-poll/archive
+ // cursor can authorize a settlement decision.
+ if(data.confirmed_at==null||data.observed_at==null)return null;
+ const confirmed=new Date(data.confirmed_at).getTime();
+ const stored=new Date(data.observed_at).getTime();
+ if(![confirmed,stored].every(Number.isFinite)||confirmed>stored)return null;
+ const watcher=data.second_poll_at==null?NaN:new Date(data.second_poll_at).getTime();
+ const archive=data.archive_poll_at==null?NaN:new Date(data.archive_poll_at).getTime();
+ if(stored!==watcher&&stored!==archive)return null;
+ if(c.cardColor!=null&&
+   (c.event!=='card'||!['yellow','red'].includes(c.cardColor)||
+    data.card_colors_verified!==true))return null;
+ const through=Number(data.through_minute);
+ // Half-time is a valid end of the FIRST-HALF event scope, but only once
+ // a separately confirmed Zizobet HT score exists AND the chronological
+ // coverage has been reconfirmed by another primary poll at/after that HT.
+ // The entire match is still unfinished: 2H/FT contracts remain untouched.
+ let firstHalfComplete=false;
+ if(!full&&provider==='zizobet'&&c.half===1&&Number.isFinite(through)&&through>=45){
+  const ht=(await execute(
+   "select h.confirmed_at from app_match_half_result h where h.match_id=$1 and h.source='ZIZOBET' and h.confirmed_at is not null and exists(select 1 from app_match_snapshot s where s.match_id=h.match_id and s.snapshot->'raw'->>'provider'='ZIZOBET' and s.snapshot->'periods_score'->0->>'t1'=h.half_home_score::text and s.snapshot->'periods_score'->0->>'t2'=h.half_away_score::text)",
+   [line.match_id])).rows[0];
+  const at=ht?.confirmed_at==null?NaN:new Date(ht.confirmed_at).getTime();
+  firstHalfComplete=Number.isFinite(at)&&stored>=at;
+ }
+ const completedScope=full||firstHalfComplete;
+ if(c.kind==='score-handicap'&&c.event==='corner'&&c.half){
+  if(!completedScope)return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeHalfCornerHandicapFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='corner-comparison'){
+  if(!full||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeCornerComparisonFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='multi-corners'){
+  if(!full||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeMultiCornerFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='half-parity'){
+  if(!completedScope||c.event!=='corner')return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='corner' and active=true`,[line.match_id,provider]);
+  return gradeHalfParityFacts(c,facts,{complete:true});
+ }
+ if(c.kind==='half-exact-count'){
+  if(!completedScope||!['corner','card'].includes(c.event))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,card_color
+    from app_match_event_fact
+    where match_id=$1 and provider=$2 and kind=$3 and active=true`,
+    [line.match_id,provider,c.event]);
+  return gradeHalfExactFacts(c,facts,{complete:true,
+    cardColorsVerified:data.card_colors_verified===true});
+ }
+ if(c.kind==='half-total'){
+  if(!completedScope||!['corner','card'].includes(c.event))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,card_color
+    from app_match_event_fact
+    where match_id=$1 and provider=$2 and kind=$3 and active=true`,
+    [line.match_id,provider,c.event]);
+  return gradeHalfTotalFacts(c,facts,{complete:true,
+    cardColorsVerified:data.card_colors_verified===true});
+ }
+ if(['half-first-event','half-last-event','half-race','half-next-event'].includes(c.kind)){
+  if(!completedScope||!['goal','corner','card'].includes(c.event))return null;
+  const events=(await execute(`select minute,seconds,team,phase
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind=$3 and active=true`,[line.match_id,provider,c.event])).rows;
+  // Historical 1H first-corner contracts preserve their existing
+  // proven three-way "None" settlement semantics.
+  if(c.kind==='half-first-event'&&c.event==='corner'&&c.half===1&&
+     c.noneOffered===undefined)
+    return gradeFirstHalfCornerFacts(c,events,{complete:true});
+  return gradeHalfEventFacts(c,events,{complete:true});
+ }
+ const scopeEnded=full||(Number.isFinite(c.to)&&through>Number(c.to));
+ const count=Number(c.cardColor?(c.side==='home'?data.color_home:c.side==='away'?data.color_away:data.color_total):
+   (c.side==='home'?data.home:c.side==='away'?data.away:data.total));
+ const expected=Number(c.target??c.threshold);
+ const decision=truth=>truth?'WON':'LOST';
+ if(c.kind==='window'){
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  // A proven event decides YES immediately and NO as lost; a verified
+  // absence cannot win until the full quoted time window is complete.
+  const closesAt=c.startExclusive===true?Number(c.to):Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||typeof c.choice!=='boolean')return null;
+  // A rolling exact-second market cannot be judged from minute-only boundary
+  // incidents. Hold for the provider's precise timestamp.
+  if(c.startExclusive===true&&data.rolling_boundary_uncertain===true)return null;
+  const num=Number(c.cardColor?data.color_window_count:data.window_count);
+  if(num>0)return decision(c.choice);
+  if(c.normalTimeOnly===true&&c.to>=90&&data.phase_ambiguous===true)return null;
+  return normalFull||through>=closesAt?decision(!c.choice):null;
+ }
+ if(c.kind==='interval-result'){
+  if(!Number.isSafeInteger(c.toExclusiveSeconds)||(!normalFull&&through*60<c.toExclusiveSeconds)||
+     c.to>=90&&data.phase_ambiguous===true)return null;
+  const h=Number(data.window_home),a=Number(data.window_away);
+  return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='window-parity'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||c.event!=='corner'||!['odd','even'].includes(c.choice)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(!normalFull&&through<closesAt)return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const found=Number(data.window_count);
+  if(!Number.isSafeInteger(found)||found<0)return null;
+  return (found%2===1?'odd':'even')===c.choice?'WON':'LOST';
+ }
+ if(c.kind==='window-first-event'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(c.event!=='corner'||!Number.isFinite(closesAt)||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from||
+     !['home','away','none'].includes(c.side))return null;
+  if(data.window_first_team!=null){
+   if(Number(data.window_first_same_time)>1)return null;
+   return c.side==='none'?'LOST':data.window_first_team===c.side?'WON':'LOST';
+  }
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  if(normalFull||through>=closesAt)return c.side==='none'?'WON':'LOST';
+  return null;
+ }
+ if(c.kind==='interval-handicap'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||c.event!=='corner'||
+     !['home','away','none'].includes(c.side)||!Number.isFinite(Number(c.handicap)))return null;
+  const h=Number(data.window_home),a=Number(data.window_away),handicap=Number(c.handicap);
+  if(!Number.isSafeInteger(h)||h<0||!Number.isSafeInteger(a)||a<0||
+     !Number.isSafeInteger(handicap*2))return null;
+  const signed=h+handicap-a;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  if(c.side==='none')return signed===0?'WON':'LOST';
+  const delta=c.side==='away'?a+handicap-h:signed;
+  if(c.threeWay)return delta>0?'WON':'LOST';
+  if(delta===0)return 'VOID';
+  return delta>0?'WON':'LOST';
+ }
+ if(c.kind==='interval-leader'){
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt)||(!normalFull&&through<closesAt)||
+     !['home','away','none'].includes(c.side))return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const h=Number(data.window_home),a=Number(data.window_away);
+  return decision((h>a?'home':a>h?'away':'none')===c.side);
+ }
+ if(c.kind==='window-total'){
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  const closesAt=Math.floor(Number(c.to))+1;
+  if(!Number.isFinite(closesAt))return null;
+  if(c.to>=90&&data.phase_ambiguous===true)return null;
+  const found=Number(c.cardColor?data.color_window_count:data.window_count);
+  const closed=normalFull||through>=closesAt;
+  if(c.choice==='over'||c.choice==='under'){
+   if(!Number.isFinite(c.threshold)||!Number.isInteger(c.threshold*2))return null;
+   // Once the accepted-event count crosses the line it can only increase.
+   // Over is already WON; Under is already LOST.
+   if(found>c.threshold)return c.choice==='over'?'WON':'LOST';
+   if(!closed)return null;
+   if(found===c.threshold&&Number.isInteger(c.threshold))return 'VOID';
+   return c.choice==='over'?'LOST':'WON';
+  }
+  if(c.choice==='exact'&&Number.isInteger(c.target)){
+   if(found>c.target)return 'LOST';
+   return closed?decision(found===c.target):null;
+  }
+  if(c.choice==='atLeast'&&Number.isInteger(c.target)){
+   if(found>=c.target)return 'WON';
+   return closed?'LOST':null;
+  }
+  return null;
+ }
+ if(c.kind==='lead-up'){
+  const base=c.baseline;
+  if(c.event!=='goal'||!Number.isInteger(c.target)||c.target<1||c.target>3||
+     !base||!Number.isSafeInteger(base.home)||base.home<0||
+     !Number.isSafeInteger(base.away)||base.away<0||
+     !['home','away','draw'].includes(c.side))return null;
+  const normalHome=Number(data.normal_home),normalAway=Number(data.normal_away);
+  if(!Number.isSafeInteger(normalHome)||!Number.isSafeInteger(normalAway)||
+     normalHome<base.home||normalAway<base.away)return null;
+  if(c.side==='draw')return normalFull&&data.phase_ambiguous!==true?
+   decision(normalHome===normalAway):null;
+  const afterHome=normalHome-base.home,afterAway=normalAway-base.away;
+  const currentLead=c.side==='home'?afterHome-afterAway:afterAway-afterHome;
+  if(currentLead>=c.target)return 'WON';
+  const maximum=Number(c.side==='home'?data.max_home_lead_since_entry:data.max_away_lead_since_entry);
+  if(Number.isFinite(maximum)&&maximum>=c.target){
+   if(data.ambiguous_order_since_entry===true)return null;
+   return 'WON';
+  }
+  if(!normalFull||data.phase_ambiguous===true||data.ambiguous_order_since_entry===true)return null;
+  return 'LOST';
+ }
+ if(c.kind==='team-nth-time'){
+  if(c.event!=='goal'||!['home','away'].includes(c.side)||
+     !Number.isInteger(c.target)||c.target<1||
+     !Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from<0||c.to<c.from)return null;
+  if(data.team_nth_minute!=null){
+   const minute=Number(data.team_nth_minute);
+   if(!Number.isInteger(minute)||minute<0||minute>130)return null;
+   return decision(minute>=c.from&&minute<=c.to);
+  }
+  // Once the requested team's event window is completely covered, the
+  // absence of that team's next goal is a loss even if the match continues.
+  if(normalFull||through>=c.to){
+   if(c.to>=90&&data.phase_ambiguous===true)return null;
+   return 'LOST';
+  }
+  return null;
+ }
+ if(c.kind==='nth-time'){
+  if(!Number.isInteger(c.target)||c.target<1)return null;
+  const isPrematch = (line?.accepted_contract?.acceptedLiveSnapshot == null && c.entryBaseline == null && line?.accepted_contract != null);
+  if(isPrematch && !normalFull) return null;
+  if(data.nth_team!=null){
+   if(Number(data.nth_same_time)>1)return null;
+   // A fixed "Who scores goal N in minutes A-B" three-way quote uses
+   // Neither when goal N is outside THAT window. General goal-N time
+   // markets without a window still mean "no Nth goal before FT".
+   if(c.choice==='none'&&Number.isInteger(c.from)&&Number.isInteger(c.to))
+    return decision(!(Number(data.nth_minute)>=c.from&&Number(data.nth_minute)<=c.to));
+   if(c.choice==='none')return 'LOST';
+   if(!Number.isInteger(c.from)||!Number.isInteger(c.to))return null;
+   const inside=Number(data.nth_minute)>=c.from&&Number(data.nth_minute)<=c.to;
+   if(c.choice==='team-window')
+     return ['home','away'].includes(c.side)?decision(inside&&data.nth_team===c.side):null;
+   if(c.choice!=='range')return null;
+   return decision(inside);
+  }
+  // No positive evidence yet — wait for coverage window to elapse before
+  // declaring LOST (goal N did not happen within range).
+  const scopeClosed=normalFull||(Number.isInteger(c.to)&&through>=c.to);
+  if(!scopeClosed||c.to>=90&&data.phase_ambiguous===true)return null;
+  return c.choice==='none'?'WON':'LOST';
+ }
+ if(c.kind==='last-event'){
+  if(!normalFull||data.phase_ambiguous===true||!['home','away','none'].includes(c.side))return null;
+  const lastTeam=c.normalTimeOnly===true?data.normal_last_team:data.last_team;
+  const lastSameTime=c.normalTimeOnly===true?data.normal_last_same_time:data.last_same_time;
+  if(lastTeam!=null){
+   if(Number(lastSameTime)>1)return null;
+   return decision(lastTeam===c.side);
+  }
+  return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
+ }
+ if(c.kind==='sequence'){
+  if(data.nth_team!=null){
+   if(Number(data.nth_same_time)>1)return null;
+   return decision(data.nth_team===c.side);
+  }
+  if(!normalFull||data.phase_ambiguous===true)return null;
+  // A Next Goal selection is not refundable merely because no further goal
+  // was scored. Home/Away lose at confirmed FT; the explicit No Goal outcome
+  // wins only when that outcome was actually offered and accepted. Corner/card
+  // sequence markets retain their provider no-event VOID rule unless Neither
+  // was explicitly quoted.
+  if(c.event==='goal')return c.noneOffered===true&&c.side==='none'?'WON':'LOST';
+  return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
+ }
+ if(c.kind==='race'){
+  if(!Number.isInteger(c.target)||c.target<1||
+     !['home','away','none'].includes(c.side))return null;
+  const h=data.race_home_time==null?null:Number(data.race_home_time);
+  const a=data.race_away_time==null?null:Number(data.race_away_time);
+  // The quoted third selection is a real outcome, not a refundable push:
+  // neither side reached X => None wins after confirmed FT completeness.
+  // A reached threshold proves None lost without knowing which side was first.
+  if(c.side==='none'){
+   if(h!==null||a!==null)return 'LOST';
+   return normalFull&&data.phase_ambiguous!==true&&c.noneOffered===true?'WON':null;
+  }
+  if(h===null&&a===null)return normalFull&&data.phase_ambiguous!==true?(c.noneOffered===true?'LOST':'VOID'):null;
+  // Simultaneous or minute-only indistinguishable milestones require review.
+  if(h!==null&&a!==null&&h===a)return null;
+  return decision(c.side===(h!==null&&(a===null||h<a)?'home':'away'));
+ }
+ if(c.kind==='player-goal-special'){
+  // Proven positive 2+/3+ and already-exceeded totals can settle before FT
+  // from reconfirmed primary scorer facts. An UNDER/no/exact that still
+  // depends on future events stays PENDING until the relevant scope ends.
+  if(c.event!=='goal'||(!full&&provider!=='zizobet'))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,phase,player_id,
+    player_name,aiscore_player_id,aiscore_player_name,aiscore_verified,
+    fotmob_player_name,fotmob_verified,supplemental_player_name,
+    supplemental_verified,own_goal
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='goal' and active=true`,[line.match_id,provider]);
+  return gradePlayerGoalSpecial(c,facts,{complete:full});
+ }
+ if(c.kind==='player-ordinal-goal'){
+  // FIRST scorer becomes irreversible when the verified first eligible
+  // scorer is known. LAST scorer and "none won" still require FT.
+  if(c.event!=='goal'||(!full&&(provider!=='zizobet'||c.position!=='first')))return null;
+  const {rows:facts}=await execute(`select minute,seconds,team,player_id,
+    player_name,aiscore_player_id,aiscore_player_name,aiscore_verified,
+    fotmob_player_name,fotmob_verified,supplemental_player_name,
+    supplemental_verified,own_goal
+    from app_match_event_fact where match_id=$1 and provider=$2
+      and kind='goal' and active=true`,[line.match_id,provider]);
+  const result=gradePlayerOrdinalScorerFacts(c,facts,{complete:true});
+  if(!full)return c.choice==='none'?(result==='LOST'?'LOST':null):
+    result==='WON'?'WON':null;
+  return result;
+ }
+ if(c.kind==='player-card'){
+  if(typeof c.choice!=='boolean'||(!c.playerName&&!c.playerId))return null;
+  if(c.cardColor&&data.card_colors_verified!==true)return null;
+  const person=v=>{
+   const raw=String(v??'').trim();
+   const pieces=raw.includes(',')?raw.split(',').map(x=>x.trim()).reverse():[raw];
+   return pieces.join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+     .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  };
+  const expected=person(c.playerName);
+  const {rows:actors}=await execute(
+    "select player_id,player_name,card_color,supplemental_player_name,supplemental_verified from app_match_event_fact "+
+    "where match_id=$1 and provider=$2 and kind='card' and active=true",
+    [line.match_id,provider]);
+  const booked=actors.some(actor=>
+    (!c.cardColor||actor.card_color===c.cardColor)&&
+    (c.playerId!=null&&actor.player_id!=null?
+      String(c.playerId)===String(actor.player_id):
+      !!expected&&(person(actor.player_name)===expected||
+       actor.supplemental_verified===true&&person(actor.supplemental_player_name)===expected)));
+  if(booked)return c.choice?'WON':'LOST';
+  // Absent bookings do not prove that the named player entered the pitch.
+  // The non-participation/void rule still needs verified lineup facts.
+  return null;
+ }
+ if(c.kind==='player-goal'){
+  if((!c.playerName&&!c.playerId)||typeof c.choice!=='boolean')return null;
+  // A verified scorer proves YES/NO immediately; absence does not prove
+  // participation, an own goal, or a losing player proposition.
+  if(Number(data.player_goals)>0)return c.choice?'WON':'LOST';
+  // A missing scorer name does not prove a player played or failed to score.
+  // Require verified player participation before a negative settlement.
+  return null;
+ }
+ if(c.kind==='team-total-goals'){
+  if(!Number.isFinite(c.threshold)||!['over','under'].includes(c.choice))return null;
+  if(count>c.threshold)return c.choice==='over'?'WON':'LOST';
+  if(!full)return null;
+  if(count===c.threshold&&Number.isInteger(c.threshold))return 'VOID';
+  return c.choice==='under'?'WON':'LOST';
+ }
+ if(c.kind==='over'||c.kind==='under'){
+  if(!Number.isFinite(expected))return null;
+  if(count>expected)return c.kind==='over'?'WON':'LOST';
+  if(!full)return null;
+  if(count===expected&&Number.isInteger(expected))return 'VOID';
+  return c.kind==='under'?'WON':'LOST';
+ }
+ if(c.kind==='atLeast'){
+  if(!Number.isInteger(c.target))return null;
+  if(count>=c.target)return 'WON';
+  return full?'LOST':null;
+ }
+ if(c.kind==='exact'){
+  if(!Number.isInteger(c.target))return null;
+  if(count>c.target)return 'LOST';
+  return full?decision(count===c.target):null;
+ }
+ if(c.kind==='range'&&Number.isFinite(c.min)&&Number.isFinite(c.max)){
+  if(count>c.max)return 'LOST';
+  return full?decision(count>=c.min&&count<=c.max):null;
+ }
+ return null;
+}
+
+/** Keep historical incidents in their own provider rows. A verified primary
+ * decision wins; a complete historical FT may fill a genuinely missing
+ * primary timeline. Conflicting historical verdicts are never paid.
+ */
+export async function gradeStoredEventContract(line,result,{execute}={}){
+ if(line?.live_contract?.kind==='half-combo')
+  return gradeHalfCombination(line.live_contract,result);
+ if(line?.live_contract?.kind==='period-goal-total')
+  return gradePeriodGoalTotal(line.live_contract,result);
+ if(line?.live_contract?.kind==='score-handicap'&&
+    !(line.live_contract.event==='corner'&&line.live_contract.half))
+  return gradeHandicapContract(line.live_contract,result);
+ const primary=await gradeSingleEventProvider(line,result,{execute,provider:'zizobet'});
+ if(primary!==null)return primary;
+ // Zizobet is the only settlement authority. Enrichment providers may add
+ // display metadata, but cannot decide or confirm a financial result.
+ return null;
+}
+
        or (nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90)) as normal_time,
      case
        when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
