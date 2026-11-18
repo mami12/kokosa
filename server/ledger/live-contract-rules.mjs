@@ -704,7 +704,7 @@ export function gradeLiveContract(contract,evidence={}, {ended=false,scopeEnded=
   if(contract.kind==='sequence'){
    const goal=relevant[contract.target-1];
    if(goal)return contract.side===goal.team?'WON':contract.side==='none'?'LOST':'LOST';
-   return ended?(contract.noneOffered===true?(contract.side==='none'?'WON':'LOST'):'VOID'):null;
+   return ended?(contract.noneOffered===true&&contract.side==='none'?'WON':'LOST'):null;
   }
   const teamCounts={home:0,away:0};let winner=null;
   for(const e of relevant){if(!['home','away'].includes(e.team))return null;teamCounts[e.team]++;
