@@ -109,10 +109,16 @@ assert.equal(gradeLine(choice('Away Team Total Goals','Over',{line:'0.5'}),blowo
 
 const denmarkNorway={...score,home_team:'Denmark',away_team:'Norway',
  home_score:2,away_score:3,half_home_score:2,half_away_score:1};
-for(const market of ['Full Time 1UP','Full Time 2UP','Full Time 3UP','3way']){
- assert.equal(gradeLine(choice(market,'2'),denmarkNorway),'WON',market+' away selection');
- assert.equal(gradeLine(choice(market,'X'),denmarkNorway),'LOST',market+' draw selection');
- assert.equal(gradeLine(choice(market,'1'),denmarkNorway),'LOST',market+' home selection');
+for(const market of ['Full Time 1UP','Full Time 2UP','Full Time 3UP']){
+ assert.equal(gradeLine(choice(market,'2'),denmarkNorway),null,
+  market+' must use its frozen early-lead contract, never ordinary FT 1X2');
+ assert.equal(gradeLine(choice(market,'X'),denmarkNorway),null,
+  market+' draw requires the frozen native XUP contract');
+}
+for(const outcome of ['1','X','2']){
+ const expected=outcome==='2'?'WON':'LOST';
+ assert.equal(gradeLine(choice('3way',outcome),denmarkNorway),expected,
+  'Bare 3way remains ordinary FT 1X2');
 }
 
 
