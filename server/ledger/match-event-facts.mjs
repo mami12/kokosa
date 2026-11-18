@@ -710,7 +710,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   }
   // Once the requested team's event window is completely covered, the
   // absence of that team's next goal is a loss even if the match continues.
-  if(through>c.to||full)return 'LOST';
+  if(through>=c.to||full)return 'LOST';
   return null;
  }
  if(c.kind==='nth-time'){
