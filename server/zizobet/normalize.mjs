@@ -87,7 +87,7 @@ export function resolveMarketTitle(raw,q,{intervalWidth}={}){
    if(value==null||!Number.isFinite(Number(value))||Number(value)<0||!Number.isInteger(Number(value)*2))return null;
    return 'Total '+value+' '+teamFirst[1]+' team '+event+band;
   }
-  const teamTotal=descriptor.match(/^total(?:\s+(\d+(?:[.,]\d+)?))?\s+(?:(home|away)team\s+)?(corners?|cards?|bookings?|goals?)(?:\s+(home|away)team)?$/);
+  const teamTotal=descriptor.match(/^total(?:\s+(\d+(?:[.,]\d+)?))?\s+(?:(home|away)team\s+)?(corners?|cards?|bookings?|goals?|offsides?)(?:\s+(home|away)team)?$/);
   if(teamTotal){
    const value=teamTotal[1]??q.h;
    if(value==null||!Number.isFinite(Number(value))||Number(value)<0||!Number.isInteger(Number(value)*2))return null;
