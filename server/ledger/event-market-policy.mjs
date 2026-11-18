@@ -23,7 +23,7 @@ export function eventMarketRequirement(market = {},teams={}) {
       /\bgoals?\s+\(?\d{1,2}\s*[-–]\s*\d{1,2}\)?\s*$/.test(name)) return 'TIMED_EVENT_DATA_REQUIRED';
   if (/^who (?:scores (?:goal \d+|most goals)|takes most corners|receives most cards)\b/.test(name))return 'EVENT_SEQUENCE_DATA_REQUIRED';
   if (/\b(?:first|last|next|1st|2nd|3rd|4th|5th|second|third|fourth|fifth)\s+(?:(?:team|player)\s+to\s+(?:score|receive)|goals?|corners?|cards?|bookings?|scorers?|fouls?)\b/.test(name) ||
-      /\b(?:race to|early payout|own goals?|full time (?:[123]up|first valueup))\b/.test(name)) return 'EVENT_SEQUENCE_DATA_REQUIRED';
+      /\b(?:race to|early payout|own goals?)\b/.test(name)) return 'EVENT_SEQUENCE_DATA_REQUIRED';
   // An explicit three-way GOALS total has an exact-count outcome, not an
   // unnamed player/team total. Its final result is directly gradeable from
   // the verified match score, without a separate player event timeline.
