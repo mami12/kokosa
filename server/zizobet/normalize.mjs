@@ -1,4 +1,5 @@
 import {isExcludedOfferMarket} from '../market-policy.mjs';
+import {providerResultPair} from '../match-statistics.mjs';
 import {competitionDecision,isSyntheticFootballMatch} from '../football-competitions.mjs';
 export const OFFSET=8_000_000_000_000;
 export const zId=id=>{if(!Number.isSafeInteger(Number(id))||Number(id)<=0||Number(id)>100000000000)throw Error('Invalid Zizobet ID');return OFFSET+Number(id);};
@@ -184,7 +185,22 @@ export function infoOf(row,game,meta){
  const clock=text(game.MatchTimeExtended).match(/^(\d+):(\d{2})$/),minute=Number(game.MatchTime);
  if(clock)info.matchTimeMs=(Number(clock[1])*60+Number(clock[2]))*1000;else if(game.MatchTime!=null&&text(game.MatchTime)!==''&&Number.isFinite(minute))info.matchTimeMs=minute*60000;
  const stats={home:{},away:{}};
- for(const [name,field]of[['Corners','corners'],['YellowCards','yellow'],['RedCards','red'],['Fouls','fouls'],['Offsides','offsides'],['Offside','offsides'],['Shots','shots'],['ShotsOnTarget','shotsOnTarget']])for(const [i,side]of[[1,'home'],[2,'away']]){const v=game[name+'Team'+i];if(v!=null&&Number.isInteger(Number(v))&&Number(v)>=0)stats[side][field]=Number(v);}
+ const runningCorners=providerResultPair(game,'Corners')??{
+  home:Number.isSafeInteger(Number(game.CornersTeam1))&&game.CornersTeam1!=null?Number(game.CornersTeam1):null,
+  away:Number.isSafeInteger(Number(game.CornersTeam2))&&game.CornersTeam2!=null?Number(game.CornersTeam2):null
+ };
+ const htCorners=providerResultPair(game,'RESULT_CORNERHT');
+ const ftCorners=providerResultPair(game,'RESULT_CORNERFT');
+ const isFinished=Number(game.EventStatus??game.MatchStatusID)===40;
+ const currentCorners=isFinished?(ftCorners??runningCorners):runningCorners;
+ for(const [name,field]of[['YellowCards','yellow'],['RedCards','red'],['Fouls','fouls'],['Offsides','offsides'],['Offside','offsides'],['Shots','shots'],['ShotsOnTarget','shotsOnTarget']])for(const [i,side]of[[1,'home'],[2,'away']]){const v=game[name+'Team'+i];if(v!=null&&Number.isInteger(Number(v))&&Number(v)>=0)stats[side][field]=Number(v);}
+ for(const [side,key]of[['home','Team1'],['away','Team2']]){
+  if(currentCorners?.[side]!=null)stats[side].corners=currentCorners[side];
+  if(htCorners)stats[side].cornersHT=htCorners[side];
+  if(ftCorners)stats[side].cornersFT=ftCorners[side];
+  if(htCorners&&ftCorners&&ftCorners[side]>=htCorners[side])
+   stats[side].corners2H=ftCorners[side]-htCorners[side];
+ }
  if(Object.keys(stats.home).length||Object.keys(stats.away).length)info.stats=stats;
  return info;
 }
