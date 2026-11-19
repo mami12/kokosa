@@ -383,6 +383,21 @@ export function parseIntervalCount(line) {
  */
 export function parseClockWindowTotal(line){
  const name=norm(line.market_name??line.marketName??line.name);
+ const firstTen=name.match(/^goal in first (\d{1,2}) min(?:ute)?s?\s*\(?(\\d{1,3}):([0-5]\d)\s*[-–]\s*(\d{1,3}):([0-5]\d)\)?\s*\((\d+(?:[.,]\d+)?)\)$/);
+ if(firstTen){
+  const width=Number(firstTen[1]),from=Number(firstTen[2]),fromSecond=Number(firstTen[3]),
+   end=Number(firstTen[4]),endSecond=Number(firstTen[5]),titleLine=number(firstTen[6]);
+  const label=norm(line.outcome_name??line.outcomeName??line.outcome_key??line.outcomeKey);
+  const over=label.match(/^over(?:\s+(\d+(?:[.,]\d+)?))?$/);
+  const under=label.match(/^under(?:\s+(\d+(?:[.,]\d+)?))?$/);
+  const raw=line.line??line.specifier;
+  const quoted=number((over??under)?.[1]??raw??titleLine);
+  if((!over&&!under)||from!==0||fromSecond!==0||endSecond!==59||
+     end-from+1!==width||width<1||width>44||quoted===null||
+     titleLine!==quoted||quoted<0||quoted>300||!Number.isInteger(quoted*2))return null;
+  return {version:1,kind:'window-total',event:'goal',from,to:end,
+   choice:over?'over':'under',threshold:quoted};
+ }
  const m=name.match(/^(\d{1,3}):([0-5]\d)\s*[-–]\s*(\d{1,3}):([0-5]\d)\s*min\.?\s*[-–]\s*(?:total\s+)?(?:(home|away)\s+team\s+)?(goals?|corners?|cards?|fouls?|offsides?)(?:\s+(home|away)\s+team)?\s*(?:\((\d+(?:[.,]\d+)?)\))?$/);
  if(!m||m[2]!=='00'||m[4]!=='59'||(m[5]&&m[7]))return null;
  const from=Number(m[1]),to=Number(m[3]);
