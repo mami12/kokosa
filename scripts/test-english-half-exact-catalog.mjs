@@ -68,6 +68,12 @@ assert.equal(gradeHalfExactFacts(corner('1st half - Away team exact cards','2'),
  cards,{complete:true}),'WON');
 assert.equal(gradeHalfExactFacts(corner('2nd half - Away team exact cards','1'),
  cards,{complete:true}),'WON');
+
+assert.equal(gradeHalfExactFacts(corner('2nd half - Corner range','1-1'),[
+ {minute:60,team:'away',phase:null}
+],{complete:true}),'WON',
+ 'An unlabelled minute-60 corner is a second-half exact fact');
+
 assert.equal(parseHalfExactMarket(quote('1st half - Away team exact corners','2',2)),null,
  'Do not substitute the second-half facts for a first-half quote');
 for(const title of ['1st Half - Total Booking Points',
