@@ -37,7 +37,7 @@ import { isResultTotalMarket, isTotalBttsMarket, isFirstHalfResultBtts, parseRes
 import { buildSystemColumns, splitSystemStake, moneyCents, frozenSelectionPrice, systemColumnPayout } from './system-columns.mjs';
 import { aggregateSystemTicket, parseSystemTicketId, systemTicketId, SYSTEM_STATUS_SQL } from './system-ticket-view.mjs';
 import { isImpossibleLiveCombination } from './combo-feasibility.mjs';
-import { assertDistinctSelectionMarkets } from './selection-market.mjs';
+import { assertDistinctSelectionMarkets, assertDistinctSelectionMatches } from './selection-market.mjs';
 import {quoteValidUntil,quoteExpired} from './quote-validity.mjs';
 import {isSyntheticFootballMatch} from '../football-competitions.mjs';
 import {frozenLiveContract} from './live-contract-context.mjs';
@@ -1018,11 +1018,14 @@ export async function placeBet({ user, stake, selections = [], ticketType = null
   }
 
   const type = ticketTypeForSelectionCount(ticketType, selections.length);
-  assertDistinctSelectionMarkets(selections);
+  // Admins retain the existing market-level slip rules. Every non-admin account
+  // is limited to one selection per fixture, regardless of the market type.
+  const assertSlipRule = user?.role === 'ADMIN' ? assertDistinctSelectionMarkets : assertDistinctSelectionMatches;
+  assertSlipRule(selections);
   // Independent odds checks can be awaited together instead of serially.
   const lines = (await Promise.all(selections.map(resolve))).map(line => ({ ...line, price: frozenSelectionPrice(line.price) }));
 
-  assertDistinctSelectionMarkets(lines);
+  assertSlipRule(lines);
   const totalOdds = totalOddsForSelections(lines);
   if (!Number.isFinite(totalOdds) || totalOdds > 9999999999.9999) throw badRequest('Koeficienti i biletës është shumë i madh.');
   const payout = systemColumnPayout(amount, lines.map(line => line.price));
@@ -1307,10 +1310,12 @@ export async function bookTicket({ stake, selections = [], ticketType = null, sy
   if (!Array.isArray(selections) || selections.length < 1 || selections.length > 20) throw badRequest('Zgjidh 1–20 kuota për kolonë.');
 
   const type = ticketTypeForSelectionCount(ticketType, selections.length);
-  assertDistinctSelectionMarkets(selections);
+  // Booking is public and has no authenticated admin role, so it follows the
+  // normal-player one-selection-per-match rule.
+  assertDistinctSelectionMatches(selections);
   const lines = [];
   for (const selection of selections) lines.push(await resolveSelection(selection));
-  assertDistinctSelectionMarkets(lines);
+  assertDistinctSelectionMatches(lines);
 
   const totalOdds = totalOddsForSelections(lines);
   const payout = systemColumnPayout(amount, lines.map(line => line.price));
