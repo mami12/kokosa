@@ -167,6 +167,8 @@ export interface TicketLine {
   matchName: string;
   /** Match/market score or counter at placement time, e.g. [1:0] or [4:0]. */
   scoreAtPlacement?: string | null;
+  /** The statistic represented by the placement snapshot (corners, cards, fouls or goals). */
+  scoreAtPlacementLabel?: string | null;
   oddsAtPlacement: number;
   /** Effective coefficient used for payout after a settlement rule adjustment, e.g. DNB draw. */
   settledOdds?: number | null;
