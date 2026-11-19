@@ -4,7 +4,7 @@ import { createContext, useContext, useState, useMemo, useRef,useCallback,useLay
 import { BetSelection } from '../types';
 import { apiClient } from '../api/client';
 import { buildBetslipColumns, MIN_TOTAL_STAKE_CENTS, previewColumnPayouts, splitStakeCents, stakeToCents } from '../utils/betslipColumns';
-import { toggleMarketSelection } from '../../../server/ledger/selection-market.mjs';
+import { toggleMarketSelection, toggleMatchSelection } from '../../../server/ledger/selection-market.mjs';
 import {createClientRequestId} from '../utils/clientRequestId.mjs';
 
 interface BetslipContextType {
@@ -46,8 +46,10 @@ export const BetslipProvider = ({ children }: { children: React.ReactNode }) => 
   const columnPreviews = useMemo(() => previewColumnPayouts(columns, columnStakes), [columns, columnStakes]);
 
   const addSelection = useCallback((s: BetSelection) => {
-    setSelections(previous => toggleMarketSelection(previous, s));
-  },[]);
+    setSelections(previous => user?.role === 'ADMIN'
+      ? toggleMarketSelection(previous, s)
+      : toggleMatchSelection(previous, s));
+  },[user?.role]);
 
   const removeSelection = useCallback((outcomeId: string) => {
     setSelections(previous => previous.filter(p => p.outcomeId !== outcomeId));
