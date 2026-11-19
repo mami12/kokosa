@@ -36,7 +36,7 @@ assert.equal(cornerResult.market_name,'Who takes most corners in minutes 21-30 (
 assert.equal(liveContract(cornerResult)?.kind,'interval-leader');
 const firstCorner=nativeZizobetContractRow(offer(9018,
  '10 minutes - 1st corner from first value:00 - second value min',
- {p1:21,p2:30}));
+ {p1:21,p2:30},'','1'));
 assert.equal(liveContract(firstCorner)?.kind,'window-first-event');
 const intervalHandicap=nativeZizobetContractRow(offer(9019,
  '10 minutes - Corner handicap from first value:00 - second value min',
