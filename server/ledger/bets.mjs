@@ -378,7 +378,7 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
     const scoreGrid=quotedOffers.filter(o=>
       o.market_key===row.market_key&&String(o.line??'')===String(row.line??'')&&
       Number(o.period??0)===Number(row.period??0))
-      .map(o=>String(o.native_outcome_name??o.outcome_name??'').trim().match(/^(\d{1,2})\s*[:\-]\s*(\d{1,2})$/))
+      .map(o=>String(o.native_outcome_name||o.outcome_name||'').trim().match(/^(\d{1,2})\s*[:\-]\s*(\d{1,2})$/))
       .filter(Boolean).map(m=>m[1]+':'+m[2]);
     if(scoreGrid.length&&scoreGrid.length<=500)
       nativeMarketOutcomes=[...new Set(scoreGrid)];
