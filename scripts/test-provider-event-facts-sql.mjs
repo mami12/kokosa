@@ -4,6 +4,9 @@ import {PGlite} from '@electric-sql/pglite';
 import {LEDGER_SQL} from '../server/ledger/schema.mjs';
 import {normalizeLiveFrame} from '../server/ledger/live-observation-store.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
+import {parseHalfTotal,parseParityMarket} from '../server/ledger/live-contract-rules.mjs';
+import {parseHalfExactMarket} from '../server/ledger/half-exact-markets.mjs';
+import {parseCornerComparison} from '../server/ledger/corner-comparisons.mjs';
 import {frozenLiveContract} from '../server/ledger/live-contract-context.mjs';
 
 const frame=(corners,events)=>normalizeLiveFrame({
@@ -50,6 +53,84 @@ try{
  });
  const judge=(kind,rest,final=result)=>gradeStoredEventContract(
   contract(kind,rest),final,{execute:run});
+
+ const officialCorners={
+  source:'ZIZOBET',home_score:1,away_score:0,corners_home:10,corners_away:3,
+  statistics:{cornerPeriods:{
+   source:'ZIZOBET',
+   firstHalf:{home:4,away:2},
+   secondHalf:{home:6,away:1},
+   fullTime:{home:10,away:3}
+  }}
+ };
+ const noTimeline=async()=>{throw new Error('Official HT/FT corners should not require a reconstructed timeline');};
+ const gradeOfficial=live_contract=>gradeStoredEventContract({
+  id:'00000000-0000-4000-8000-000000000004',match_id:matchId,
+  market_name:'Official period corner test',outcome_name:'test',live_contract
+ },officialCorners,{execute:noTimeline});
+ const firstHalfOver=parseHalfTotal({
+  market_name:'1st half - Total corners',outcome_name:'Over',line:'5.5'
+ });
+ const firstHalfUnder=parseHalfTotal({
+  market_name:'1st half - Total corners',outcome_name:'Under',line:'5.5'
+ });
+ const secondHalfOver=parseHalfTotal({
+  market_name:'2nd half - Total corners',outcome_name:'Over',line:'6.5'
+ });
+ const secondHalfAway=parseHalfTotal({
+  market_name:'2nd half - Away team total corners',outcome_name:'Over',line:'0.5'
+ });
+ assert.equal(await gradeOfficial(firstHalfOver),'WON',
+  'HT 4-2 proves six first-half corners, Over 5.5');
+ assert.equal(await gradeOfficial(firstHalfUnder),'LOST');
+ assert.equal(await gradeOfficial(secondHalfOver),'WON',
+  'FT 10-3 minus HT 4-2 proves seven second-half corners');
+ assert.equal(await gradeOfficial(secondHalfAway),'WON',
+  'Second-half away corners are exactly 3-2=1, not the full-time total');
+ const exactSix=parseHalfExactMarket({
+  market_name:'1st half - Exact corners',outcome_name:'6'
+ });
+ const exactFive=parseHalfExactMarket({
+  market_name:'1st half - Exact corners',outcome_name:'5'
+ });
+ assert.equal(await gradeOfficial(exactSix),'WON');
+ assert.equal(await gradeOfficial(exactFive),'LOST');
+ const halfOdd=parseParityMarket({
+  market_name:'2nd half - Corners odd/even',outcome_name:'Odd'
+ });
+ assert.equal(halfOdd?.kind,'half-parity');
+ assert.equal(await gradeOfficial(halfOdd),'WON',
+  'Seven second-half corners makes the second-half parity Odd');
+ const halfResult=parseCornerComparison({
+  market_name:'1st half corners result',outcome_name:'1'
+ });
+ assert.equal(await gradeOfficial(halfResult),'WON');
+ const mostHalf=parseCornerComparison({
+  market_name:'Half with most corners',outcome_name:'2'
+ });
+ assert.equal(await gradeOfficial(mostHalf),'WON',
+  'Second half total 7 exceeds first half total 6');
+ const winsBoth=parseCornerComparison({
+  market_name:'Most corners in both halves',outcome_name:'1'
+ });
+ assert.equal(await gradeOfficial(winsBoth),'WON',
+  'Chelsea won the corner count in both halves');
+ const halfHandicap={version:1,kind:'score-handicap',event:'corner',half:2,
+  side:'home',handicap:-4.5,threeWay:false,rest:false};
+ assert.equal(await gradeOfficial(halfHandicap),'WON',
+  '2H corner handicap uses the verified 6-1 interval totals');
+ const inconsistent={...officialCorners,statistics:{cornerPeriods:{
+  source:'ZIZOBET',firstHalf:{home:4,away:2},secondHalf:{home:5,away:1},
+  fullTime:{home:10,away:3}
+ }}};
+ assert.equal(await gradeStoredEventContract({match_id:matchId,live_contract:firstHalfOver},
+  inconsistent,{execute:noTimeline}),null,
+  'Inconsistent HT plus 2H counts must stay pending');
+ const wrongSource={...officialCorners,source:'ADMIN'};
+ assert.equal(await gradeStoredEventContract({match_id:matchId,live_contract:firstHalfOver},
+  wrongSource,{execute:run}),null,
+  'Only official Zizobet corner period facts may settle automatically');
+
  assert.equal(await judge('race',{target:2,side:'home'}),'WON');
  assert.equal(await judge('race',{target:2,side:'away'}),'LOST');
  assert.equal(await judge('race',{target:4,side:'home'}),'VOID',
