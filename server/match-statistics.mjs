@@ -14,7 +14,7 @@ const wholePair=value=>{
   return home===null||away===null?null:{home,away};
  }
  if(typeof value==='string'){
-  const match=value.trim().match(/^(\\d+)\\s*(?::|\\/|\\||,)\\s*(\\d+)$/);
+  const match=value.trim().match(/^(\d+)\s*(?::|\/|\||,)\s*(\d+)$/);
   if(match)return {home:Number(match[1]),away:Number(match[2])};
  }
  if(value&&typeof value==='object'){
