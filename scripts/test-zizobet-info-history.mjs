@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {providerTimeline} from '../server/live-event-timeline.mjs';
 import {normalizeLiveFrame} from '../server/ledger/live-observation-store.mjs';
-import {oddsOf,resolveMarketTitle} from '../server/zizobet/normalize.mjs';
+import {infoOf,oddsOf,resolveMarketTitle} from '../server/zizobet/normalize.mjs';
+import {providerResultPair,teamStatisticsFromRow} from '../server/match-statistics.mjs';
 
 const raw=Array.from({length:12},(_,i)=>({
  id:'c'+i,type:'corner_kick',team:i%2===0?1:2,gt:i*6+1
@@ -19,6 +20,28 @@ const frame=normalizeLiveFrame({
 assert.equal(frame.events.filter(e=>e.type==='corner').length,12,
  'All first-to-last corners remain in the evidence used for ticket grading');
 assert.equal(frame.coverage.cornerThrough,79,'All twelve corners reconcile to scoreboard');
+
+const cornerGame={EventStatus:40,MatchStatusID:40,Score:'1:0',
+ RESULT_CORNERHT:'4:2',RESULT_CORNERFT:'10:3'};
+assert.deepEqual(providerResultPair(cornerGame,'RESULT_CORNERHT'),{home:4,away:2});
+assert.deepEqual(providerResultPair(cornerGame,'RESULT_CORNERFT'),{home:10,away:3});
+const cornerInfo=infoOf({match_id:8081,service:'LIVE'},cornerGame,{statuses:new Map()});
+assert.deepEqual(cornerInfo.stats.home,{corners:10,cornersHT:4,cornersFT:10,corners2H:6});
+assert.deepEqual(cornerInfo.stats.away,{corners:3,cornersHT:2,cornersFT:3,corners2H:1});
+const cornerTeams=teamStatisticsFromRow({
+ raw:{homeTeam:{id:'home'},awayTeam:{id:'away'}},
+ stats:{home:cornerInfo.stats.home,away:cornerInfo.stats.away}
+});
+assert.equal(cornerTeams.home.cornersHT,4);
+assert.equal(cornerTeams.away.cornersFT,3);
+const officialFinalFrame=normalizeLiveFrame({Match:{
+ ...cornerGame,MatchTimeExtended:'90:00'
+}});
+assert.deepEqual(officialFinalFrame.teams.corner,{home:10,away:3});
+assert.deepEqual(officialFinalFrame.cornerPeriods,{
+ firstHalf:{home:4,away:2},secondHalf:{home:6,away:1},fullTime:{home:10,away:3}
+});
+
 const ui=readFileSync(new URL('../web/src/components/Tracker/PitchTracker.tsx',import.meta.url),'utf8');
 const css=readFileSync(new URL('../web/src/styles/zshop.css',import.meta.url),'utf8');
 assert.doesNotMatch(ui,/\.slice\(0,\s*8\)/,
