@@ -107,15 +107,28 @@ export function finishedResultParameters(row) {
     return yellow === null || red === null ? null : yellow + red;
   };
   const half = verifiedFirstHalf(row.periods_score);
-  const cornerHalf={home:statNum(homeTeam?.cornersHT),away:statNum(awayTeam?.cornersHT)};
+  const cornerHalfHT={home:statNum(homeTeam?.cornersHT),away:statNum(awayTeam?.cornersHT)};
+  const cornerHalf2H={home:statNum(homeTeam?.corners2H),away:statNum(awayTeam?.corners2H)};
   const cornerFull={home:statNum(homeTeam?.cornersFT??homeTeam?.corners),
     away:statNum(awayTeam?.cornersFT??awayTeam?.corners)};
   const validPair=pair=>Number.isSafeInteger(pair.home)&&pair.home>=0&&
     Number.isSafeInteger(pair.away)&&pair.away>=0;
-  const cornerPeriods=validPair(cornerHalf)&&validPair(cornerFull)&&
-    cornerFull.home>=cornerHalf.home&&cornerFull.away>=cornerHalf.away
-    ?{firstHalf:cornerHalf,secondHalf:{home:cornerFull.home-cornerHalf.home,
-       away:cornerFull.away-cornerHalf.away},fullTime:cornerFull,source:'ZIZOBET'}:null;
+  // Zizobet can publish either the first-half or second-half corner split.
+  // When exactly one half is supplied, derive the other only from the same
+  // provider's verified full-time total. If both halves are supplied, require
+  // them to reconcile exactly before exposing period statistics to settlement.
+  let cornerFirst=validPair(cornerHalfHT)?cornerHalfHT:null;
+  let cornerSecond=validPair(cornerHalf2H)?cornerHalf2H:null;
+  if(validPair(cornerFull)){
+    if(!cornerFirst&&cornerSecond&&cornerFull.home>=cornerSecond.home&&cornerFull.away>=cornerSecond.away)
+      cornerFirst={home:cornerFull.home-cornerSecond.home,away:cornerFull.away-cornerSecond.away};
+    if(!cornerSecond&&cornerFirst&&cornerFull.home>=cornerFirst.home&&cornerFull.away>=cornerFirst.away)
+      cornerSecond={home:cornerFull.home-cornerFirst.home,away:cornerFull.away-cornerFirst.away};
+  }
+  const cornerPeriods=validPair(cornerFull)&&validPair(cornerFirst)&&validPair(cornerSecond)&&
+    cornerFirst.home+cornerSecond.home===cornerFull.home&&
+    cornerFirst.away+cornerSecond.away===cornerFull.away
+    ?{firstHalf:cornerFirst,secondHalf:cornerSecond,fullTime:cornerFull,source:'ZIZOBET'}:null;
   const statistics=verifiedFinalStatistics(row);
   if(cornerPeriods)statistics.cornerPeriods=cornerPeriods;
   return [row.match_id, row.home, row.away, Number(row.home_score), Number(row.away_score),
