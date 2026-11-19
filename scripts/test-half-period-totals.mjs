@@ -11,6 +11,12 @@ assert.deepEqual(parseHalfTotal(home),{version:1,kind:'half-total',event:'corner
 assert.equal(liveContract(away)?.side,'away');
 assert.equal(liveContract(bet('1st half - Total corners (3.5)','Over','3.5'))?.side,undefined);
 assert.equal(liveContract(bet('2nd half - Corners Away team (1.5)','Under','1.5',2))?.half,2);
+
+const nativeAwayHalf=liveContract(bet('2nd half - Awayteam total corners (5.5)','Under','5.5',2));
+assert.deepEqual({kind:nativeAwayHalf?.kind,event:nativeAwayHalf?.event,
+ half:nativeAwayHalf?.half,side:nativeAwayHalf?.side,threshold:nativeAwayHalf?.threshold},
+ {kind:'half-total',event:'corner',half:2,side:'away',threshold:5.5});
+
 assert.equal(liveContract(bet('1st half - Yellow cards Home team (1.5)','Over','1.5'))?.cardColor,'yellow');
 for(const [title,half,kind,side,color] of [
  ['1st Half Total Corners',1,'corner',null,null],
