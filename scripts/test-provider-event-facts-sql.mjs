@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
 import {LEDGER_SQL} from '../server/ledger/schema.mjs';
 import {normalizeLiveFrame} from '../server/ledger/live-observation-store.mjs';
-import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
+import {gradeStoredEventContract,persistVerifiedEventFacts} from '../server/ledger/match-event-facts.mjs';
 import {parseHalfTotal,parseParityMarket} from '../server/ledger/live-contract-rules.mjs';
 import {parseHalfExactMarket} from '../server/ledger/half-exact-markets.mjs';
 import {parseCornerComparison} from '../server/ledger/corner-comparisons.mjs';
@@ -143,12 +143,16 @@ try{
  assert.equal(await judge('window-total',{from:20,to:30,choice:'exact',target:1}),'WON');
  assert.equal(await judge('window-total',{from:20,to:30,choice:'atLeast',target:2}),'LOST');
 
- await run(\`insert into app_match_event_fact
-  (match_id,provider,provider_event_id,kind,team,minute,seconds,phase,active)
-  values($1,'zizobet','offside-1','offside','home',22,1325,'2H',true)\`,[matchId]);
- await run(\`insert into app_match_event_coverage
-  (match_id,provider,kind,through_minute,count_home,count_away,complete,observed_at,confirmed_at)
-  values($1,'zizobet','offside',91,1,0,true,$2,$2)\`,[matchId,now]);
+ const offsideFrame={
+  source:'zizobet',ended:true,
+  events:[{id:'offside-1',type:'offside',team:'home',minute:22,seconds:1325,phase:'2H'}],
+  coverage:{offsideThrough:91},
+  teams:{offside:{home:1,away:0}}
+ };
+ assert.equal(await persistVerifiedEventFacts(matchId,offsideFrame,run,now),1,
+  'The primary Zizobet persistence path must store reconciled offside facts');
+ assert.equal(Number((await run("select count(*) as n from app_match_event_fact where match_id=$1 and provider='zizobet' and kind='offside' and active=true",[matchId])).rows[0].n),1);
+ await run("update app_match_event_coverage set confirmed_at=$2 where match_id=$1 and provider='zizobet' and kind='offside'",[matchId,now]);
  const offsideLine={id:'00000000-0000-4000-8000-000000000003',match_id:matchId,
   live_contract:{version:1,kind:'window-total',event:'offside',from:20,to:30,
    choice:'over',threshold:0.5,normalTimeOnly:true}};
