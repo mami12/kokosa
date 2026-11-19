@@ -550,6 +550,17 @@ const plainDnb=name=>/^(?:(?:full[ .-]*time|match|(?:first|1st|second|2nd)\s+hal
  .test(String(name??'').trim());
 const scoreValue=v=>v!=null&&v!==''&&Number.isSafeInteger(Number(v))&&
   Number(v)>=0&&Number(v)<=200?Number(v):null;
+
+const gradeWhichTeamToScore=(line,result)=>{
+ const home=scoreValue(result?.home_score),away=scoreValue(result?.away_score);
+ if(home===null||away===null)return null;
+ const selection=norm(line?.outcome_name??line?.outcome_key??'');
+ if(/^(?:bothteams?|both|12)$/.test(selection))return home>0&&away>0?'WON':'LOST';
+ if(/^(?:only1|home|hometeam|1)$/.test(selection))return home>0&&away===0?'WON':'LOST';
+ if(/^(?:only2|away|awayteam|2)$/.test(selection))return away>0&&home===0?'WON':'LOST';
+ if(/^(?:none|neither|noteam|nogoals?)$/.test(selection))return home===0&&away===0?'WON':'LOST';
+ return null;
+};
 const periodScores=(line,result)=>{
  const period=scorePeriodOf(line);
  if(period===null)return null;
@@ -575,6 +586,8 @@ export function hasRequiredSettlementEvidence(line, result) {
   if(/^full[\s.-]*time[\s:.-]*(?:1up|2up|3up)$/i.test(String(line.market_name??'').trim()))
     return hasRequiredSettlementEvidence({...line,market_name:'Full Time Result',live_contract:null},result);
   if (!result||scoreValue(result.home_score)===null||scoreValue(result.away_score)===null)return false;
+  if(/^which team to score$/i.test(String(line.market_name??'')))
+    return gradeWhichTeamToScore(line,result)!==null;
   if(!Array.isArray(line.builder_legs)&&unverifiedCompositeLine(line,result))return false;
   if(line.live_contract?.kind==='half-combo')
    return gradeHalfCombination(line.live_contract,result)!==null;
@@ -706,6 +719,8 @@ export function gradeLine(line, result) {
     return gradeQualification(line,result);
   if(!Array.isArray(line.builder_legs)&&isPeriodGoalTotal(line))
     return gradePeriodGoalTotal(parsePeriodGoalTotal(line,result),result);
+  if(!Array.isArray(line.builder_legs)&&/^which team to score$/i.test(String(line.market_name??'')))
+    return gradeWhichTeamToScore(line,result);
   if(!Array.isArray(line.builder_legs)&&isScoringPropMarket(line))
     return gradeScoringPropMarket(line,result);
   if(needsEvents(line)&&!Array.isArray(line.builder_legs))return gradeEventLine(line,result)??null;
@@ -790,18 +805,8 @@ export function gradeLine(line, result) {
       if (key === 'no' || key === 'no goal' || /^no|^jo\b|^no\s*goal/i.test(name)) return decide(!bothScored);
       return null;
 
-    case 'WHICH_TEAM_TO_SCORE': {
-      const selection=norm(line.outcome_name??line.outcome_key??'');
-      // norm() removes spaces and punctuation, so compare canonical tokens.
-      if(/^(?:bothteams?|both|12)$/.test(selection))return decide(bothScored);
-      if(/^(?:only1|home|hometeam|1)$/.test(selection))
-        return decide(home>0&&away===0);
-      if(/^(?:only2|away|awayteam|2)$/.test(selection))
-        return decide(away>0&&home===0);
-      if(/^(?:none|neither|noteam|nogoals?)$/.test(selection))
-        return decide(home===0&&away===0);
-      return null;
-    }
+    case 'WHICH_TEAM_TO_SCORE':
+      return gradeWhichTeamToScore(line,result);
 
     case 'TOTAL':
     case 'CORNERS':
