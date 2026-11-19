@@ -944,7 +944,7 @@ export function gradeLine(line, result) {
 
     case 'CLEAN_SHEET': {
       const words=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-        .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+        .toLowerCase().replace(/\b(home|away)team\b/g,'$1 team').replace(/[^a-z0-9]+/g,' ').trim();
       const title=' '+words(line.market_name)+' ';
 
       if (/\bdraw\s+or\s+(?:any\s+)?clean\s*sheet\b/i.test(title)) {
