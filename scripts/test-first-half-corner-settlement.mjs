@@ -58,8 +58,8 @@ assert.equal(gradeFirstHalfCornerFacts(proven('none'),allSecond,{complete:true})
 assert.equal(gradeFirstHalfCornerFacts(proven('home'),allSecond,{complete:true}),'LOST');
 assert.equal(gradeFirstHalfCornerFacts(proven('none'),[],{complete:true}),'WON');
 assert.equal(gradeFirstHalfCornerFacts(proven('none'),[
- {team:'away',minute:46,phase:null,seconds:null}],{complete:true}),null,
- 'An unlabelled 46th minute may be 45+1 and must not pay None');
+ {team:'away',minute:45,phase:null,seconds:null}],{complete:true}),null,
+ 'An unlabelled minute 45 must not pay None because its half is ambiguous');
 const tied=[
  {team:'home',minute:10,phase:'H1',seconds:null},
  {team:'away',minute:10,phase:'H1',seconds:null}
