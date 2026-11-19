@@ -320,6 +320,7 @@ export function gradeHalfEventFacts(contract,facts,{complete=false}={}){
   else if(second.has(phase)){if(minute<45)return null;period=2;}
   else if(phase)return null;
   else if(minute<45)period=1;
+  else if(minute>45&&minute<=90)period=2;
   else return null;
   if(period===contract.half)events.push({minute,seconds,team:item.team});
  }
