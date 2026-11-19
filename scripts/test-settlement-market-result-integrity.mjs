@@ -36,6 +36,30 @@ assert.equal(gradeLine(choice('1X2','1'),{...score,home_score:null}),null);
 assert.equal(grade('Total Corners','Over',{period:1,line:'0.5'}),null);
 assert.equal(grade('Corner Result 1X2','1',{period:1}),null);
 
+// Verified Zizobet FT statistics remain authoritative even when the
+// optional secondary-provider comparison has not produced a review row.
+const chelseaPsg={...score,source:'ZIZOBET',home_team:'Chelsea Women',
+ away_team:'Paris Saint-Germain Women',home_score:1,away_score:0,
+ half_home_score:0,half_away_score:0,corners_home:10,corners_away:3,
+ statistics_review_pending:true,statistics_review:null};
+const cornerGrade=(market,outcome,line='')=>gradeLine(
+ {...choice(market,outcome),line},chelseaPsg);
+assert.equal(hasRequiredSettlementEvidence(choice('Total Corners','Over',{line:'12.5'}),chelseaPsg),true);
+assert.equal(cornerGrade('Total Corners (12.5)','Over'),'WON',
+ '13 verified Zizobet corners beats 12.5');
+assert.equal(cornerGrade('Hometeam total corners (8.5)','Over'),'WON',
+ 'compact Hometeam label uses Chelsea 10, not total corners');
+assert.equal(cornerGrade('Awayteam total corners (3.5)','Over'),'LOST',
+ 'compact Awayteam label uses PSG 3, not total corners');
+assert.equal(cornerGrade('Most corners','1'),'WON',
+ 'Most corners is a three-way corner winner market, not an unsupported total');
+assert.equal(cornerGrade('Most corners','X'),'LOST');
+assert.equal(cornerGrade('Most corners','2'),'LOST');
+
+// Secondary-source review can still hold non-primary result rows.
+const nonPrimaryPending={...chelseaPsg,source:'FEED'};
+assert.equal(hasRequiredSettlementEvidence(choice('Total Corners','Over',{line:'12.5'}),nonPrimaryPending),false);
+
 // Team-named clean sheet: Manchester City conceded 1; Man U conceded 3.
 // Generic "Clean Sheet" cannot be allocated to an arbitrary team.
 assert.equal(grade('Manchester City Clean Sheet','Yes'),'LOST');
