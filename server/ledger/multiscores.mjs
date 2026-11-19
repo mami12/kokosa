@@ -8,18 +8,37 @@ export function isMultiscoresMarket(name = '') {
 export function gradeMultiscores(line, result) {
   const home = Number(result?.home_score);
   const away = Number(result?.away_score);
-  if (!Number.isFinite(home) || !Number.isFinite(away)) return null;
+  if (!Number.isSafeInteger(home) || home < 0 || !Number.isSafeInteger(away) || away < 0) return null;
   const raw = String(line.outcome_name ?? line.outcome_key ?? '').trim();
-  if (/\bother\b/i.test(raw)) return null;
+  if (/^(?:x|draw)$/i.test(raw)) return home === away ? 'WON' : 'LOST';
+
+  const other = raw.match(/^other\s+(home|away)\s+wins?$/i);
+  if (other) {
+    // "Other" is defined relative to the exact score options offered in this market.
+    const offered = line.accepted_contract?.nativeMarketOutcomes ?? line.nativeMarketOutcomes;
+    if (!Array.isArray(offered) || offered.length < 2 || offered.length > 500) return null;
+    const labels = offered.map(option => String(
+      typeof option === 'string' ? option : option?.name ?? option?.key ?? ''
+    ).trim().toLowerCase().replace(/\s+/g,' ')).filter(Boolean);
+    const side = other[1].toLowerCase();
+    if (!labels.includes('other '+side+' win') && !labels.includes('other '+side+' wins')) return null;
+    const listedScores = [];
+    for (const label of labels) {
+      const match = label.match(/^(\d+)\s*[:\-]\s*(\d+)$/);
+      if (match) listedScores.push([Number(match[1]), Number(match[2])]);
+    }
+    if (!listedScores.length) return null;
+    const winner = home > away ? 'home' : away > home ? 'away' : 'draw';
+    if (winner !== side) return 'LOST';
+    return listedScores.some(([h, a]) => h === home && a === away) ? 'LOST' : 'WON';
+  }
+
   const pairs = [];
   const regex = /(\d+)\s*[:\-]\s*(\d+)/g;
-  let m;
-  while ((m = regex.exec(raw)) !== null) {
-    pairs.push([Number(m[1]), Number(m[2])]);
-  }
+  let match;
+  while ((match = regex.exec(raw)) !== null) pairs.push([Number(match[1]), Number(match[2])]);
   if (!pairs.length) return null;
-  const matched = pairs.some(([h, a]) => h === home && a === away);
-  return matched ? 'WON' : 'LOST';
+  return pairs.some(([h, a]) => h === home && a === away) ? 'WON' : 'LOST';
 }
 
 export function isMatchbetFirstGoalMarket(name = '') {

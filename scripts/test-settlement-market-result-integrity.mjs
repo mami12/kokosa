@@ -66,6 +66,48 @@ assert.equal(grade('Manchester City Clean Sheet','Yes'),'LOST');
 assert.equal(grade('Manchester United Clean Sheet','No'),'WON');
 assert.equal(grade('Clean Sheet','Yes'),null);
 assert.equal(grade('Home and Away Clean Sheet','Yes'),null);
+assert.equal(grade('1st half - Awayteam clean sheet','Yes'), 'WON',
+ 'First-half Awayteam clean sheet uses the away side of the verified HT score');
+assert.equal(grade('1st half - Hometeam clean sheet','No'), 'WON',
+ 'First-half Hometeam clean sheet uses the verified HT score');
+assert.equal(grade('2nd half - Awayteam clean sheet','No'), 'WON',
+ 'Second-half Awayteam clean sheet uses FT minus HT');
+assert.equal(grade('2nd half - Hometeam clean sheet','Yes'), 'WON',
+ 'Second-half Hometeam clean sheet uses FT minus HT');
+assert.equal(gradeLine(choice('Winning margin','Hometeam by 1'),{
+ ...score,home_score:1,away_score:0
+}), 'WON', 'Compact Hometeam winning-margin outcome resolves to the home side');
+assert.equal(gradeLine(choice('Winning margin','Awayteam by 1'),{
+ ...score,home_score:0,away_score:1
+}), 'WON', 'Compact Awayteam winning-margin outcome resolves to the away side');
+assert.equal(grade('Awayteam Odd/Even','Odd'), 'WON',
+ 'Awayteam odd/even is based on the away score');
+assert.equal(grade('Hometeam Odd/Even','Odd'), 'WON',
+ 'Hometeam odd/even is based on the home score');
+
+const multiscoreCatalogue=[
+ '1:0','2:0','2:1','3:0','3:1','3:2','X','Other home win',
+ '0:1','0:2','1:2','0:3','1:3','2:3','Other away win'
+].map(name=>({name}));
+assert.equal(gradeLine({
+ ...choice('Multiscores','X'),accepted_contract:{nativeMarketOutcomes:multiscoreCatalogue}
+},{...score,home_score:2,away_score:2}), 'WON',
+ 'Multiscores X means any draw scoreline');
+assert.equal(gradeLine({
+ ...choice('Multiscores','Other home win'),accepted_contract:{nativeMarketOutcomes:multiscoreCatalogue}
+},{...score,home_score:5,away_score:0}), 'WON',
+ 'Other home win applies outside the explicit accepted score catalogue');
+assert.equal(gradeLine({
+ ...choice('Multiscores','Other home win'),accepted_contract:{nativeMarketOutcomes:multiscoreCatalogue}
+},{...score,home_score:3,away_score:1}), 'LOST',
+ 'A listed scoreline is not an Other home win');
+assert.equal(gradeLine({
+ ...choice('Multiscores','Other away win'),accepted_contract:{nativeMarketOutcomes:multiscoreCatalogue}
+},{...score,home_score:0,away_score:4}), 'WON',
+ 'Other away win applies outside the explicit accepted score catalogue');
+assert.equal(gradeLine(choice('Multiscores','Other home win'),{
+ ...score,home_score:5,away_score:0
+}), null, 'Other without the accepted provider catalogue remains ungraded');
 
 // A DNB code that is not 1 or 2 cannot be silently interpreted as LOST.
 assert.equal(grade('Draw No Bet','Mystery'),null);

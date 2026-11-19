@@ -700,6 +700,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   c.entryBaseline!=null,c.entryBaseline?.home??0,c.entryBaseline?.away??0,normalTimeOnly]);
  const data=rows[0];
  if(!data||data.through_minute==null||data.open_recovery_gap===true)return null;
+ const decision=truth=>truth?'WON':'LOST';
  // A partial/corrected frame must not silently reclassify a missing event.
  if(Number(data.home)!==Number(data.count_home)||
     Number(data.away)!==Number(data.count_away))return null;
@@ -881,7 +882,6 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  const count=Number(c.cardColor?(c.side==='home'?data.color_home:c.side==='away'?data.color_away:data.color_total):
    (c.side==='home'?data.home:c.side==='away'?data.away:data.total));
  const expected=Number(c.target??c.threshold);
- const decision=truth=>truth?'WON':'LOST';
  if(c.kind==='window'){
   // A proven event decides YES immediately and NO as lost; a verified
   // absence cannot win until the full quoted time window is complete.

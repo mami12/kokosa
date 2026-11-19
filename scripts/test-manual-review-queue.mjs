@@ -41,8 +41,8 @@ const halfTimePush={...base,line_status:'VOID',ticket_status:'VOID',
 assert.equal(reviewReason(halfTimePush,now),null,'confirmed HT total push is not a manual-review anomaly');
 const unknownVoid={...base,line_status:'VOID',ticket_status:'VOID',
  market_name:'Scoring type',line:'',outcome_name:'Penalty'};
-assert.equal(reviewReason(unknownVoid,now),'VOID_NEEDS_CONFIRMATION',
- 'unsupported event VOID remains visible for manual review');
+assert.equal(reviewReason(unknownVoid,now),'MISSING_GOAL_METHOD_EVIDENCE',
+ 'Scoring Type remains visible for missing primary goal-method evidence regardless of title casing');
 assert.equal(reviewReason({...base,result_id:null,match_status:'live',feed_status:'live'},now),null,'active fixtures are not invalid');
 assert.equal(reviewReason({...base,result_id:null,match_status:'ended',feed_status:'ended'},now),'MISSING_FINAL_RESULT');
 

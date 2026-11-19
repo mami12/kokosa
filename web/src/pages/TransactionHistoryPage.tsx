@@ -56,10 +56,10 @@ const BET_STATUS_LABELS: Record<string, string> = {
   REJECTED: 'Refuzuar',
 };
 const betStatusClass = (status: string) =>
-  status === 'WON' ? 'text-emerald-300' :
-  status === 'PENDING' ? 'text-amber-300' :
+  status === 'WON' ? 'text-slate-400' :
+  status === 'PENDING' ? 'text-slate-400' :
   ['CANCELLED', 'REVERTED', 'VOID'].includes(status) ? 'text-slate-300' :
-  'text-rose-300';
+  'text-slate-300';
 
 export default function TransactionHistoryPage({ embedded = false }: { embedded?: boolean }) {
   const { user } = useAuth();
@@ -169,23 +169,23 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
                 : 'Depozitat, bastet dhe pagesat e llogarisë tënde.')}
           </p>
         </header>
-        <form onSubmit={fetchTransactions} className="flex flex-col gap-3 rounded-2xl border border-purple-500/20 bg-[#241239]/80 p-3.5 backdrop-blur-md shadow-lg sm:flex-row sm:items-end">
-          <label className="flex-1 text-xs font-semibold text-purple-200/80">{t("Nga data")}<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="mt-1.5 block w-full rounded-xl border border-[#62417d] bg-[#1a0c28] px-3.5 py-2 text-sm text-white outline-none focus:border-purple-400" />
+        <form onSubmit={fetchTransactions} className="flex flex-col gap-3 rounded-lg border border-tertiary bg-secondary p-3.5 backdrop-blur-md shadow-lg sm:flex-row sm:items-end">
+          <label className="flex-1 text-xs font-semibold text-text-secondary">{t("Nga data")}<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="mt-1.5 block w-full rounded-xl border border-tertiary bg-primary px-3.5 py-2 text-sm text-white outline-none focus:border-slate-400" />
           </label>
-          <label className="flex-1 text-xs font-semibold text-purple-200/80">{t("Deri më")}<input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="mt-1.5 block w-full rounded-xl border border-[#62417d] bg-[#1a0c28] px-3.5 py-2 text-sm text-white outline-none focus:border-purple-400" />
+          <label className="flex-1 text-xs font-semibold text-text-secondary">{t("Deri më")}<input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="mt-1.5 block w-full rounded-xl border border-tertiary bg-primary px-3.5 py-2 text-sm text-white outline-none focus:border-slate-400" />
           </label>
           <button type="submit" className="rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 px-6 py-2.5 text-sm font-extrabold text-black shadow-lg shadow-amber-950/40 hover:brightness-110 active:scale-95 transition-all">{t("Filtro")}</button>
         </form>
 
         {/* Filter Pills: All / Sport / Kazino / Depozita & Tërheqje */}
-        <div className="flex flex-wrap items-center gap-1.5 p-1.5 rounded-full border border-purple-500/30 bg-[#1e0f2f]/80 backdrop-blur-xl shadow-lg shadow-purple-950/30 w-fit max-w-full">
+        <div className="flex flex-wrap items-center gap-1.5 p-1.5 rounded-lg border border-tertiary bg-secondary w-fit max-w-full">
           <button
             type="button"
             onClick={() => setTxCategory('ALL')}
             className={`rounded-full px-4 py-2 text-xs font-bold transition-all ${
               txCategory === 'ALL'
-                ? 'bg-gradient-to-r from-[#7F00FF] to-[#a85cff] text-white shadow-md shadow-purple-900/50'
-                : 'text-purple-200/80 hover:text-white hover:bg-white/10'
+                ? 'bg-slate-200 text-slate-950'
+                : 'text-text-secondary hover:text-white hover:bg-white/10'
             }`}
           >
             {t("Të gjitha")} ({transactions.length})
@@ -195,11 +195,11 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
             onClick={() => setTxCategory('SPORT')}
             className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold transition-all ${
               txCategory === 'SPORT'
-                ? 'bg-gradient-to-r from-[#7F00FF] to-[#a85cff] text-white shadow-md shadow-purple-900/50'
-                : 'text-purple-200/80 hover:text-white hover:bg-white/10'
+                ? 'bg-slate-200 text-slate-950'
+                : 'text-text-secondary hover:text-white hover:bg-white/10'
             }`}
           >
-            <TicketIcon size={14} className="text-amber-300" />
+            <TicketIcon size={14} className="text-slate-400" />
             <span>{t("Sport (Baste)")}</span>
             <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-black">{sportCount}</span>
           </button>
@@ -208,11 +208,11 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
             onClick={() => setTxCategory('CASINO')}
             className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold transition-all ${
               txCategory === 'CASINO'
-                ? 'bg-gradient-to-r from-[#7F00FF] to-[#a85cff] text-white shadow-md shadow-purple-900/50'
-                : 'text-purple-200/80 hover:text-white hover:bg-white/10'
+                ? 'bg-slate-200 text-slate-950'
+                : 'text-text-secondary hover:text-white hover:bg-white/10'
             }`}
           >
-            <Coins size={14} className="text-amber-300" />
+            <Coins size={14} className="text-slate-400" />
             <span>{t("Kazino")}</span>
             <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-black">{casinoCount}</span>
           </button>
@@ -222,11 +222,11 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
               onClick={() => setTxCategory('TRANSFERS')}
               className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold transition-all ${
                 txCategory === 'TRANSFERS'
-                  ? 'bg-gradient-to-r from-[#7F00FF] to-[#a85cff] text-white shadow-md shadow-purple-900/50'
-                  : 'text-purple-200/80 hover:text-white hover:bg-white/10'
+                  ? 'bg-slate-200 text-slate-950'
+                  : 'text-text-secondary hover:text-white hover:bg-white/10'
               }`}
             >
-              <ArrowUpDown size={14} className="text-emerald-300" />
+              <ArrowUpDown size={14} className="text-slate-400" />
               <span>{t("Depozita & Tërheqje")}</span>
               <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-black">{transferCount}</span>
             </button>
@@ -236,13 +236,13 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
         {user?.role === 'PLAYER' && summary && txCategory !== 'CASINO' && (
           <section aria-label={t("Përmbledhja e fitimeve dhe humbjeve")} className="grid gap-2 sm:grid-cols-3">
             {[
-              { label: 'Fitimet', value: summary.winnings, color: 'text-amber-200' },
-              { label: 'Humbjet', value: summary.losses, color: 'text-rose-300' },
-              { label: 'Bilanci neto', value: summary.net, color: summary.net >= 0 ? 'text-amber-200' : 'text-rose-300' },
+              { label: 'Fitimet', value: summary.winnings, color: 'text-slate-100' },
+              { label: 'Humbjet', value: summary.losses, color: 'text-slate-300' },
+              { label: 'Bilanci neto', value: summary.net, color: summary.net >= 0 ? 'text-slate-100' : 'text-slate-300' },
             ].map((item) => (
               <div key={item.label} className="rounded-xl border border-tertiary bg-secondary p-3">
                 <div className="text-xs font-semibold text-text-secondary">{t(item.label)}</div>
-                <div className={`mt-1 font-mono text-xl font-black ${item.color}`}>
+                <div className="mt-1 font-mono text-xl font-semibold text-slate-100">
                   {item.value.toFixed(2)} {" " + t("Lëk")}</div>
               </div>
             ))}
@@ -250,7 +250,7 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
         )}
         {user?.role === 'PLAYER' && txCategory !== 'CASINO' && (
           <section aria-label={t("Bastet e mia sipas statusit")} className="rounded-2xl overflow-hidden border border-tertiary bg-secondary">
-            <div className="flex flex-wrap items-end justify-between gap-3 border-b border-tertiary bg-[#2b1742] p-3">
+            <div className="flex flex-wrap items-end justify-between gap-3 border-b border-tertiary bg-[#151e2b] p-3">
               <div>
                 <h2 className="text-sm font-bold text-white">{t("Bastet e mia")}</h2>
                 <p className="mt-1 text-[11px] text-text-secondary">
@@ -260,14 +260,14 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
                 <label className="flex flex-col gap-1 text-xs font-semibold text-slate-200">
                   {t("Statusi")}<select value={betFilter} onChange={e => setBetFilter(e.target.value as BetFilter)}
                     aria-label={t("Filtro bastet sipas statusit")}
-                    className="min-w-[155px] rounded-lg border border-[#62417d] bg-[#190d28] px-2 py-2 text-xs text-white focus:outline-none focus:border-accent-yellow">
+                    className="min-w-[155px] rounded-lg border border-tertiary bg-primary px-2 py-2 text-xs text-white focus:outline-none focus:border-slate-400">
                     {(Object.keys(BET_FILTER_LABELS) as BetFilter[]).map(status => (
                       <option key={status} value={status}>{t(BET_FILTER_LABELS[status])}</option>
                     ))}
                   </select>
                 </label>
                 <button type="button" onClick={() => setBetRefresh(n => n + 1)}
-                  className="rounded-lg border border-tertiary bg-[#3f215e] px-3 py-2 text-xs font-semibold text-white hover:bg-[#522d7a]">
+                  className="rounded-lg border border-tertiary bg-primary px-3 py-2 text-xs font-semibold text-white hover:bg-[#1b2736]">
                   {t("Rifresko")}</button>
               </div>
             </div>
@@ -276,7 +276,7 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
                 {t("Këtu shfaqen kërkesat e refuzuara nga serveri pas aktivizimit të këtij regjistrimi. Ato nuk janë bileta të pranuara dhe nuk kanë zbritur para nga llogaria.")}</p>
             )}
             {betLoading ? <div className="p-8 text-center text-text-secondary text-xs">{t("Duke ngarkuar bastet…")}</div> :
-              betError ? <div className="p-6 text-center text-rose-300 text-xs" role="alert">{t(betError)}</div> :
+              betError ? <div className="p-6 text-center text-slate-300 text-xs" role="alert">{t(betError)}</div> :
               betEntries.length === 0 ? (
                 <div className="p-8 text-center text-text-secondary text-xs">{t("Nuk ka baste për këtë filtër dhe periudhë.")}</div>
               ) : (
@@ -286,7 +286,7 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
                   </p>
                   <div className="max-h-[560px] divide-y divide-tertiary/70 overflow-y-auto">
                     {betEntries.map(entry => (
-                      <details key={entry.kind + entry.id} className="group px-3 py-2.5 open:bg-[#241339]">
+                      <details key={entry.kind + entry.id} className="group px-3 py-2.5 open:bg-[#111a27]">
                         <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
@@ -305,7 +305,7 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
                             </div>
                           </div>
                           <div className="shrink-0 text-right">
-                            <div className="text-xs font-bold tabular-nums text-amber-200">
+                            <div className="text-xs font-bold tabular-nums text-slate-100">
                               {entry.stake == null ? '—' : entry.stake.toFixed(2) + ' ' + t('Lëk')}
                             </div>
                             <div className="text-[10px] text-text-secondary">{t("Shuma")}</div>
@@ -331,7 +331,7 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
                                   </div>
                                 </div>
                                 <div className="shrink-0 text-right">
-                                  <div className="font-mono text-amber-200">@{formatOdds(line.settledOdds ?? line.oddsAtPlacement)}</div>
+                                  <div className="font-mono text-slate-100">@{formatOdds(line.settledOdds ?? line.oddsAtPlacement)}</div>
                                   <div className={betStatusClass(line.status)}>{t(BET_STATUS_LABELS[line.status] ?? line.status)}</div>
                                 </div>
                               </div>
@@ -340,7 +340,7 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
                               <span className="text-slate-300">{entry.system ? `${t('Sistem')} · ${entry.system.columnCount} ${t('kolona')}` : <>{t("Koeficienti total:") + " "}<strong>{formatOdds(entry.totalOdds)}</strong></>}</span>
                               <span className="text-slate-300">
                                 {t('Fitimi i mundshëm')}{entry.potentialPayoutIsEstimated ? ' · '+t('i rindërtuar') : ''}:
-                                <strong className="ml-1 text-amber-200">{entry.potentialPayout.toFixed(2)} {" " + t("Lëk")}</strong>
+                                <strong className="ml-1 text-slate-100">{entry.potentialPayout.toFixed(2)} {" " + t("Lëk")}</strong>
                               </span>
                             </div>
                             {entry.potentialPayoutIsEstimated && <div className="text-[11px] text-text-secondary" title={t('Vlerë e rindërtuar nga shuma dhe koeficienti i ruajtur; shuma origjinale nuk ishte ruajtur.')}>{t('Vlerë e rindërtuar nga shuma dhe koeficienti i ruajtur.')}</div>}
@@ -357,24 +357,23 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
         )}
         <section className="overflow-hidden rounded-2xl border border-tertiary bg-secondary">
           {!loading && !error && (
-            <div className="flex items-center justify-between border-b border-tertiary bg-[#2c1743] px-3.5 py-2.5 text-xs font-semibold text-purple-100">
+            <div className="flex items-center justify-between border-b border-tertiary bg-[#151e2b] px-3.5 py-2.5 text-xs font-semibold text-slate-200">
               <span>
                 {displayedTransactions.length} {" " + t("transaksione")}
-                {txCategory !== 'ALL' && <span className="ml-1.5 text-amber-300 font-bold">({txCategory === 'SPORT' ? t('Vetëm Sport') : txCategory === 'CASINO' ? t('Vetëm Kazino') : t('Depozita / Tërheqje')})</span>}
+                {txCategory !== 'ALL' && <span className="ml-1.5 text-slate-400 font-bold">({txCategory === 'SPORT' ? t('Vetëm Sport') : txCategory === 'CASINO' ? t('Vetëm Kazino') : t('Depozita / Tërheqje')})</span>}
               </span>
-              <span className="text-[10px] text-purple-300/80 uppercase tracking-wider">{t("Regjistri financiar")}</span>
+              <span className="text-[10px] text-text-secondary uppercase tracking-wider">{t("Regjistri financiar")}</span>
             </div>
           )}
           {loading ? <div className="p-16 text-center text-text-secondary">{t("Duke ngarkuar transaksionet…")}</div>
-            : error ? <div role="alert" className="p-8 text-center text-rose-300">{t(error)}</div>
+            : error ? <div role="alert" className="p-8 text-center text-slate-300">{t(error)}</div>
               : displayedTransactions.length === 0 ? <div className="p-12 text-center text-text-secondary">{t("Nuk ka transaksione për këtë filtër dhe periudhë.")}</div>
                 : (
                   <>
                     {/* MOBILE VIEW: Cards (< md) */}
                     <div className="block md:hidden divide-y divide-tertiary/60">
                       {displayedTransactions.map((transaction) => {
-                        const isPositive = transaction.amount >= 0;
-                        return (
+                                                return (
                           <div key={transaction.id} className="px-3 py-3 space-y-2">
                             <div className="flex items-start justify-between gap-2">
                               <div>
@@ -387,7 +386,7 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
                                   </div>
                                 )}
                               </div>
-                              <span className={`text-sm font-black tabular-nums ${isPositive ? 'text-amber-300' : 'text-rose-300'}`}>
+                              <span className={`text-sm font-black tabular-nums ${isPositive ? 'text-slate-400' : 'text-slate-300'}`}>
                                 {transaction.amount > 0 ? '+' : ''}{transaction.amount.toFixed(2)} {" " + t("Lëk")}</span>
                             </div>
 
@@ -409,7 +408,7 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
                     {/* DESKTOP VIEW: Table (>= md) */}
                     <div className="hidden md:block overflow-x-auto">
                       <table className="w-full min-w-[780px] text-left text-sm">
-                        <thead className="bg-[#2c1743] text-[11px] uppercase text-text-secondary font-bold tracking-wider">
+                        <thead className="bg-[#151e2b] text-[11px] uppercase text-text-secondary font-bold tracking-wider">
                           <tr>
                             <th className="p-3">{t("Data & Ora")}</th>
                             {user?.role !== 'PLAYER' && <th className="p-3">{t("Llogaria")}</th>}
@@ -428,7 +427,7 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
                               {user?.role !== 'PLAYER' && <td className="p-3 font-semibold">{transaction.username}</td>}
                               <td className="p-3 font-semibold text-xs">{t(transactionLabel(transaction.type))}</td>
                               <td className="p-3 text-xs text-text-secondary">{transaction.description ? transactionDescription(transaction.description,transaction.type,lang) : '—'}</td>
-                              <td className={`p-3 text-right font-mono font-black tabular-nums ${transaction.amount >= 0 ? 'text-amber-300' : 'text-rose-300'}`}>
+                              <td className={`p-3 text-right font-mono font-black tabular-nums ${transaction.amount >= 0 ? 'text-slate-400' : 'text-slate-300'}`}>
                                 {transaction.amount > 0 ? '+' : ''}{transaction.amount.toFixed(2)} {" " + t("Lëk")}</td>
                               <td className="p-3 text-right font-mono tabular-nums text-xs font-bold text-text-secondary">{transaction.balanceAfter.toFixed(2)} {" " + t("Lëk")}</td>
                             </tr>

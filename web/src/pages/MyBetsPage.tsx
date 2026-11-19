@@ -55,9 +55,9 @@ export default function MyBetsPage(){
   const statusInfo=(status:string)=>{
     switch(status){
       case 'WON':return {label:t('tickets.won'),Icon:CheckCircle2,
-        color:'text-emerald-300',border:'border-emerald-700/50'};
+        color:'text-slate-100',border:'border-slate-600'};
       case 'LOST':return {label:t('tickets.lost'),Icon:XCircle,
-        color:'text-rose-300',border:'border-rose-800/50'};
+        color:'text-slate-300',border:'border-slate-600'};
       case 'PENDING':return {label:t('tickets.pending'),Icon:Clock3,
         color:'text-amber-200',border:'border-amber-800/40'};
       case 'VOID':return {label:t('tickets.void'),Icon:MinusCircle,
@@ -92,7 +92,7 @@ export default function MyBetsPage(){
             <div className="min-w-0">
               <p className="break-words text-sm font-semibold leading-snug text-slate-100">
                 {line.matchName}
-                {line.scoreAtPlacement && <span className="ml-1.5 font-bold text-accent-green">{line.scoreAtPlacementLabel ? `${line.scoreAtPlacementLabel} ` : ''}{line.scoreAtPlacement}</span>}
+                {line.scoreAtPlacement && <span className="ml-1.5 font-bold text-slate-300">{line.scoreAtPlacementLabel ? `${line.scoreAtPlacementLabel} ` : ''}{line.scoreAtPlacement}</span>}
               </p>
               <p className="mt-1 break-words text-xs leading-relaxed text-slate-400">
                 {formatMarketSelectionLabel(line.marketName,line.marketLine,t)}
@@ -121,7 +121,7 @@ export default function MyBetsPage(){
           <div className="mt-0.5 font-mono text-sm font-semibold tabular-nums">@{formatOdds(ticket.totalOdds)}</div>
         </div>}
         <div className="col-span-2 sm:col-span-1">
-          <div className="text-[11px] text-slate-400">{ticket.status==='PENDING'?t('Fitimi i mundshëm'):t('Fitimi i mundshëm')}</div>
+          <div className="text-[11px] text-slate-400">{t('Fitimi i mundshëm')}</div>
           <div className="mt-0.5 font-mono text-sm font-semibold tabular-nums text-slate-100">
             {formatMoney(ticket.potentialPayout)} <span className="text-xs font-normal text-slate-400">Lek</span>
           </div>

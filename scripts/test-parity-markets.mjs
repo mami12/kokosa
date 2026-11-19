@@ -15,6 +15,8 @@ for(const [name,choice,expected] of [
  ['Goals Odd/Even','Odd','WON'],
  ['1st Half Goals Odd/Even','Odd','WON'],
  ['2nd Half Goals Odd/Even','Even','WON'],
+ ['Awayteam Odd/Even','Odd','WON'],
+ ['Hometeam Odd/Even','Odd','WON'],
  ['Odd/Even','Odd','WON']
 ])assert.equal(decision(name,choice),expected,name);
 assert.equal(decision('Odd/Even','Even',{...result,home_score:0,away_score:0}),'WON',
