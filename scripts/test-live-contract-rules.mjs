@@ -52,17 +52,16 @@ assert.deepEqual({kind:intervalCornerHandicap?.kind,event:intervalCornerHandicap
  {kind:'interval-handicap',event:'corner',side:'home',handicap:-0.5,from:21,to:30});
 
 
-assert.deepEqual([liveContract({market_name:'Full Time first valueUP',outcome_name:'1'})?.kind,
- liveContract({market_name:'Full Time first valueUP',outcome_name:'1'})?.target],['lead-up',1]);
-for(const [market,target]of [['Full Time 1UP',1],['Full Time 2UP',2],['Full Time 3UP',3]]){
- const home=liveContract({market_name:market,outcome_name:'1'});
- const draw=liveContract({market_name:market,outcome_name:'X'});
- const away=liveContract({market_name:market,outcome_name:'2'});
- assert.deepEqual([home?.kind,home?.target,home?.side],['lead-up',target,'home']);
- assert.deepEqual([draw?.kind,draw?.target,draw?.side],['lead-up',target,'draw']);
- assert.deepEqual([away?.kind,away?.target,away?.side],['lead-up',target,'away']);
+// AAMS/lead-up contracts are intentionally disabled in this sportsbook.
+// These provider labels must not be reconstructed as guessed event markets.
+for(const [market,outcome]of [
+ ['Full Time first valueUP','1'],['Full Time 1UP','1'],['Full Time 2UP','X'],
+ ['Full Time 3UP','2']
+]){
+ assert.equal(liveContract({market_name:market,outcome_name:outcome}),null,
+  'AAMS/lead-up market stays outside the supported settlement contract: '+market);
 }
-assert.equal(parseLeadUpMarket({market_name:'Full Time 2UP',outcome_name:'Draw'})?.side,'draw');
+assert.equal(parseLeadUpMarket({market_name:'Full Time 2UP',outcome_name:'Draw'}),null);
 
 
 const w=parseEventWindow(windowLine('Will there be a goal in minutes 20-45','Yes'));
