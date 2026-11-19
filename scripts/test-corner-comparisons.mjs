@@ -26,6 +26,42 @@ for(const [title,choice,expected]of [
  assert.equal(gradeCornerComparisonFacts(c,events,{complete:false}),null);
 }
 assert.equal(parseCornerComparison({market_name:'1st Half Corners Result',outcome_name:'1',period:2}),null);
+
+const secondHalfNoPhase=[
+ {team:'home',minute:58,phase:null},
+ {team:'home',minute:67,phase:null},
+ {team:'away',minute:72,phase:null},
+ {team:'home',minute:86,phase:null}
+];
+const h2Most=liveContract({market_name:'2nd Half Most Corners',outcome_name:'1'});
+assert.equal(h2Most?.kind,'corner-comparison');
+assert.equal(gradeCornerComparisonFacts(h2Most,secondHalfNoPhase,{complete:true}),'WON',
+ 'Unlabelled absolute minutes 46-90 are second-half corner incidents');
+const overallMost=liveContract({market_name:'Most Corners',outcome_name:'1'});
+assert.deepEqual({kind:overallMost?.kind,mode:overallMost?.mode,side:overallMost?.side},
+ {kind:'corner-comparison',mode:'full-result',side:'home'});
+assert.equal(gradeCornerComparisonFacts(overallMost,[
+ ...events,...secondHalfNoPhase
+ ],{complete:true}),'WON');
+const overallDraw=liveContract({market_name:'Most Corners',outcome_name:'X',
+ cornerDrawOffered:true});
+assert.equal(gradeCornerComparisonFacts(overallDraw,[
+ ...events,...secondHalfNoPhase
+ ],{complete:true}),'LOST');
+const highHalf=liveContract({market_name:'Highest scoring half in corners',outcome_name:'2'});
+assert.deepEqual({kind:highHalf?.kind,mode:highHalf?.mode,choice:highHalf?.choice},
+ {kind:'corner-comparison',mode:'most-half',choice:2});
+assert.equal(gradeCornerComparisonFacts(highHalf,[
+ {team:'home',minute:12,phase:'H1'},
+ {team:'away',minute:18,phase:'H1'},
+ {team:'home',minute:58,phase:null},
+ {team:'away',minute:67,phase:null},
+ {team:'home',minute:77,phase:null}
+],{complete:true}),'WON');
+assert.equal(gradeCornerComparisonFacts(highHalf,[
+ ...events,{team:'home',minute:45,phase:null}
+],{complete:true}),null,'Unlabelled minute 45 remains ambiguous');
+
 const weird=[...events,{team:'home',minute:45,phase:null}];
 const half=liveContract({market_name:'Half with Most Corners',outcome_name:'Draw'});
 assert.equal(gradeCornerComparisonFacts(half,weird,{complete:true}),null,
