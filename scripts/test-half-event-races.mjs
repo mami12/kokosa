@@ -44,6 +44,15 @@ const ambiguous=[...corners,{team:'away',minute:45,phase:null}];
 const race=liveContract(line('1st half - Race to 2 corners','1'));
 assert.equal(gradeHalfEventFacts(race,ambiguous,{complete:true}),null,
  'An unlabelled minute 45 cannot be guessed into either half');
+
+const secondHalfNoPhase=[...corners,{team:'away',minute:46,phase:null,seconds:2765}];
+const secondRace=liveContract(line('2nd half - Race to 2 corners','2'));
+assert.equal(gradeHalfEventFacts(secondRace,secondHalfNoPhase,{complete:true}),'WON',
+ 'An unlabelled Zizobet corner at absolute minute 46 belongs to 2H');
+const secondFirst=liveContract(line('2nd half - first corner','2'));
+assert.equal(gradeHalfEventFacts(secondFirst,[{team:'away',minute:46,phase:null}],{complete:true}),'WON',
+ 'A minute-46 corner can prove the second-half first corner');
+
 assert.equal(liveContract(line('1st half - race to 3 corners','None')).noneOffered,true);
 assert.equal(liveContract({...line('2nd half - first card','1'),period:1}),null,
  'The explicit quote period must agree with its title');
