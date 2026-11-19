@@ -92,7 +92,7 @@ export default function MyBetsPage(){
             <div className="min-w-0">
               <p className="break-words text-sm font-semibold leading-snug text-slate-100">
                 {line.matchName}
-                {line.scoreAtPlacement && <span className="ml-1.5 font-bold text-accent-green">{line.scoreAtPlacement}</span>}
+                {line.scoreAtPlacement && <span className="ml-1.5 font-bold text-accent-green">{line.scoreAtPlacementLabel ? `${line.scoreAtPlacementLabel} ` : ''}{line.scoreAtPlacement}</span>}
               </p>
               <p className="mt-1 break-words text-xs leading-relaxed text-slate-400">
                 {formatMarketSelectionLabel(line.marketName,line.marketLine,t)}
