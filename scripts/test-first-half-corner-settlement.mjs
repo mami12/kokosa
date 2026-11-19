@@ -60,6 +60,11 @@ assert.equal(gradeFirstHalfCornerFacts(proven('none'),[],{complete:true}),'WON')
 assert.equal(gradeFirstHalfCornerFacts(proven('none'),[
  {team:'away',minute:45,phase:null,seconds:null}],{complete:true}),null,
  'An unlabelled minute 45 must not pay None because its half is ambiguous');
+
+assert.equal(gradeFirstHalfCornerFacts(proven('none'),[
+ {team:'away',minute:46,phase:null,seconds:null}],{complete:true}),'WON',
+ 'An unlabelled minute-46 corner is 2H, so absence of first-half corners is proven');
+
 const tied=[
  {team:'home',minute:10,phase:'H1',seconds:null},
  {team:'away',minute:10,phase:'H1',seconds:null}
