@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {assertDistinctSelectionMarkets, selectionMarketIdentity, toggleMarketSelection}
+import {assertDistinctSelectionMarkets, assertDistinctSelectionMatches, selectionMarketIdentity, toggleMarketSelection, toggleMatchSelection}
   from '../server/ledger/selection-market.mjs';
 import {buildBetslipColumns} from '../web/src/utils/betslipColumns.ts';
 
@@ -102,4 +102,23 @@ assert.equal(slip.columns[0].length,3);
 const changed=toggleMarketSelection(distinct,{...distinct[0],outcomeId:'100|1x2||X'});
 assert.equal(buildBetslipColumns(changed).columns.length,1);
 assert.deepEqual(changed.map(v=>v.outcomeId),['100|1x2||X','100|btts||Yes','101|1x2||2']);
+
+// Normal users may hold only one selection per fixture, across all market families.
+const matchResult=pick('200|g1x2||1',{matchId:'200',marketId:'200|g1x2|'});
+const matchTotal=pick('200|g6379|2.5|Over',{matchId:'200',marketId:'200|g6379|2.5'});
+const otherFixture=pick('201|g1x2||1',{matchId:'201',marketId:'201|g1x2|'});
+assert.deepEqual(toggleMatchSelection([matchResult,otherFixture],matchTotal),[matchTotal,otherFixture],
+  'A different market from the same match replaces the previous pick');
+assert.deepEqual(toggleMatchSelection([matchTotal,otherFixture],matchTotal),[otherFixture],
+  'Clicking the selected match outcome removes it');
+assert.throws(()=>assertDistinctSelectionMatches([matchResult,matchTotal]),
+  error=>error.status===400&&error.code==='DUPLICATE_MATCH');
+assert.doesNotThrow(()=>assertDistinctSelectionMatches([matchResult,otherFixture]));
+// Admin retains the pre-existing behavior: different markets on the same match coexist.
+assert.deepEqual(toggleMarketSelection([matchResult],matchTotal),[matchResult,matchTotal]);
+assert.doesNotThrow(()=>assertDistinctSelectionMarkets([matchResult,matchTotal]));
+// Native market IDs, translated market labels and builder selections still resolve to fixture identity.
+assert.deepEqual(toggleMatchSelection([matchResult],pick('BB|200|builder-template')),
+  [pick('BB|200|builder-template')]);
+
 console.log('PASS one choice per match/market group across all lines, builder aliases, same-fixture different markets, no duplicate columns.');
