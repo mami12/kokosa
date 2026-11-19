@@ -40,10 +40,10 @@ for(const [market,choice,offered,expected] of [
  const actual=gradeHalfEventFacts(contract,firstOnly,{complete:true});
  assert.equal(actual,expected,market+' '+choice+' '+String(offered));
 }
-const ambiguous=[...corners,{team:'away',minute:46,phase:null}];
+const ambiguous=[...corners,{team:'away',minute:45,phase:null}];
 const race=liveContract(line('1st half - Race to 2 corners','1'));
 assert.equal(gradeHalfEventFacts(race,ambiguous,{complete:true}),null,
- 'An unlabeled 45+ event cannot be guessed into 2H');
+ 'An unlabelled minute 45 cannot be guessed into either half');
 assert.equal(liveContract(line('1st half - race to 3 corners','None')).noneOffered,true);
 assert.equal(liveContract({...line('2nd half - first card','1'),period:1}),null,
  'The explicit quote period must agree with its title');
