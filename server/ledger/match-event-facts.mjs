@@ -377,6 +377,7 @@ export function gradeHalfParityFacts(contract,facts,{complete=false}={}){
   else if(second.has(raw)){if(minute<45)return null;phase=2;}
   else if(raw)return null;
   else if(minute<45)phase=1;
+  else if(minute>45&&minute<=90)phase=2;
   else return null;
   if(phase===contract.half&&(contract.side==null||e.team===contract.side))count++;
  }
