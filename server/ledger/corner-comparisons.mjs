@@ -28,7 +28,7 @@ export function parseCornerComparison(line){
   title=title.slice(a[0].length);
  }
  const raw=line.outcome_name??line.outcomeName??line.outcome_key??line.outcomeKey;
- if(/^(?:half with (?:the )?most corners?|half most corners?|most corners? (?:in|by) (?:the )?half)$/.test(title)){
+ if(/^(?:half with (?:the )?most corners?|half most corners?|most corners? (?:in|by) (?:the )?half|highest scoring half in corners?)$/.test(title)){
   if(explicit!==0)return null;
   const choice=periodOption(raw);
   return choice===null?null:{version:1,kind:'corner-comparison',
@@ -41,6 +41,11 @@ export function parseCornerComparison(line){
    mode:'wins-both',side:team}:null;
  }
  if(scope)return null;
+ if(/^most corners?$/.test(title)){
+  const team=side(raw);
+  return team?{version:1,kind:'corner-comparison',event:'corner',
+   mode:'full-result',side:team,drawOffered:line.cornerDrawOffered===true||team==='none'}:null;
+ }
  const period=title.match(/^(1st|first|2nd|second) half\s+(?:corners? (?:result|1x2)|most corners?|corners? 1x2)$/);
  if(!period)return null;
  const half=/^(?:1st|first)$/.test(period[1])?1:2;
@@ -81,6 +86,11 @@ export function gradeCornerComparisonFacts(contract,facts,{complete=false}={}){
   const firstCount=n(1),secondCount=n(2);
   const chosen=firstCount>secondCount?1:secondCount>firstCount?2:0;
   return decision(chosen===contract.choice);
+ }
+ if(contract.mode==='full-result'){
+  if(!['home','away','none'].includes(contract.side))return null;
+  const winner=result(count[1].home+count[2].home,count[1].away+count[2].away);
+  return winner==='none'&&contract.drawOffered!==true?'VOID':decision(winner===contract.side);
  }
  if(contract.mode==='period-result'){
   if(![1,2].includes(contract.half)||!['home','away','none'].includes(contract.side))return null;
