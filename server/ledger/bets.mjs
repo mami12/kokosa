@@ -622,6 +622,18 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
     card:unstartedPrematch?zero:extractStatCounters('card'),
     foul:unstartedPrematch?zero:extractStatCounters('foul')
   };
+  // Save the exact outcome menu belonging to this native market quote.
+  // This is required for "Other home/away win" multiscore selections: later,
+  // the live provider may remove the menu, so settlement cannot reconstruct it.
+  const nativeMarketOutcomes=nativeQuoteVerified
+    ?quotedOffers.filter(o=>o.market_key===selectedRow.market_key&&
+       String(o.line??'')===String(selectedRow.line??'')).slice(0,501).map(o=>({
+        outcomeKey:o.outcome_key??null,
+        outcomeName:o.outcome_name??null,
+        nativeOutcomeKey:o.native_outcome_id??null,
+        nativeOutcomeName:o.native_outcome_name??null
+      }))
+    :null;
   return {
     matchId: String(matchId),
     marketKey: parsed.marketKey,
@@ -633,6 +645,7 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
     nativeMarketId:row.native_market_id??null,nativeOutcomeId:row.native_outcome_id??null,
     nativeMarketName:row.native_market_name??null,nativeOutcomeName:row.native_outcome_name??null,
     nativeParameters:row.native_parameters??null,
+    nativeMarketOutcomes,
     sourceProviderId:row.provider_id??match.provider_id??null,
     homeTeamName:match.home,awayTeamName:match.away,
     kickoffAt:match.start_at??null,offerObservedAt:row.updated_at??null,
@@ -753,7 +766,8 @@ export async function revalidateSelections(selections, lines, resolve = resolveS
       settlementHold:current.settlementHold??null,
       acceptedLiveSnapshot:current.acceptedLiveSnapshot??null,
       offerObservedAt:current.offerObservedAt??null,
-      nativeParameters:current.nativeParameters??null
+      nativeParameters:current.nativeParameters??null,
+      nativeMarketOutcomes:current.nativeMarketOutcomes??null
     });
   }));
   const rejected = results.find(result => result.status === 'rejected');
@@ -773,6 +787,7 @@ async function persistLiveContracts(runQuery,ticketId,lines){
    nativeMarketId:line.nativeMarketId??null,nativeOutcomeId:line.nativeOutcomeId??null,
    nativeMarketName:line.nativeMarketName??null,nativeOutcomeName:line.nativeOutcomeName??null,
    nativeParameters:line.nativeParameters??null,
+   nativeMarketOutcomes:line.nativeMarketOutcomes??null,
    sourceProviderId:line.sourceProviderId??null,
    homeTeamName:line.homeTeamName??null,awayTeamName:line.awayTeamName??null,
    kickoffAt:line.kickoffAt??null,offerObservedAt:line.offerObservedAt??null,
