@@ -45,6 +45,12 @@ assert.equal(gradeHalfCornerHandicapFacts(firstContract,firstEvents,{complete:tr
  '3-1 first-half corners adjusted by -0.5 wins');
 assert.equal(gradeHalfCornerHandicapFacts(secondContract,firstEvents,{complete:true}),'WON',
  'Away 2-1 in second-half corners adjusted by +0.5 wins');
+
+assert.equal(gradeHalfCornerHandicapFacts(secondContract,[
+ {minute:60,team:'away',phase:null},{minute:77,team:'away',phase:'H2'},
+ {minute:83,team:'home',phase:'H2'}
+],{complete:true}),'WON',
+ 'An unlabelled minute-60 corner belongs to the second half handicap');
 assert.equal(gradeHalfCornerHandicapFacts(firstContract,firstEvents,{complete:false}),null);
 assert.equal(gradeHalfCornerHandicapFacts(firstContract,
  [...firstEvents,{minute:45,team:'home',phase:null}],{complete:true}),null,
