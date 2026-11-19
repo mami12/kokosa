@@ -266,7 +266,7 @@ export function gradeFirstHalfCornerFacts(contract,facts,{complete=false}={}){
    // Unknown phases include possible extra-time / penalty periods. An
    // absolute-looking minute does not authorize assigning those to 1H.
    return null;
-  }else which=minute<45?'first':'unknown';
+  }else which=minute<45?'first':minute>45&&minute<=90?'second':'unknown';
   const event={minute,seconds,team:item.team};
   if(which==='first')first.push(event);
   else if(which==='unknown')uncertain.push(event);
