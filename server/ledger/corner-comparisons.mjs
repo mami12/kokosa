@@ -67,6 +67,7 @@ export function gradeCornerComparisonFacts(contract,facts,{complete=false}={}){
   else if(second.has(raw)){if(min<45)return null;phase=2;}
   else if(raw)return null;
   else if(min<45)phase=1;
+  else if(min>45&&min<=90)phase=2;
   else return null;
   count[phase][e.team]++;
  }
