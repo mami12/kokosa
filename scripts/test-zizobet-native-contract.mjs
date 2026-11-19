@@ -57,7 +57,7 @@ assert.equal(rangeAwayCorners.market_name,'Total 0.5 away team corners in minute
 assert.equal(liveContract(rangeAwayCorners)?.kind,'window-total');
 const numberedGoal=nativeZizobetContractRow(offer(9024,
  'Who scores goal number in minutes time range (10-minute interval)',
- {p1:21,p2:30,p3:2}));
+ {p1:21,p2:30,p3:2},'','1'));
 assert.equal(numberedGoal.market_name,'Who scores goal 2 in minutes 21-30 (10-minute interval)');
 assert.equal(liveContract(numberedGoal)?.kind,'nth-time');
 
