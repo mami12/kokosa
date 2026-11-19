@@ -25,6 +25,15 @@ const contract=liveContract({market_name:'Multi Corners',outcome_name:'Over',lin
 assert.equal(contract.kind,'multi-corners');
 assert.equal(contract.event,'corner');
 assert.equal(parseMultiCornerContract({market_name:'Asian Multi Corners',outcome_name:'Over',line:'8.5'}),null);
+
+const h2NoPhase=liveContract({market_name:'Multi Corners',outcome_name:'Over',line:'1.5'});
+assert.equal(gradeMultiCornerFacts(h2NoPhase,[
+ {team:'home',minute:10,phase:'H1'},
+ {team:'away',minute:20,phase:'H1'},
+ {team:'home',minute:60,phase:null}
+],{complete:true}),'WON',
+ 'An unlabelled minute-60 corner is counted in 2H for the multiplicative market');
+
 assert.equal(gradeMultiCornerFacts(contract,[...events,{team:'home',minute:45,phase:null}],{complete:true}),null,
  'A 45+ injury-time corner must not be guessed into the 2nd half');
 const result={home_score:1,away_score:0,corners_home:3,corners_away:3};
