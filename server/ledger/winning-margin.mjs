@@ -13,7 +13,8 @@
 const int=v=>v!=null&&v!==''&&Number.isSafeInteger(Number(v))&&
  Number(v)>=0&&Number(v)<=200?Number(v):null;
 const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
- .toLowerCase().replace(/[^a-z0-9+]+/g,' ').trim();
+ .toLowerCase().replace(/\b(home|away)team\b/g,'$1 team')
+ .replace(/[^a-z0-9+]+/g,' ').trim();
 
 export function isWinningMarginMarket(line={}) {
  const n=String(line.market_name??line.marketName??'').toLowerCase().trim();
@@ -24,7 +25,7 @@ export function gradeWinningMargin(line,result) {
  const fh=int(result?.home_score),fa=int(result?.away_score);
  if(fh===null||fa===null)return null;
  const marketName=String(line.market_name??'');
- const isHalf=/1st\s+half/i.test(marketName);
+ const isHalf=/\b(?:1st|first|2nd|second)\s+half\b/i.test(marketName);
  let h=fh,a=fa;
  if(isHalf){
   h=int(result?.half_home_score);a=int(result?.half_away_score);
@@ -62,7 +63,7 @@ export function gradeWinningMargin(line,result) {
   return winner===side&&margin>=lo&&margin<=hi?'WON':'LOST';
  }
  // "home by X" / "away by X" / "home X" / "away X"
- const sideM=raw.match(/^(home|away)(?:\s+(?:team\s+)?(?:(?:win(?:s)?|by)\s+)?)?(\d+)\s*(\+)?$/);
+ const sideM=raw.match(/^(home|away)(?:\s+team)?(?:\s+(?:(?:win(?:s)?|by)\s+)?)?(\d+)\s*(\+)?$/);
  if(sideM){
   const side=sideM[1],n=Number(sideM[2]),plus=!!sideM[3];
   if(plus)return winner===side&&margin>=n?'WON':'LOST';
