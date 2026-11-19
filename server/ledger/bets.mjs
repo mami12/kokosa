@@ -862,10 +862,10 @@ export function getLinePlacementScore(l) {
 export function getLinePlacementLabel(l) {
  const marketName=String(l?.market_name??l?.accepted_contract?.providerMarketName??'').toLowerCase();
  const event=String(l?.live_contract?.event??l?.accepted_contract?.liveTerms?.event??'').toLowerCase();
- if(event==='corner'||/\\b(?:corners?|këndore|kendore|korne)\\b/i.test(marketName))return 'Kornerat';
- if(event==='card'||/\\b(?:cards?|karton\\w*|bookings?|yellow\\s*card|red\\s*card)\\b/i.test(marketName))return 'Kartonat';
- if(event==='foul'||/\\b(?:fouls?|faull\\w*)\\b/i.test(marketName))return 'Faullat';
- if(event==='goal'||/\\b(?:goals?|correct score|1x2|btts|double chance)\\b/i.test(marketName))return 'Golat';
+ if(event==='corner'||/\b(?:corners?|këndore|kendore|korne)\b/i.test(marketName))return 'Kornerat';
+ if(event==='card'||/\b(?:cards?|karton\w*|bookings?|yellow\s*card|red\s*card)\b/i.test(marketName))return 'Kartonat';
+ if(event==='foul'||/\b(?:fouls?|faull\w*)\b/i.test(marketName))return 'Faullat';
+ if(event==='goal'||/\b(?:goals?|correct score|1x2|btts|double chance)\b/i.test(marketName))return 'Golat';
  return 'Rezultati';
 }
 
