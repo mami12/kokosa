@@ -383,7 +383,7 @@ export function parseIntervalCount(line) {
  */
 export function parseClockWindowTotal(line){
  const name=norm(line.market_name??line.marketName??line.name);
- const firstTen=name.match(/^goal in first (\d{1,2}) min(?:ute)?s?\s*\(?(\\d{1,3}):([0-5]\d)\s*[-–]\s*(\d{1,3}):([0-5]\d)\)?\s*\((\d+(?:[.,]\d+)?)\)$/);
+ const firstTen=name.match(/^goal in first (\d{1,2}) min\.?(?:ute)?s?\s*\((\d{1,3}):([0-5]\d)\s*[-–]\s*(\d{1,3}):([0-5]\d)\)\s*\((\d+(?:[.,]\d+)?)\)$/);
  if(firstTen){
   const width=Number(firstTen[1]),from=Number(firstTen[2]),fromSecond=Number(firstTen[3]),
    end=Number(firstTen[4]),endSecond=Number(firstTen[5]),titleLine=number(firstTen[6]);
