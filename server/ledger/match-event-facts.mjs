@@ -443,7 +443,8 @@ function gradeOfficialCornerPeriodContract(contract,result){
  const periods=stats?.cornerPeriods;
  if(periods?.source!=='ZIZOBET')return null;
  const read=value=>{
-  const home=Number(value?.home),away=Number(value?.away);
+  if(value?.home==null||value?.away==null)return null;
+  const home=Number(value.home),away=Number(value.away);
   return Number.isSafeInteger(home)&&home>=0&&Number.isSafeInteger(away)&&away>=0
    ?{home,away}:null;
  };
