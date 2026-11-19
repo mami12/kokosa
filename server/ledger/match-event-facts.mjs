@@ -737,6 +737,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    (c.event!=='card'||!['yellow','red'].includes(c.cardColor)||
     data.card_colors_verified!==true))return null;
  const through=Number(data.through_minute);
+ const decision=truth=>truth?'WON':'LOST';
  // Half-time is a valid end of the FIRST-HALF event scope, but only once
  // a separately confirmed Zizobet HT score exists AND the chronological
  // coverage has been reconfirmed by another primary poll at/after that HT.
@@ -881,7 +882,6 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  const count=Number(c.cardColor?(c.side==='home'?data.color_home:c.side==='away'?data.color_away:data.color_total):
    (c.side==='home'?data.home:c.side==='away'?data.away:data.total));
  const expected=Number(c.target??c.threshold);
- const decision=truth=>truth?'WON':'LOST';
  if(c.kind==='window'){
   // A proven event decides YES immediately and NO as lost; a verified
   // absence cannot win until the full quoted time window is complete.
