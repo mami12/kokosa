@@ -15,7 +15,7 @@ for(const [name,choice,expected] of [
  ['Hometeam Odd/Even','Even','WON'],
  ['Awayteam Odd/Even','Odd','WON'],
  ['2nd half - Hometeam Odd/Even','Odd','WON'],
- ['2nd half - Awayteam Odd/Even','Even','WON'],
+ ['2nd half - Awayteam Odd/Even','Odd','WON'],
  ['Goals Odd/Even','Odd','WON'],
  ['1st Half Goals Odd/Even','Odd','WON'],
  ['2nd Half Goals Odd/Even','Even','WON'],
