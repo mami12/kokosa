@@ -106,6 +106,36 @@ try{
   const user={id:randomUUID(),username:'native-quote-test',status:'ACTIVE',role:'PLAYER'};
   await db.query('insert into app_user(id,username,password_hash,role,balance) values($1,$2,$3,$4,1000)',
     [user.id,user.username,'test-only',user.role]);
+
+  // Multiscores "Other" outcomes depend on the exact sibling menu. All rows
+  // share one market key but keep independent provider outcome identities.
+  const multiRows=[
+    ['score-00','0:0'],['score-10','1:0'],['score-20','2:0'],
+    ['score-x','X'],['score-other-home','Other home win'],['score-other-away','Other away win']
+  ].map(([key,name],index)=>make(999121,'Multiscores',name,'',{
+    outcomeKey:key,nativeOutcomeId:key
+  }));
+  odds.applyRows(multiRows);
+  const otherHome=await resolveSelection({outcomeId:id(multiRows[4]),oddsAtPlacement:2.2});
+  assert.equal(otherHome.settlementHold,null,
+    'A native Other Home Win with its original sibling menu has a complete rule');
+  assert.equal(otherHome.nativeMarketOutcomes.length,6,
+    'The accepted quote captures every option in its exact provider market');
+  const multiTicket=await placeBet({user,stake:100,clientRequestId:randomUUID(),
+    selections:[{outcomeId:id(multiRows[4]),oddsAtPlacement:2.2}]});
+  const savedOther=(await db.query('select * from app_ticket_line where ticket_id=$1',[multiTicket.id])).rows[0];
+  assert.equal(savedOther.accepted_contract.nativeMarketOutcomes.length,6);
+  const multiResult={home_score:3,away_score:1};
+  assert.equal(gradeLine(savedOther,multiResult),'WON');
+  assert.equal(gradeLine({...savedOther,outcome_name:'Other home win'},{
+    home_score:2,away_score:0
+  }),'LOST','An exact score included in the grid is not an Other win');
+  assert.equal(gradeLine({...savedOther,outcome_name:'Other away win'},{
+    home_score:0,away_score:2
+  }),'WON');
+  assert.equal(gradeLine({...savedOther,outcome_name:'X'},{
+    home_score:1,away_score:1
+  }),'WON');
   const ticket=await placeBet({user,stake:100,clientRequestId:randomUUID(),
     selections:[{outcomeId:id(quoted[0]),oddsAtPlacement:2.2}]});
   assert.equal(ticket.status,'PENDING');
@@ -186,8 +216,8 @@ try{
   assert.equal(missingCounts.settlementHold,'NATIVE_INTERVAL_BASELINE_UNVERIFIED');
   assert.equal(missingCounts.liveContract,null);
 
-  assert.equal(Number((await db.query('select balance from app_user where id=$1',[user.id])).rows[0].balance),800,
-    'The removed offer and read-only checks must not charge the wallet');
+  assert.equal(Number((await db.query('select balance from app_user where id=$1',[user.id])).rows[0].balance),700,
+    'Only the accepted unknown, multiscore and race tickets debit the wallet');
   console.log('PASS native offers: PREMATCH numbered goal, LIVE minute-zero race, provider removal rejection, immutable Race-to-7 settlement, and missing interval evidence hold');
 }finally{
   pool.query=original.query;pool.connect=original.connect;
