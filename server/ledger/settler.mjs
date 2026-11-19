@@ -43,6 +43,7 @@ import {cornerTotalContract} from './corner-total-contract.mjs';
 import {statisticsNeedReview} from './settlement-review.mjs';
 import {createLiveSettlementPreviews} from './live-shadow-settlement.mjs';
 import {gradeStoredEventContract,SUPPORTED_FACT_KINDS} from './match-event-facts.mjs';
+import {recoverLegacyZizobetCornerContract} from './legacy-zizobet-corner-contract.mjs';
 import {backfillPendingTeamGoalContracts} from './live-contract-backfill.mjs';
 import {settleVerifiedLiveProposals} from './verified-live-settlement.mjs';
 
@@ -1468,20 +1469,26 @@ export async function settleMatch(matchId) {
       continue;
     }
     let status=null;
+    // Old Zizobet corner tickets may predate a native parser. Rebuild only
+    // from the immutable accepted ZIZOBET quote; never from AAMS or display text.
+    const recoveredCornerContract=!line.live_contract?
+      recoverLegacyZizobetCornerContract(line):null;
+    const settlementLine=recoveredCornerContract?
+      {...line,live_contract:recoveredCornerContract}:line;
     // A frozen event contract is graded against PostgreSQL provider facts,
     // never parsed from a translated/displayed name at settlement time.
-    if(line.live_contract&&SUPPORTED_FACT_KINDS.has(line.live_contract.kind)){
-      status=await gradeStoredEventContract(line,result,{execute:query});
+    if(settlementLine.live_contract&&SUPPORTED_FACT_KINDS.has(settlementLine.live_contract.kind)){
+      status=await gradeStoredEventContract(settlementLine,result,{execute:query});
     }
-    if(!['WON','LOST','VOID'].includes(status)&&hasRequiredSettlementEvidence(line,result)){
-      status=gradeLine(line,result);
+    if(!['WON','LOST','VOID'].includes(status)&&hasRequiredSettlementEvidence(settlementLine,result)){
+      status=gradeLine(settlementLine,result);
       // Only a proved two-way integer push is refundable on the legacy path.
       // Unsupported parsing remains PENDING.
       if(status==='VOID'&&!isProvenTwoWayTotalPush(line,result)&&
          !(isHandicapMarket(line)&&legacyHandicapResult(line,result)==='VOID'))status=null;
     }
     if(!['WON','LOST','VOID'].includes(status)){
-      unresolved.push({line,result});
+      unresolved.push({line:settlementLine,result});
       continue; // incomplete feed or missing market rule => PENDING
     }
     const settledOdds=settledOddsFor(line,result,status);
