@@ -67,6 +67,59 @@ assert.equal(grade('Manchester United Clean Sheet','No'),'WON');
 assert.equal(grade('Clean Sheet','Yes'),null);
 assert.equal(grade('Home and Away Clean Sheet','Yes'),null);
 
+// Zizobet often joins the team token ("Hometeam"/"Awayteam") in the
+// original market title. Resolve the side and the exact half, not the FT score.
+const compactFixture={...score,home_team:'Chelsea Women',away_team:'Paris Saint-Germain Women',
+ home_score:2,away_score:1,half_home_score:1,half_away_score:0};
+const compactGrade=(market,outcome,period=0)=>gradeLine({
+ market_name:market,outcome_name:outcome,outcome_key:outcome,line:'',period,builder_legs:null
+},compactFixture);
+assert.equal(compactGrade('2nd half - Awayteam clean sheet','Yes'),'LOST');
+assert.equal(compactGrade('2nd half - Awayteam clean sheet','No'),'WON');
+assert.equal(compactGrade('2nd half - Hometeam clean sheet','Yes'),'LOST');
+assert.equal(compactGrade('2nd half - Hometeam clean sheet','No'),'WON');
+assert.equal(compactGrade('1st half - Awayteam clean sheet','Yes'),'LOST');
+assert.equal(compactGrade('1st half - Awayteam clean sheet','No'),'WON');
+assert.equal(compactGrade('1st half - Hometeam clean sheet','Yes'),'WON');
+assert.equal(compactGrade('1st half - Hometeam clean sheet','No'),'LOST');
+
+// Team-scoped odd/even must use only that team's goals.
+assert.equal(compactGrade('Awayteam odd/even','Odd'),'WON');
+assert.equal(compactGrade('Awayteam odd/even','Even'),'LOST');
+assert.equal(compactGrade('Hometeam odd/even','Even'),'WON');
+assert.equal(compactGrade('Hometeam odd/even','Odd'),'LOST');
+
+// Compact side labels on Winning Margin are not generic match margins.
+assert.equal(compactGrade('Winning margin','Hometeam by 1'),'WON');
+assert.equal(compactGrade('Winning margin','Awayteam by 1'),'LOST');
+
+// "Other" multiscore results require the exact menu frozen with the accepted
+// native quote. The menu prevents an exact-score outcome also winning "Other".
+const multiscoreGrid=[
+ {outcomeName:'0:0'},{outcomeName:'1:0'},{outcomeName:'2:0'},
+ {outcomeName:'X'},{outcomeName:'Other home win'},{outcomeName:'Other away win'}
+];
+const multiLine=outcome=>({
+ market_name:'Multiscores',outcome_name:outcome,outcome_key:outcome,builder_legs:null,
+ accepted_contract:{nativeMarketOutcomes:multiscoreGrid}
+});
+assert.equal(gradeLine(multiLine('Other home win'),{
+ ...compactFixture,home_score:3,away_score:1
+}),'WON');
+assert.equal(gradeLine(multiLine('Other home win'),{
+ ...compactFixture,home_score:2,away_score:0
+}),'LOST');
+assert.equal(gradeLine(multiLine('Other away win'),{
+ ...compactFixture,home_score:0,away_score:2
+}),'WON');
+assert.equal(gradeLine(multiLine('X'),{
+ ...compactFixture,home_score:2,away_score:2
+}),'WON');
+assert.equal(gradeLine({
+ market_name:'Multiscores',outcome_name:'Other home win',builder_legs:null
+},{...compactFixture,home_score:3,away_score:1}),null,
+ 'Other outcome without the frozen market menu remains pending');
+
 // A DNB code that is not 1 or 2 cannot be silently interpreted as LOST.
 assert.equal(grade('Draw No Bet','Mystery'),null);
 assert.equal(gradeLine(choice('Draw No Bet','Mystery'),{...score,home_score:1,away_score:1}),null);
