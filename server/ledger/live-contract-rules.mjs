@@ -10,7 +10,7 @@ import {parseHandicapContract} from './handicap-contracts.mjs';
 import {parsePlayerOrdinalScorer} from './player-ordinal-scorer.mjs';
 import {parsePlayerGoalSpecial} from './player-goal-specials.mjs';
 import {parseHalfExactMarket} from './half-exact-markets.mjs';
-const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(home|away)team\b/g,'$1 team').replace(/\s+/g,' ').trim();
 const number=v=>v==null||v===''||!Number.isFinite(Number(v))?null:Number(v);
 const yesNo=line=>{
  const label=norm(line.outcome_name??line.outcomeName??line.outcome_key??line.outcomeKey);
