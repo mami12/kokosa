@@ -92,6 +92,8 @@ assert.equal(compactGrade('Hometeam odd/even','Odd'),'LOST');
 // Compact side labels on Winning Margin are not generic match margins.
 assert.equal(compactGrade('Winning margin','Hometeam by 1'),'WON');
 assert.equal(compactGrade('Winning margin','Awayteam by 1'),'LOST');
+assert.equal(compactGrade('2nd half - Winning margin','Draw'),'WON',
+ 'Second-half margin uses FT minus the verified HT score, not the HT score itself');
 
 // "Other" multiscore results require the exact menu frozen with the accepted
 // native quote. The menu prevents an exact-score outcome also winning "Other".
