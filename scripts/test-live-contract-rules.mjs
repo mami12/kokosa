@@ -49,7 +49,7 @@ const intervalCornerHandicap=liveContract({market_name:'Corner handicap in minut
 assert.deepEqual({kind:intervalCornerHandicap?.kind,event:intervalCornerHandicap?.event,
  side:intervalCornerHandicap?.side,handicap:intervalCornerHandicap?.handicap,
  from:intervalCornerHandicap?.from,to:intervalCornerHandicap?.to},
- {kind:'interval-handicap',event:'corner',side:'home',handicap:-0.5,from:21,to:30,normalTimeOnly:true});
+ {kind:'interval-handicap',event:'corner',side:'home',handicap:-0.5,from:21,to:30});
 
 
 assert.deepEqual([liveContract({market_name:'Full Time first valueUP',outcome_name:'1'})?.kind,
