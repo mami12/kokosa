@@ -25,11 +25,14 @@ export function gradeWinningMargin(line,result) {
  const fh=int(result?.home_score),fa=int(result?.away_score);
  if(fh===null||fa===null)return null;
  const marketName=String(line.market_name??'');
- const isHalf=/\b(?:1st|first|2nd|second)\s+half\b/i.test(marketName);
+ const isFirstHalf=/\b(?:1st|first)\s+half\b/i.test(marketName);
+ const isSecondHalf=/\b(?:2nd|second)\s+half\b/i.test(marketName);
  let h=fh,a=fa;
- if(isHalf){
-  h=int(result?.half_home_score);a=int(result?.half_away_score);
-  if(h===null||a===null)return null;
+ if(isFirstHalf||isSecondHalf){
+  const hh=int(result?.half_home_score),ha=int(result?.half_away_score);
+  if(hh===null||ha===null||hh>fh||ha>fa)return null;
+  h=isFirstHalf?hh:fh-hh;
+  a=isFirstHalf?ha:fa-ha;
  }
  const margin=Math.abs(h-a);
  const winner=h>a?'home':a>h?'away':'draw';
