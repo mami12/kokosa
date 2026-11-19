@@ -76,7 +76,8 @@ export function gradeHalfExactFacts(contract,facts,{complete=false,cardColorsVer
   else if(phase2.has(raw)){if(minute<45)return null;half=2;}
   else if(raw)return null;
   else if(minute<45)half=1;
-  else return null; // 45+ without phase is not an automatic 2H incident
+  else if(minute>45&&minute<=90)half=2;
+  else return null; // exact 45 without phase is ambiguous
   if(half!==contract.half||contract.side&&fact.team!==contract.side)continue;
   if(contract.cardColor){
     if(fact.card_color==null||!['yellow','red'].includes(fact.card_color))return null;
