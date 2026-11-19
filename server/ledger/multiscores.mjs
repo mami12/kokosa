@@ -10,6 +10,19 @@ export function gradeMultiscores(line, result) {
   const away = Number(result?.away_score);
   if (!Number.isFinite(home) || !Number.isFinite(away)) return null;
   const raw = String(line.outcome_name ?? line.outcome_key ?? '').trim();
+  const normalized = raw.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+  if (/^(?:x|draw|tie)$/.test(normalized)) return home === away ? 'WON' : 'LOST';
+  const otherSide = normalized.match(/^other\s+(home|away)\s+win$/);
+  if (otherSide) {
+    const offered = line?.accepted_contract?.nativeMarketOutcomes;
+    if (!Array.isArray(offered) || !offered.length || offered.length > 500) return null;
+    const grid = offered.map(value => String(value).trim().match(/^(\d{1,2})\s*[:\-]\s*(\d{1,2})$/))
+      .filter(Boolean).map(match => [Number(match[1]), Number(match[2])]);
+    if (!grid.length || grid.length !== offered.length) return null;
+    const listed = grid.some(([h, a]) => h === home && a === away);
+    const sideWins = otherSide[1] === 'home' ? home > away : away > home;
+    return sideWins && !listed ? 'WON' : 'LOST';
+  }
   if (/\bother\b/i.test(raw)) return null;
   const pairs = [];
   const regex = /(\d+)\s*[:\-]\s*(\d+)/g;
