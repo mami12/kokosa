@@ -441,7 +441,11 @@ function gradeOfficialCornerPeriodContract(contract,result){
   try{return JSON.parse(result.statistics);}catch{return null;}
  })():result.statistics;
  const periods=stats?.cornerPeriods;
- if(periods?.source!=='ZIZOBET')return null;
+ // Missing period aggregates are not a contradiction: continue to the
+ // independently confirmed Zizobet event chronology below. Only a present,
+ // malformed or non-reconciling primary period snapshot is a hard hold.
+ if(!periods)return undefined;
+ if(periods.source!=='ZIZOBET')return null;
  const read=value=>{
   if(value?.home==null||value?.away==null)return null;
   const home=Number(value.home),away=Number(value.away);
@@ -461,6 +465,11 @@ function gradeOfficialCornerPeriodContract(contract,result){
  }
  if(kind==='corner-comparison'){
   const winner=(pair)=>pair.home>pair.away?'home':pair.away>pair.home?'away':'none';
+  if(contract.mode==='full-result'){
+   if(!['home','away','none'].includes(contract.side))return null;
+   const side=winner(full);
+   return side==='none'&&contract.drawOffered!==true?'VOID':side===contract.side?'WON':'LOST';
+  }
   if(contract.mode==='period-result'){
    if(!half||!['home','away','none'].includes(contract.side))return null;
    const side=winner(half);
