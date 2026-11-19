@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { getLinePlacementScore } from '../server/ledger/bets.mjs';
+import { getLinePlacementScore,getLinePlacementLabel } from '../server/ledger/bets.mjs';
 
 // 1. Live 1X2 bet placed when score is 1:0
 const goalLine = {
@@ -39,6 +39,9 @@ const cornerLine = {
 };
 assert.equal(getLinePlacementScore(cornerLine), '[4:0]');
 
+assert.equal(getLinePlacementLabel(cornerLine),'Kornerat');
+
+
 // 3. Live Corner bet with 2:2 corners in Albanian (Goditje këndore)
 const cornerAlbanianLine = {
   match_name: 'Real Madrid vs Barcelona',
@@ -76,6 +79,10 @@ const cardLine = {
   }
 };
 assert.equal(getLinePlacementScore(cardLine), '[1:2]');
+
+assert.equal(getLinePlacementLabel(cardLine),'Kartonat');
+assert.equal(getLinePlacementLabel(goalLine),'Golat');
+
 
 // 5. Unstarted prematch match: should be null (no score displayed before kickoff)
 const prematchLine = {
@@ -120,5 +127,6 @@ const baselineLine = {
   }
 };
 assert.equal(getLinePlacementScore(baselineLine), '[3:1]');
+assert.equal(getLinePlacementLabel(baselineLine),'Kornerat');
 
 console.log('PASS: getLinePlacementScore handles goals, corners [4:0] / [2:2], cards, and prematch correctly');
