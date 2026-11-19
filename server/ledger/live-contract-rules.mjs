@@ -382,12 +382,29 @@ export function parseIntervalCount(line) {
  * attribution and cannot safely be reconstructed from absolute minute counts.
  */
 export function parseClockWindowTotal(line){
- const name=norm(line.market_name??line.marketName??line.name);
+ const rawName=String(line.market_name??line.marketName??line.name??'').trim();
+ const name=norm(rawName);
+ // Zizobet's opening-ten-minute label is a closed 00:00..09:59 goal window.
+ const opening=rawName.match(/^goals?\s+in\s+first\s+(\d{1,2})\s+min(?:ute)?s?\.?\s*\(\s*(\d{1,3}):([0-5]\d)\s*[-–]\s*(\d{1,3}):([0-5]\d)\s*\)\s*(?:\((\d+(?:[.,]\d+)?)\))?$/i);
+ if(opening){
+  const duration=Number(opening[1]),from=Number(opening[2]),fromSecond=Number(opening[3]),
+   to=Number(opening[4]),toSecond=Number(opening[5]);
+  const label=norm(line.outcome_name??line.outcomeName??line.outcome_key??line.outcomeKey);
+  const over=label.match(/^over(?:\s+(\d+(?:[.,]\d+)?))?$/);
+  const under=label.match(/^under(?:\s+(\d+(?:[.,]\d+)?))?$/);
+  const named=(over??under)?.[1],raw=line.line??line.specifier;
+  const threshold=number(String(named??raw??opening[6]??'').replace(',','.'));
+  const titleThreshold=number(String(opening[6]??'').replace(',','.'));
+  if((over||under)&&duration>=1&&duration<=45&&from===0&&fromSecond===0&&
+     to===duration-1&&toSecond===59&&threshold!==null&&threshold>=0&&
+     Number.isInteger(threshold*2)&&(titleThreshold===null||titleThreshold===threshold))
+   return {version:1,kind:'window-total',event:'goal',from:0,to,choice:over?'over':'under',threshold};
+  return null;
+ }
  const m=name.match(/^(\d{1,3}):([0-5]\d)\s*[-–]\s*(\d{1,3}):([0-5]\d)\s*min\.?\s*[-–]\s*(?:total\s+)?(?:(home|away)\s+team\s+)?(goals?|corners?|cards?|fouls?|offsides?)(?:\s+(home|away)\s+team)?\s*(?:\((\d+(?:[.,]\d+)?)\))?$/);
  if(!m||m[2]!=='00'||m[4]!=='59'||(m[5]&&m[7]))return null;
  const from=Number(m[1]),to=Number(m[3]);
- // 45+ first-half injury time can overlap ordinary absolute minute 45;
- // no reliable period attribution currently exists for this market family.
+ // 45+ first-half injury time can overlap ordinary absolute minute 45.
  if(from<0||to<from||to>=45)return null;
  const event=typeOf(m[6]),side=m[5]??m[7],label=norm(line.outcome_name??line.outcomeName??line.outcome_key??line.outcomeKey);
  if(!event||!['goal','corner','card','foul'].includes(event))return null;
@@ -402,6 +419,7 @@ export function parseClockWindowTotal(line){
     (inTitle!==null&&inTitle!==threshold))return null;
  return {version:1,kind:'window-total',event,...(side?{side}:{}),from,to,choice:over?'over':'under',threshold};
 }
+
 /** Explicit full-match yellow/red card totals. The two colors never share a
  * counter when freezing the wager or grading it in PostgreSQL. */
 export function parseColorCardCount(line) {
