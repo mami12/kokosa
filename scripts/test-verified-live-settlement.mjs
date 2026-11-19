@@ -216,7 +216,7 @@ let eventScanSql='';
 const eventUpdates=[];
 const eventScan=await settleVerifiedEventFacts({
  runQuery:async(sql)=>{
-  if(/select l\\.\\*/.test(sql)){
+  if(sql.includes('select l.*')){
    eventScanSql=sql;
    return {rows:[{id:'line-native',ticket_id:'ticket-native',match_id:77,
     market_key:'provider-market-77',market_name:'Next Corner',
@@ -230,7 +230,7 @@ const eventScan=await settleVerifiedEventFacts({
  recalc:async ticketId=>({ticketId,status:'WON'})
 });
 assert.ok(eventScanSql.includes("l.live_contract is not null"));
-assert.ok(!/market_key\\s+like|providerMarketKey.*like/i.test(eventScanSql),
+assert.ok(!/market_key\s+like|providerMarketKey.*like/i.test(eventScanSql),
  'verified event settlement must not exclude a valid contract because its native market key has another format');
 assert.deepEqual(eventUpdates,[{lineId:'line-native',status:'WON',ticketId:'ticket-native'}]);
 assert.equal(eventScan.graded,1,
