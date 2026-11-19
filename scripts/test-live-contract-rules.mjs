@@ -142,7 +142,7 @@ corners.events.forEach((e,i)=>{e.team=['home','away','home','away','home'][i];})
 assert.equal(gradeLiveContract(race,corners),'WON');
 assert.equal(gradeLiveContract({...race,side:'away'},corners),'LOST');
 assert.equal(gradeLiveContract(race,{...corners,coverage:{cornerThrough:10}}),null);
-assert.equal(gradeLiveContract({...race,target:6},corners,{ended:true}),null,'Unreached race needs the official cancellation rule');
+assert.equal(gradeLiveContract({...race,target:6},corners,{ended:true}),'VOID','An unreached two-way race is refunded at confirmed FT');
 assert.equal(gradeLiveContract(w,obs('goal',[],15,15),{ended:true}),null,'Abandoned early match is not an elapsed window');
 // Last goal/corner/card are final-event bets: never declare a winner before FT.
 for(const [name,event] of [['Last Goal','goal'],['Last Corner','corner'],['Last Card','card']]){
