@@ -859,6 +859,16 @@ export function getLinePlacementScore(l) {
   return null;
 }
 
+export function getLinePlacementLabel(l) {
+ const marketName=String(l?.market_name??l?.accepted_contract?.providerMarketName??'').toLowerCase();
+ const event=String(l?.live_contract?.event??l?.accepted_contract?.liveTerms?.event??'').toLowerCase();
+ if(event==='corner'||/\\b(?:corners?|këndore|kendore|korne)\\b/i.test(marketName))return 'Kornerat';
+ if(event==='card'||/\\b(?:cards?|karton\\w*|bookings?|yellow\\s*card|red\\s*card)\\b/i.test(marketName))return 'Kartonat';
+ if(event==='foul'||/\\b(?:fouls?|faull\\w*)\\b/i.test(marketName))return 'Faullat';
+ if(event==='goal'||/\\b(?:goals?|correct score|1x2|btts|double chance)\\b/i.test(marketName))return 'Golat';
+ return 'Rezultati';
+}
+
 const toClientLine = (l) => ({
   id: l.id,
   ticketId: l.ticket_id,
@@ -873,6 +883,7 @@ const toClientLine = (l) => ({
   marketLine: String(l.line ?? ''),
   matchName: l.match_name,
   scoreAtPlacement: getLinePlacementScore(l),
+  scoreAtPlacementLabel: getLinePlacementScore(l)==null?null:getLinePlacementLabel(l),
   oddsAtPlacement: Number(l.odds_at_placement),
   settledOdds: l.settled_odds==null?null:Number(l.settled_odds),
   status: l.status,
