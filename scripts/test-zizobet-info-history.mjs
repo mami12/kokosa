@@ -42,6 +42,16 @@ assert.deepEqual(officialFinalFrame.cornerPeriods,{
  firstHalf:{home:4,away:2},secondHalf:{home:6,away:1},fullTime:{home:10,away:3}
 });
 
+
+const endedTimeline=[
+ ...[[1,1],[45,2],[52,2]].map(([minute,team],i)=>({id:'away-c'+i,type:'corner_kick',team,gt:minute})),
+ ...[[8,1],[10,1],[19,1],[30,1],[65,1],[69,1],[70,1],[71,1],[77,1],[85,1]].map(([minute,team],i)=>({id:'home-c'+i,type:'corner_kick',team,gt:minute}))
+];
+const noClockFinal=normalizeLiveFrame({Match:cornerGame,TimeLines:endedTimeline});
+assert.equal(noClockFinal.clock,130,'An authoritative FT result closes event coverage without a clock');
+assert.equal(noClockFinal.coverage.cornerThrough,130,
+ 'RESULT_CORNERFT reconciles the complete final corner timeline when the clock is omitted');
+
 const ui=readFileSync(new URL('../web/src/components/Tracker/PitchTracker.tsx',import.meta.url),'utf8');
 const css=readFileSync(new URL('../web/src/styles/zshop.css',import.meta.url),'utf8');
 assert.doesNotMatch(ui,/\.slice\(0,\s*8\)/,
