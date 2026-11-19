@@ -27,7 +27,7 @@ const stamp=s=>{if(!s)return null;const n=Date.parse(/[zZ]|[+]\d\d:\d\d$/.test(s
 /** Full live dictionaries contain display placeholders different from prematch
  * templates. Read their actual quote parameters; never infer a time window
  * from the current clock or from its advertised five/ten/fifteen-minute size. */
-export function resolveMarketTitle(raw,q,{intervalWidth}={}){
+export function resolveMarketTitle(raw,q,{intervalWidth,competitors}={}){
  let name=text(raw).replace(/^\*\s*/,'');
  // Race-to-X is a quote parameter, NOT the literal letter X. Refuse an
  // ambiguous offer instead of showing a misleading threshold on the ticket.
@@ -149,8 +149,11 @@ export function resolveMarketTitle(raw,q,{intervalWidth}={}){
   return 'Correct score rest of match (from '+q.p3+')';
  }
  if(/^(?:(?:1st|2nd) half - )?Correct score AAMS-logic$/i.test(name))name=name.replace(/ AAMS-logic$/i,'');
- const values=Object.fromEntries(Object.entries({...q,from:q.p1,to:q.p2,total:q.h,handicap:q.h,player:q.pl,score:q.p3,'goal!':q.p3,'!scorenr':q.p3}).map(([k,v])=>[k.toLowerCase(),v]));
- name=name.replace(/\{([^{}]+)\}|\[([^\[\]]+)\]/g,(token,a,b)=>{const field=String(a??b).trim().toLowerCase().replace(/_r$/,'');return values[field]!=null?String(values[field]):token;});
+ const values=Object.fromEntries(Object.entries({...q,from:q.p1,to:q.p2,total:q.h,handicap:q.h,player:q.pl,score:q.p3,'goal!':q.p3,'!scorenr':q.p3,
+  competitor1:competitors?.competitor1??competitors?.home,
+  competitor2:competitors?.competitor2??competitors?.away
+ }).map(([k,v])=>[k.toLowerCase(),v]));
+ name=name.replace(/\{([^{}]+)\}|\[([^\[\]]+)\]/g,(token,a,b)=>{const field=String(a??b).trim().toLowerCase().replace(/^\$/,'').replace(/_r$/,'');return values[field]!=null?String(values[field]):token;});
  // An unresolved token describes an unknown contract, not a display label.
  // Keep numeric score/range notation, but never offer guessed minutes/players.
  if(/[{}]|\[[^\[\]]*[a-z!_][^\[\]]*\]/i.test(name))return null;
@@ -244,14 +247,15 @@ export function oddsOf(row,quotes,meta,live,open=true){
   // Keep the exact provider title if a dynamic placeholder cannot be expanded.
   // Its native parameters are still frozen and the ticket is held for review
   // rather than making the quoted offer vanish from the market list.
-  let name=resolveMarketTitle(live&&id===18639?'Correct score [{score}]':rawName,q,{intervalWidth:measuredWidth})??rawName;
+  const competitors={competitor1:row.home,competitor2:row.away};
+  let name=resolveMarketTitle(live&&id===18639?'Correct score [{score}]':rawName,q,{intervalWidth:measuredWidth,competitors})??rawName;
   if(live&&id===602)name='1X2';
   name=name.replace(/\bHometeam\b/gi,'Home team').replace(/\bAwayteam\b/gi,'Away team');
   if(isExcludedOfferMarket({name,pl:q.pl,nativeMarketId:String(id),marketKey:key}))continue;
   if(q.pl&&!name.includes(String(q.pl)))name+=' · '+q.pl;
   const fullResult=(live&&id===602)||(!live&&id===448);
   const fullTotal=(live&&id===603)||(!live&&id===537);
-  const label=resolveMarketTitle(position,q)??String(position);
+  const label=resolveMarketTitle(position,q,{competitors})??String(position);
   const canonical=/^(?:1|x|2|1x|12|x2)$/i.test(label)?label.toUpperCase():/^(?:over|o)$/i.test(label)?'Over':/^(?:under|u)$/i.test(label)?'Under':/^(?:yes|no)$/i.test(label)?label[0].toUpperCase()+label.slice(1).toLowerCase():null;
   const price=Number(live?q.v:q.coef),suspended=!open||flagFalse(q.visible)||flagTrue(q.lock)||resolvedQuote(q.res)||!Number.isFinite(price)||price<=1;
   // Preserve the untouched public API name/selection and quote parameters
@@ -278,8 +282,28 @@ export function oddsOf(row,quotes,meta,live,open=true){
  * remain separate even if a translation happens to look similar. */
 export function dedupeMarketRows(rows){
  const groups=new Map();for(const r of rows){const key=r.marketKey+'|'+r.line;const group=groups.get(key)??[];group.push(r);groups.set(key,group);}
- const accepted=[],signatures=new Set(),correctScores=new Map();
+ const accepted=[],signatures=new Set(),correctScores=new Map(),nativeContracts=new Set();
  const norm=s=>String(s).trim().toLowerCase().replace(/\s+/g,' ');
+ const appendNativeContract=group=>{
+  const first=group[0];
+  const complete=group.length>=2&&group.every(r=>r.nativeMarketId!=null&&
+   String(r.nativeMarketName??'').trim()!==''&&r.nativeParameters&&
+   typeof r.nativeParameters==='object'&&String(r.nativeOutcomeName??'').trim()!==''&&
+   r.price!==null&&r.price!==undefined&&Number.isFinite(Number(r.price)));
+  if(complete){
+   const outcomeNames=group.map(r=>norm(r.nativeOutcomeName));
+   if(new Set(outcomeNames).size===outcomeNames.length){
+    const params=Object.fromEntries(Object.entries(first.nativeParameters).sort(([a],[b])=>a.localeCompare(b)));
+    const outcomes=group.map(r=>[norm(r.nativeOutcomeName),Number(r.price),r.suspended===true])
+     .sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    const signature=JSON.stringify([first.matchId??null,norm(first.nativeMarketName),
+     first.period??0,String(first.line??''),params,outcomes]);
+    if(nativeContracts.has(signature))return;
+    nativeContracts.add(signature);
+   }
+  }
+  accepted.push(...group);
+ };
  for(const group of [...groups.values()].sort((a,b)=>a[0].marketKey.localeCompare(b[0].marketKey,undefined,{numeric:true}))){
   const r=group[0];
   // Native market IDs are separate provider contracts even when their
@@ -296,8 +320,8 @@ export function dedupeMarketRows(rows){
    continue;
   }
   const signature=base+'|'+r.marketKey.split('@')[1]+'|'+JSON.stringify(labels);
-  if(!signatures.has(signature)){signatures.add(signature);accepted.push(...group);}
+  if(!signatures.has(signature)){signatures.add(signature);appendNativeContract(group);}
  }
- for(const group of correctScores.values())accepted.push(...group);
+ for(const group of correctScores.values())appendNativeContract(group);
  return accepted;
 }

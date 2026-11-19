@@ -6,8 +6,13 @@ import { loadUiModule } from './fixtures/load-ui-module.mjs';
 const module = { exports: loadUiModule(new URL('../web/src/utils/sportsbookLabels.ts', import.meta.url)) };
 const marketCatalog = loadUiModule(new URL('../web/src/utils/adminMarketCatalogLabel.ts', import.meta.url));
 const zizoTranslations=loadUiModule(new URL('../web/src/i18n/zizobetMarketLabels.ts',import.meta.url));
+const marketHelp=loadUiModule(new URL('../web/src/utils/marketHelp.ts',import.meta.url));
 assert.equal(zizoTranslations.translateZizobetMarketLabel('Which team wins race to 6 goals'),'Skuadra që arrin e para 6 gola');
 assert.equal(zizoTranslations.translateZizobetMarketLabel('Which team wins race to 6 corners'),'Skuadra që arrin e para 6 goditje këndore');
+assert.equal(zizoTranslations.translateZizobetMarketLabel('Arsenal to win'),'Arsenal fiton');
+assert.equal(zizoTranslations.translateZizobetMarketLabel('Arsenal no bet'),'Arsenal nuk fiton (barazim ose humbje)');
+assert.match(marketHelp.marketHelp({name:'Arsenal no bet'},'en').summary,/not win/i);
+assert.match(marketHelp.marketHelp({name:'Arsenal to win'},'en').summary,/wins the match/i);
 for(const title of ['Next Goal 1st','Next Goal 2nd','Next Goal 3rd','Next Goal 4th','Next Corner 2nd']){
  assert.equal(zizoTranslations.translateZizobetMarketLabel(title),title,
   'Original numbered market title must stay in English: '+title);

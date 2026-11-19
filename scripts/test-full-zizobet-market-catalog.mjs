@@ -26,6 +26,31 @@ const separateCorrectScores=dedupeMarketRows([
 ]);
 assert.equal(separateCorrectScores.length,2,
  'correct-score grids from different native IDs must remain separate contracts');
+
+const nativeGrid=(id,over=1.91,under=1.91)=>[
+ {matchId:72,marketKey:`zz${id}@e30`,line:'2.5',period:0,marketName:'Total Goals',
+  nativeMarketId:String(id),nativeMarketName:'Total Goals',nativeParameters:{p1:25},
+  nativeOutcomeId:`${id}-over`,nativeOutcomeName:'Over',outcomeName:'Over',outcomeKey:'z-over',price:over,suspended:false},
+ {matchId:72,marketKey:`zz${id}@e30`,line:'2.5',period:0,marketName:'Total Goals',
+  nativeMarketId:String(id),nativeMarketName:'Total Goals',nativeParameters:{p1:25},
+  nativeOutcomeId:`${id}-under`,nativeOutcomeName:'Under',outcomeName:'Under',outcomeKey:'z-under',price:under,suspended:false}
+];
+assert.equal(dedupeMarketRows([...nativeGrid(920),...nativeGrid(921)]).length,2,
+ 'fully identical native offers are collapsed even when the provider repeats them under another ID');
+assert.equal(dedupeMarketRows([...nativeGrid(920),...nativeGrid(921,1.89,1.93)]).length,4,
+ 'same-looking offers with different prices remain distinct');
+
+const competitorMeta={positions:new Map(),liveMarkets:new Map(),preMarkets:new Map([
+ [930,{Name:'{$competitor1} to win',pos:[{id:1,nm:'{$competitor2}'}]}],
+ [931,{Name:'{$competitor1} no bet',pos:[{id:1,nm:'Draw'}]}]
+])};
+const competitorOffers=oddsOf({match_id:73,home:'Arsenal',away:'Chelsea'},[
+ {mid:930,id:9301,pos:1,coef:1.95},
+ {mid:931,id:9311,pos:1,coef:2.05}
+],competitorMeta,false,true);
+assert.equal(competitorOffers.find(row=>row.nativeMarketId==='930')?.marketName,'Arsenal to win');
+assert.equal(competitorOffers.find(row=>row.nativeMarketId==='930')?.outcomeName,'Chelsea');
+assert.equal(competitorOffers.find(row=>row.nativeMarketId==='931')?.marketName,'Arsenal no bet');
 // Native decimal totals use the quoted threshold directly; integer lines still push at equality.
 for(const line of ['0.25','0.75','1.25','1.75']){
  const offer={provider_id:'ZIZOBET',market_name:'Total Goals',outcome_name:'Over',
