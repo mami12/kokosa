@@ -111,7 +111,7 @@ export function finishedResultParameters(row) {
   const cornerHalf2H={home:statNum(homeTeam?.corners2H),away:statNum(awayTeam?.corners2H)};
   const cornerFull={home:statNum(homeTeam?.cornersFT??homeTeam?.corners),
     away:statNum(awayTeam?.cornersFT??awayTeam?.corners)};
-  const validPair=pair=>Number.isSafeInteger(pair.home)&&pair.home>=0&&
+  const validPair=pair=>pair!=null&&Number.isSafeInteger(pair.home)&&pair.home>=0&&
     Number.isSafeInteger(pair.away)&&pair.away>=0;
   // Zizobet can publish either the first-half or second-half corner split.
   // When exactly one half is supplied, derive the other only from the same

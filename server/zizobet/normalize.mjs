@@ -54,6 +54,19 @@ export function resolveMarketTitle(raw,q,{intervalWidth}={}){
   return 'Total '+value+' '+oneMinuteWindow[1].toLowerCase()+
     ' in minutes '+from+'-'+to+' (1-minute interval)';
  }
+ const joinedTeamProviderWindow=name.match(/^(\d{1,2})\s+minutes?\s*[-–]\s*(home|away)team\s+total\s+(corners?|cards?|bookings?|goals?|offsides?)\s+from\s+first value(?::00)?\s*(?:to|[-–])\s*second value(?::00)?\s*min\.?$/i);
+ if(joinedTeamProviderWindow){
+  const width=Number(joinedTeamProviderWindow[1]),side=joinedTeamProviderWindow[2].toLowerCase();
+  const event=/bookings?/i.test(joinedTeamProviderWindow[3])?'cards':joinedTeamProviderWindow[3].toLowerCase();
+  const from=Number(q.p1),to=Number(q.p2),value=Number(q.h);
+  if(!Number.isSafeInteger(width)||width<1||width>30||
+     q.p1==null||q.p2==null||q.h==null||
+     !Number.isSafeInteger(from)||!Number.isSafeInteger(to)||
+     from<0||to<from||to>130||to-from+1!==width||
+     !Number.isFinite(value)||value<0||value>300||!Number.isInteger(value*2))return null;
+  return 'Total '+value+' '+side+' team '+event+
+   ' in minutes '+from+'-'+to+' ('+width+'-minute interval)';
+ }
  const providerWindow=name.match(/^(\d{1,2})\s+minutes?\s*[-–]\s*(.+?)\s+from\s+first value(?::00)?\s*(?:to|[-–])\s*second value(?::00)?\s*min\.?$/i);
  const timeRange=name.match(/^(.+?)\s+in\s+(?:(\d{1,2})\s+)?minutes?\s+time range(?:\s*\((\d{1,2})-minute interval\))?$/i);
  const fixedRange=name.match(/^(.+?)\s+in\s+(\d{1,2})\s+minutes?\s+interval\s+(\d{1,3})\s*[-–]\s*(\d{1,3})$/i);
@@ -88,7 +101,7 @@ export function resolveMarketTitle(raw,q,{intervalWidth}={}){
    if(value==null||!Number.isFinite(Number(value))||Number(value)<0||!Number.isInteger(Number(value)*2))return null;
    return 'Total '+value+' '+teamFirst[1]+' team '+event+band;
   }
-  const teamTotal=descriptor.match(/^total(?:\s+(\d+(?:[.,]\d+)?))?\s+(?:(home|away)team\s+)?(corners?|cards?|bookings?|goals?|offsides?)(?:\s+(home|away)team)?$/);
+  const teamTotal=descriptor.match(/^total(?:\s+(\d+(?:[.,]\d+)?))?\s+(?:(home|away)\s*team\s+)?(corners?|cards?|bookings?|goals?|offsides?)(?:\s+(home|away)\s*team)?$/);
   if(teamTotal){
    const value=teamTotal[1]??q.h;
    if(value==null||!Number.isFinite(Number(value))||Number(value)<0||!Number.isInteger(Number(value)*2))return null;

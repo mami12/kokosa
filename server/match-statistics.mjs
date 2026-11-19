@@ -65,7 +65,7 @@ export function normalizeTeamStatistics(raw,{observedAt=null,trustTimestamps=tru
  const result={};if(!raw||typeof raw!=='object'||Array.isArray(raw))return result;
  const times={};
  for(const [name,value] of Object.entries(raw)){
-  const key=aliases.get(name.toLowerCase().replace(/[^a-z]/g,''))??(name.startsWith('goals:')?name:null);
+  const key=aliases.get(name.toLowerCase().replace(/[^a-z0-9]/g,''))??(name.startsWith('goals:')?name:null);
   if(!key)continue;const number=statisticNumber(value,{percentage:key==='possession'});if(number===null)continue;
   result[key]=number;
   const at=(trustTimestamps?stamp(raw._observedAt?.[key]):null)??stamp(observedAt);

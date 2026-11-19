@@ -55,11 +55,11 @@ export default function MyBetsPage(){
   const statusInfo=(status:string)=>{
     switch(status){
       case 'WON':return {label:t('tickets.won'),Icon:CheckCircle2,
-        color:'text-emerald-300',border:'border-emerald-700/50'};
+        color:'text-slate-200',border:'border-slate-600'};
       case 'LOST':return {label:t('tickets.lost'),Icon:XCircle,
-        color:'text-rose-300',border:'border-rose-800/50'};
+        color:'text-slate-200',border:'border-slate-600'};
       case 'PENDING':return {label:t('tickets.pending'),Icon:Clock3,
-        color:'text-amber-200',border:'border-amber-800/40'};
+        color:'text-slate-200',border:'border-slate-600'};
       case 'VOID':return {label:t('tickets.void'),Icon:MinusCircle,
         color:'text-slate-300',border:'border-slate-600'};
       default:return {label:status,Icon:MinusCircle,
@@ -92,7 +92,7 @@ export default function MyBetsPage(){
             <div className="min-w-0">
               <p className="break-words text-sm font-semibold leading-snug text-slate-100">
                 {line.matchName}
-                {line.scoreAtPlacement && <span className="ml-1.5 font-bold text-accent-green">{line.scoreAtPlacementLabel ? `${line.scoreAtPlacementLabel} ` : ''}{line.scoreAtPlacement}</span>}
+                {line.scoreAtPlacement && <span className="ml-1.5 font-bold text-slate-100">{line.scoreAtPlacementLabel ? `${line.scoreAtPlacementLabel} ` : ''}{line.scoreAtPlacement}</span>}
               </p>
               <p className="mt-1 break-words text-xs leading-relaxed text-slate-400">
                 {formatMarketSelectionLabel(line.marketName,line.marketLine,t)}
@@ -144,7 +144,7 @@ export default function MyBetsPage(){
   const shown=activeTab==='active'?activeTickets:historyTickets;
   return <div className="flex min-h-[100dvh] flex-col bg-[#0d1420] text-slate-100">
     <Header/>
-    <main className="mx-auto w-full max-w-5xl flex-1 px-3 py-5 sm:px-6 sm:py-7">
+    <main className="mx-auto w-full max-w-6xl flex-1 px-3 py-5 sm:px-6 sm:py-7">
       {!isAuthenticated?<div className="rounded-lg border border-slate-700 bg-[#151e2b] p-7 text-center">
         <h1 className="text-lg font-semibold">{t('auth.login_title')}</h1>
         <p className="mt-2 text-sm text-slate-400">{t('tickets.no_tickets_logged_out')}</p>

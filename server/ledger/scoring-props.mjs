@@ -48,6 +48,9 @@ const titleOf=line=>{
 };
 export function scoringPropFamily(line){
  const name=titleOf(line);
+ // "Which team to score" is a match-level Both / Only 1 / Only 2 / None market.
+ // It is graded by the dedicated market family in settler.mjs, not as a team YES/NO prop.
+ if(name==='which team to score')return null;
  if(/^both teams to score in both halves$/.test(name))return 'both-teams-both';
  if(/^(?:a |at least one )?goals? in both halves$|^score in both halves$/.test(name))return 'goal-both';
  if(/^highest scoring half$|^half with (?:the )?most goals$/.test(name))return 'high-half';

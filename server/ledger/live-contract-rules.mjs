@@ -267,6 +267,29 @@ export function parseTeamGoalMarket(line,teams={}){
  return {version:1,kind:'team-total-goals',event:'goal',side:scope,choice:kind,threshold};
 }
 
+export function parseOpeningWindowTotal(line){
+ const title=norm(line.market_name??line.marketName??line.name);
+ const m=title.match(/^goals? in first (\d{1,3}) min(?:ute)?\.?(?: \((\d{1,3}):([0-5]\d)\s*[-–]\s*(\d{1,3}):([0-5]\d)\))?(?: \((\d+(?:[.,]\d+)?)\))?$/);
+ if(!m)return null;
+ const minutes=Number(m[1]);
+ if(!Number.isSafeInteger(minutes)||minutes<1||minutes>130)return null;
+ const fromMinute=m[2]==null?0:Number(m[2]),fromSecond=m[3]==null?0:Number(m[3]);
+ const toMinute=m[4]==null?minutes-1:Number(m[4]),toSecond=m[5]==null?59:Number(m[5]);
+ if(fromMinute!==0||fromSecond!==0||toMinute!==minutes-1||toSecond!==59)return null;
+ const label=norm(line.outcome_name??line.outcomeName??line.outcome_key??line.outcomeKey);
+ const over=label.match(/^over(?:\s+(\d+(?:[.,]\d+)?))?$/);
+ const under=label.match(/^under(?:\s+(\d+(?:[.,]\d+)?))?$/);
+ if(!over&&!under)return null;
+ const named=number((over??under)[1]?.replace(',','.'));
+ const quoted=number(line.line??line.specifier);
+ const titleLine=number(m[6]?.replace(',','.'));
+ const values=[named,quoted,titleLine].filter(value=>value!==null);
+ if(!values.length||values.some(value=>value!==values[0])||
+    values[0]<0||values[0]>100||!Number.isInteger(values[0]*2))return null;
+ return {version:1,kind:'window-total',event:'goal',from:0,to:minutes-1,
+  choice:over?'over':'under',threshold:values[0]};
+}
+
 export function parseEventWindow(line,clock=null) {
  let name=norm(line.market_name??line.marketName??line.name);
  const kind=typeOf(name);
@@ -630,7 +653,7 @@ export const liveContract=(line,{counts={},clock=null,teams={}}={})=>{
  if((yellow&&red)||ambiguous)return null;
  const contract=parsePlayerOrdinalScorer(line)??parsePlayerGoalSpecial(line)??parsePlayerCardContract(line)??parsePlayerGoalContract(line)??parseLeadUpMarket(line)??parseWindowParity(line)??parseFirstCornerWindow(line)??parseIntervalHandicap(line)??parseSendingOffMarket(line)??parseNumberedGoalWindow(line)??parseOrdinalGoalTime(line,counts)??
   parseTimedResultMarket(line)??parseIntervalLeader(line)??
-  parseEventWindow(line,clock)??parseIntervalCount(line)??parseClockWindowTotal(line)??
+  parseOpeningWindowTotal(line)??parseEventWindow(line,clock)??parseIntervalCount(line)??parseClockWindowTotal(line)??
   parseHalfExactMarket(line)??parseHalfTotal(line)??(parseParityMarket(line)?.kind==='half-parity'?parseParityMarket(line):null)??parseColorCardCount(line)??parseFirstHalfCorner(line)??parseHalfEventContract(line,counts)??parseLastEvent(line)??parseSequenceBet(line,counts)??
   parseTeamGoalMarket(line,teams)??parseMultiCornerContract(line)??parseCornerComparison(line)??parseTeamCountMarket(line)??parseCountMarket(line);
  // Full-time foul totals continue to use verified final statistics.

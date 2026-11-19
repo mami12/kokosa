@@ -13,7 +13,8 @@
 const int=v=>v!=null&&v!==''&&Number.isSafeInteger(Number(v))&&
  Number(v)>=0&&Number(v)<=200?Number(v):null;
 const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
- .toLowerCase().replace(/[^a-z0-9+]+/g,' ').trim();
+ .toLowerCase().replace(/\b(home|away)team\b/g,'$1 team')
+ .replace(/[^a-z0-9+]+/g,' ').trim();
 
 export function isWinningMarginMarket(line={}) {
  const n=String(line.market_name??line.marketName??'').toLowerCase().trim();

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import {nativeZizobetContractRow} from '../server/ledger/native-zizobet-contract.mjs';
 import {liveContract} from '../server/ledger/live-contract-rules.mjs';
-const offer=(id,native,params,line='')=>({
+const offer=(id,native,params,line='',outcome='Over')=>({
  provider_id:'ZIZOBET',market_key:'zz'+id+'@'+Buffer.from(JSON.stringify(params)).toString('base64url'),
  native_market_id:String(id),native_market_name:native,native_parameters:params,
- market_name:'Përkthim që nuk përdoret për shlyerje',outcome_name:'Over',line
+ market_name:'Përkthim që nuk përdoret për shlyerje',outcome_name:outcome,line
 });
 const home=offer(9001,'Total [total] Corners HomeTeam in 5 minutes interval [from]-[to]',
  {p1:16,p2:20},'0.5');
@@ -31,12 +31,12 @@ assert.deepEqual(liveContract(teamInterval),{
 });
 const cornerResult=nativeZizobetContractRow(offer(9017,
  '10 minutes - Corner result from first value - second value:00 min',
- {p1:21,p2:30}));
+ {p1:21,p2:30},'','1'));
 assert.equal(cornerResult.market_name,'Who takes most corners in minutes 21-30 (10-minute interval)');
 assert.equal(liveContract(cornerResult)?.kind,'interval-leader');
 const firstCorner=nativeZizobetContractRow(offer(9018,
  '10 minutes - 1st corner from first value:00 - second value min',
- {p1:21,p2:30}));
+ {p1:21,p2:30},'','1'));
 assert.equal(liveContract(firstCorner)?.kind,'window-first-event');
 const intervalHandicap=nativeZizobetContractRow(offer(9019,
  '10 minutes - Corner handicap from first value:00 - second value min',
@@ -57,7 +57,7 @@ assert.equal(rangeAwayCorners.market_name,'Total 0.5 away team corners in minute
 assert.equal(liveContract(rangeAwayCorners)?.kind,'window-total');
 const numberedGoal=nativeZizobetContractRow(offer(9024,
  'Who scores goal number in minutes time range (10-minute interval)',
- {p1:21,p2:30,p3:2}));
+ {p1:21,p2:30,p3:2},'','1'));
 assert.equal(numberedGoal.market_name,'Who scores goal 2 in minutes 21-30 (10-minute interval)');
 assert.equal(liveContract(numberedGoal)?.kind,'nth-time');
 

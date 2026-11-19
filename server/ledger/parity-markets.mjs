@@ -5,7 +5,8 @@
  * Half-corners require the recorded period of every confirmed incident.
  */
 const normalize=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
- .toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+ .toLowerCase().replace(/\b(home|away)team\b/g,'$1 team')
+ .replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
 export const isParityLikeMarket=line=>/\b(?:odd\s*(?:or\s*)?even|even\s*(?:or\s*)?odd)\b/i.test(normalize(line?.market_name??line?.marketName??line?.name));
 const integer=value=>value!=null&&value!==''&&Number.isSafeInteger(Number(value))&&Number(value)>=0?Number(value):null;
 export function parseParityMarket(line){

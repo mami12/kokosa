@@ -370,6 +370,19 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
         code:'MARKET_EVIDENCE_UNSUPPORTED',outcomeId:selection?.outcomeId});
     if(grid.length&&grid.length<=500)correctScoreGrid=grid;
   }
+  // Multiscores Other outcomes are the complement of the provider's offered score list.
+  // This list is frozen at placement; settlement never consults a later market feed.
+  const isMultiscoresMarket=/^\s*multi(?:ple)?\s*(?:correct\s*)?scores?\s*$/i.test(raceName);
+  let nativeMarketOutcomes=null;
+  if(isMultiscoresMarket){
+    const scoreGrid=quotedOffers.filter(o=>
+      o.market_key===row.market_key&&String(o.line??'')===String(row.line??'')&&
+      Number(o.period??0)===Number(row.period??0))
+      .map(o=>String(o.native_outcome_name||o.outcome_name||'').trim().match(/^(\d{1,2})\s*[:\-]\s*(\d{1,2})$/))
+      .filter(Boolean).map(m=>m[1]+':'+m[2]);
+    if(scoreGrid.length&&scoreGrid.length<=500)
+      nativeMarketOutcomes=[...new Set(scoreGrid)];
+  }
 
   // Use the SAME grammar for 1/X/2 sibling-offer detection that will
   // later be frozen on the ticket. Regex-only detection missed Zizobet's
@@ -633,6 +646,7 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
     nativeMarketId:row.native_market_id??null,nativeOutcomeId:row.native_outcome_id??null,
     nativeMarketName:row.native_market_name??null,nativeOutcomeName:row.native_outcome_name??null,
     nativeParameters:row.native_parameters??null,
+    nativeMarketOutcomes,
     sourceProviderId:row.provider_id??match.provider_id??null,
     homeTeamName:match.home,awayTeamName:match.away,
     kickoffAt:match.start_at??null,offerObservedAt:row.updated_at??null,
@@ -753,7 +767,8 @@ export async function revalidateSelections(selections, lines, resolve = resolveS
       settlementHold:current.settlementHold??null,
       acceptedLiveSnapshot:current.acceptedLiveSnapshot??null,
       offerObservedAt:current.offerObservedAt??null,
-      nativeParameters:current.nativeParameters??null
+      nativeParameters:current.nativeParameters??null,
+      nativeMarketOutcomes:current.nativeMarketOutcomes??null
     });
   }));
   const rejected = results.find(result => result.status === 'rejected');
@@ -773,6 +788,7 @@ async function persistLiveContracts(runQuery,ticketId,lines){
    nativeMarketId:line.nativeMarketId??null,nativeOutcomeId:line.nativeOutcomeId??null,
    nativeMarketName:line.nativeMarketName??null,nativeOutcomeName:line.nativeOutcomeName??null,
    nativeParameters:line.nativeParameters??null,
+   nativeMarketOutcomes:line.nativeMarketOutcomes??null,
    sourceProviderId:line.sourceProviderId??null,
    homeTeamName:line.homeTeamName??null,awayTeamName:line.awayTeamName??null,
    kickoffAt:line.kickoffAt??null,offerObservedAt:line.offerObservedAt??null,
