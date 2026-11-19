@@ -76,9 +76,10 @@ export function parsePeriodGoalTotal(line,teams={}){
  name=name.replace(/\s+over\s*\/?\s*under$/,'').trim();
  // Catalogue: "1st half - exact goals", "Exact goals 6+",
  // "2nd half - exact goals 9+", "Total goals (exact)". For these exact-goal
- // menus, the numeric selection is the contract; the title suffix is the
- // provider's catalogue cap, not a minimum-goals condition.
- const exactGroup=name.match(/^(?:exact goals?|goals?\s+exact|multigoals?|number of goals?)(?:\s+\d{1,2}\+)?$/);
+ // menus, the numeric selection is the contract, but it must satisfy
+ // any explicit lower bound in a suffixed catalogue title (e.g. "2+").
+ const exactGroup=name.match(/^(?:exact goals?|goals?\s+exact|multigoals?|number of goals?)(?:\s+(\d{1,2})\+)?$/);
+ const catalogueFloor=exactGroup?.[1]==null?null:Number(exactGroup[1]);
  if(exactGroup)name='goals';
  if(!/^(?:goals?|goal line|total|over\s*\/\s*under)$/.test(name))return null;
  const title=norm(line.market_name??line.marketName??'');
@@ -104,6 +105,10 @@ export function parsePeriodGoalTotal(line,teams={}){
  else if(more){kind='atLeast';target=Number(more[1]);}
  else if(range){kind='range';target=[Number(range[1]),Number(range[2])];}
  else return null;
+ if(catalogueFloor!==null){
+  const lowest=kind==='range'?target[0]:target;
+  if(!Number.isFinite(lowest)||lowest<catalogueFloor)return null;
+ }
  if(kind==='range'){
   if(target[1]<target[0]||target[1]>100)return null;
  }else if(!Number.isFinite(target)||target<0||target>100||
