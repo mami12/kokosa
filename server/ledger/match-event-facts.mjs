@@ -426,10 +426,93 @@ export function gradeHalfTotalFacts(contract,facts,{complete=false,cardColorsVer
  * accepted structured contract, ordering or coverage cannot prove an answer.
  * Do not infer a loss from an absent row or an incomplete timeline.
  */
+
+function gradeOfficialCornerPeriodContract(contract,result){
+ const kind=contract?.kind;
+ const eligible=contract?.event==='corner'&&(
+  ['half-total','half-exact-count','half-parity','corner-comparison'].includes(kind)||
+  kind==='score-handicap'&&[1,2].includes(contract.half));
+ if(!eligible)return undefined;
+ if(String(result?.source??'').toUpperCase()!=='ZIZOBET')return undefined;
+ const stats=typeof result.statistics==='string'?(()=>{
+  try{return JSON.parse(result.statistics);}catch{return null;}
+ })():result.statistics;
+ const periods=stats?.cornerPeriods;
+ if(periods?.source!=='ZIZOBET')return null;
+ const read=value=>{
+  const home=Number(value?.home),away=Number(value?.away);
+  return Number.isSafeInteger(home)&&home>=0&&Number.isSafeInteger(away)&&away>=0
+   ?{home,away}:null;
+ };
+ const first=read(periods.firstHalf),second=read(periods.secondHalf),full=read(periods.fullTime);
+ if(!first||!second||!full||
+    first.home+second.home!==full.home||first.away+second.away!==full.away||
+    result.corners_home!=null&&Number(result.corners_home)!==full.home||
+    result.corners_away!=null&&Number(result.corners_away)!==full.away)return null;
+ const half=contract.half===1?first:contract.half===2?second:null;
+ if(kind==='score-handicap'){
+  if(!half)return null;
+  return gradeHandicapContract({...contract,half:0},
+   {corners_home:half.home,corners_away:half.away});
+ }
+ if(kind==='corner-comparison'){
+  const winner=(pair)=>pair.home>pair.away?'home':pair.away>pair.home?'away':'none';
+  if(contract.mode==='period-result'){
+   if(!half||!['home','away','none'].includes(contract.side))return null;
+   const side=winner(half);
+   return side==='none'&&contract.drawOffered!==true?'VOID':side===contract.side?'WON':'LOST';
+  }
+  if(contract.mode==='most-half'){
+   if(![0,1,2].includes(contract.choice)||
+      contract.scope!=null&&!['home','away'].includes(contract.scope))return null;
+   const count=pair=>contract.scope?pair[contract.scope]:pair.home+pair.away;
+   const a=count(first),b=count(second),selected=a>b?1:b>a?2:0;
+   return selected===contract.choice?'WON':'LOST';
+  }
+  if(contract.mode==='wins-both'){
+   if(!['home','away','none'].includes(contract.side))return null;
+   const home=first.home>first.away&&second.home>second.away;
+   const away=first.away>first.home&&second.away>second.home;
+   const selected=home?'home':away?'away':'none';
+   return selected===contract.side?'WON':'LOST';
+  }
+  return null;
+ }
+ if(kind==='half-total'){
+  if(!half||!['over','under'].includes(contract.choice)||
+     !Number.isFinite(contract.threshold)||contract.threshold<0||
+     !Number.isInteger(contract.threshold*2)||
+     contract.side!=null&&!['home','away'].includes(contract.side))return null;
+  const count=contract.side?half[contract.side]:half.home+half.away;
+  if(count===contract.threshold&&Number.isInteger(contract.threshold))return 'VOID';
+  return (contract.choice==='over'?count>contract.threshold:count<contract.threshold)?'WON':'LOST';
+ }
+ if(kind==='half-exact-count'){
+  if(!half||contract.side!=null&&!['home','away'].includes(contract.side))return null;
+  const count=contract.side?half[contract.side]:half.home+half.away;
+  if(contract.choice==='exact'&&Number.isSafeInteger(contract.target)&&contract.target>=0)
+   return count===contract.target?'WON':'LOST';
+  if(contract.choice==='atLeast'&&Number.isSafeInteger(contract.target)&&contract.target>=0)
+   return count>=contract.target?'WON':'LOST';
+  if(contract.choice==='range'&&Number.isSafeInteger(contract.min)&&
+     Number.isSafeInteger(contract.max)&&contract.min>=0&&contract.max>=contract.min)
+   return count>=contract.min&&count<=contract.max?'WON':'LOST';
+  return null;
+ }
+ if(kind==='half-parity'){
+  if(!half||!['odd','even'].includes(contract.choice)||
+     contract.side!=null&&!['home','away'].includes(contract.side))return null;
+  const count=contract.side?half[contract.side]:half.home+half.away;
+  return (count%2===1?'odd':'even')===contract.choice?'WON':'LOST';
+ }
+ return null;
+}
 async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}={}){
  if(provider!=='zizobet')return null;
  const c=line?.live_contract;
  if(!c||!SUPPORTED_FACT_KINDS.has(c.kind)||!validKind.has(c.event)||typeof execute!=='function')return null;
+ const periodCornerResult=gradeOfficialCornerPeriodContract(c,result);
+ if(periodCornerResult!==undefined)return periodCornerResult;
  const normalTimeOnly=c.normalTimeOnly!==false&&c.event!=null;
  const {rows}=await execute(`with covered as (
    select through_minute,count_home,count_away,complete,observed_at,confirmed_at,card_colors_verified from app_match_event_coverage
