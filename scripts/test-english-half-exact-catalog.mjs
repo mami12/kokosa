@@ -113,5 +113,8 @@ for(const [title,choice,want] of [
  assert.equal(gradeLine(quote(title,choice),score),want,
   'Historical goal totals use verified FT minus HT scoreboard');
 }
-assert.equal(parsePeriodGoalTotal(quote('1st half - exact goals 2+','1')),null);
+const cappedExact=parsePeriodGoalTotal(quote('1st half - exact goals 2+','1'));
+assert.equal(cappedExact?.selection,'exact');
+assert.equal(cappedExact?.target,1,
+ 'The catalogue suffix does not replace the explicit exact-count outcome');
 console.log('PASS: catalogue-derived half exact corners/cards/red cards, HT/FT exact goals and SQL fact checks');
