@@ -70,8 +70,13 @@ assert.equal(gradeHalfTotalFacts(selected({...home,outcome_name:'Under'}),corner
 assert.equal(gradeHalfTotalFacts(h2,corners,{complete:true}),'WON',
   '90+2 belongs to the second half');
 assert.equal(gradeHalfTotalFacts(h1,corners,{complete:false}),null);
-assert.equal(gradeHalfTotalFacts(h1,[...corners,{team:'away',minute:46,phase:null}],{complete:true}),null,
-  'Minute 46 without phase may be 45+1 and cannot be guessed');
+const noPhase46=[...corners,{team:'away',minute:46,phase:null}];
+assert.equal(gradeHalfTotalFacts(h1,noPhase46,{complete:true}),'WON',
+  'An unlabelled absolute minute 46 is 2H; Zizobet 45+1 is separately phase-labelled as 1H');
+assert.equal(gradeHalfTotalFacts(h2,noPhase46,{complete:true}),'WON',
+  'A 46th-minute unlabelled corner belongs to 2H');
+assert.equal(gradeHalfTotalFacts(h1,[...corners,{team:'away',minute:45,phase:null}],{complete:true}),null,
+  'Minute 45 without phase remains ambiguous');
 assert.equal(gradeHalfTotalFacts(h1,[],{complete:true}),'LOST');
 assert.equal(gradeHalfTotalFacts(selected({...home,outcome_name:'Under'}),[],{complete:true}),'WON');
 
@@ -116,9 +121,9 @@ assert.equal(await gradeStoredEventContract({id:'ticket',match_id:1,live_contrac
 const missing=makeDB({complete:false});
 assert.equal(await gradeStoredEventContract({id:'ticket',match_id:1,live_contract:h1},
   missing.result,{execute:missing.execute}),null,'Incomplete coverage => PENDING');
-const uncertain=makeDB({facts:[...corners,{team:'away',minute:46,phase:null}]});
+const uncertain=makeDB({facts:[...corners,{team:'away',minute:45,phase:null}]});
 assert.equal(await gradeStoredEventContract({id:'ticket',match_id:1,live_contract:h1},
-  uncertain.result,{execute:uncertain.execute}),null,'Unlabelled 45+ event => PENDING');
+  uncertain.result,{execute:uncertain.execute}),null,'Unlabelled minute 45 remains PENDING');
 const colored=makeDB({facts:cards,event:'card'});
 assert.equal(await gradeStoredEventContract({id:'ticket',match_id:1,live_contract:yellow},
   colored.result,{execute:colored.execute}),'WON');
