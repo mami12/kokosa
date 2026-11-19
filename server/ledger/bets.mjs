@@ -117,6 +117,17 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
   // determines whether the Zizobet offer is authoritative for placement.
   // Unreadable native parameters require settlement review, not rejection.
   const nativeQuoteVerified=String(selectedRow.provider_id??'').toUpperCase()==='ZIZOBET';
+  // Preserve all outcomes in the exact accepted provider market. The list is
+  // part of the immutable quote snapshot, not a later odds lookup.
+  const nativeMarketOutcomes=nativeQuoteVerified
+    ?quotedOffers.filter(o=>o.market_key===selectedRow.market_key&&
+       String(o.line??'')===String(selectedRow.line??'')).slice(0,501).map(o=>({
+        outcomeKey:o.outcome_key??null,
+        outcomeName:o.outcome_name??null,
+        nativeOutcomeKey:o.native_outcome_id??null,
+        nativeOutcomeName:o.native_outcome_name??null
+      }))
+    :null;
   let settlementHold=null, row=selectedRow;
   try{row=nativeZizobetContractRow(selectedRow);}
   catch(error){
@@ -568,7 +579,8 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
     const {hasFinalSettlementRule}=await import('./market-settlement-preflight.mjs');
     if(!hasFinalSettlementRule({...row,market_name:row.market_name??raceName,
       outcome_name:row.outcome_name??parsed.outcomeKey,
-      outcome_key:row.outcome_key??parsed.outcomeKey},
+      outcome_key:row.outcome_key??parsed.outcomeKey,
+      nativeMarketOutcomes},
       {home:match.home,away:match.away}))
       settlementHold='NATIVE_FINAL_RULE_UNMAPPED';
   }
@@ -622,18 +634,6 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
     card:unstartedPrematch?zero:extractStatCounters('card'),
     foul:unstartedPrematch?zero:extractStatCounters('foul')
   };
-  // Save the exact outcome menu belonging to this native market quote.
-  // This is required for "Other home/away win" multiscore selections: later,
-  // the live provider may remove the menu, so settlement cannot reconstruct it.
-  const nativeMarketOutcomes=nativeQuoteVerified
-    ?quotedOffers.filter(o=>o.market_key===selectedRow.market_key&&
-       String(o.line??'')===String(selectedRow.line??'')).slice(0,501).map(o=>({
-        outcomeKey:o.outcome_key??null,
-        outcomeName:o.outcome_name??null,
-        nativeOutcomeKey:o.native_outcome_id??null,
-        nativeOutcomeName:o.native_outcome_name??null
-      }))
-    :null;
   return {
     matchId: String(matchId),
     marketKey: parsed.marketKey,
