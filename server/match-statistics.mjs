@@ -5,9 +5,56 @@ const aliases=new Map(Object.entries({
  shots:'shots',totalshots:'shots',shotstotal:'shots',
  shotsontarget:'shotsOnTarget',shotsongoal:'shotsOnTarget',ontarget:'shotsOnTarget',
  fouls:'fouls',foulscommitted:'fouls',foulsconceded:'fouls',totalfouls:'fouls',
- corners:'corners',cornerkicks:'corners',offsides:'offsides',offside:'offsides',totaloffsides:'offsides',yellow:'yellow',yellowcards:'yellow',red:'red',redcards:'red',
+ corners:'corners',cornerkicks:'corners',cornersht:'cornersHT',cornersft:'cornersFT',corners2h:'corners2H',secondhalfcorners:'corners2H',firsthalfcorners:'cornersHT',offsides:'offsides',offside:'offsides',totaloffsides:'offsides',yellow:'yellow',yellowcards:'yellow',red:'red',redcards:'red',
 }));
 const stamp=value=>{const n=new Date(value).getTime();return value!=null&&Number.isFinite(n)?new Date(n).toISOString():null;};
+const wholePair=value=>{
+ if(Array.isArray(value)&&value.length>=2){
+  const home=statisticNumber(value[0]),away=statisticNumber(value[1]);
+  return home===null||away===null?null:{home,away};
+ }
+ if(typeof value==='string'){
+  const match=value.trim().match(/^(\\d+)\\s*(?::|\\/|\\||,)\\s*(\\d+)$/);
+  if(match)return {home:Number(match[1]),away:Number(match[2])};
+ }
+ if(value&&typeof value==='object'){
+  const home=value.home??value.Home??value.team1??value.Team1??value.t1??value['1']??value['0'];
+  const away=value.away??value.Away??value.team2??value.Team2??value.t2??value['2'];
+  const h=statisticNumber(home),a=statisticNumber(away);
+  if(h!==null&&a!==null)return {home:h,away:a};
+ }
+ return null;
+};
+/** Zizobet final period results can be separate paired fields rather than
+ * current live counters. Keep HT and FT pairs distinct; never use HT as a
+ * live cumulative count or subtract a guessed half-time value.
+ */
+export function providerResultPair(game,field){
+ if(!game||typeof game!=='object'||typeof field!=='string'||!field)return null;
+ const containers=[game,game.Results,game.results,game.Result,game.result].filter(
+  value=>value&&typeof value==='object'&&!Array.isArray(value));
+ const normalized=name=>String(name).toLowerCase().replace(/[^a-z0-9]/g,'');
+ const wanted=normalized(field);
+ for(const source of containers){
+  const direct=Object.entries(source).find(([key])=>normalized(key)===wanted);
+  if(direct){const pair=wholePair(direct[1]);if(pair)return pair;}
+  const homeNames=[field+'Team1',field+'_Team1','Team1'+field,'Team1_'+field,
+   field+'Home',field+'_HOME','HOME_'+field,field+'_HOME_SCORE'];
+  const awayNames=[field+'Team2',field+'_Team2','Team2'+field,'Team2_'+field,
+   field+'Away',field+'_AWAY','AWAY_'+field,field+'_AWAY_SCORE'];
+  const lookup=names=>{
+   for(const name of names){
+    const hit=Object.entries(source).find(([key])=>normalized(key)===normalized(name));
+    if(hit){const value=statisticNumber(hit[1]);if(value!==null)return value;}
+   }
+   return null;
+  };
+  const home=lookup(homeNames),away=lookup(awayNames);
+  if(home!==null&&away!==null)return {home,away};
+ }
+ return null;
+}
+
 export function statisticNumber(value,{percentage=false}={}){
  if(value==null||typeof value==='boolean'||typeof value==='object'||String(value).trim()==='')return null;
  const n=Number(value);return Number.isFinite(n)&&n>=0&&(percentage?n<=100:Number.isInteger(n))?n:null;
