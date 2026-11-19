@@ -27,7 +27,7 @@ assert.deepEqual({kind:nextAway?.kind,target:nextAway?.target,side:nextAway?.sid
 const sendingOff=liveContract({market_name:'Sending off?',outcome_name:'Yes'});
 assert.deepEqual({kind:sendingOff?.kind,event:sendingOff?.event,color:sendingOff?.cardColor,
  from:sendingOff?.from,to:sendingOff?.to,choice:sendingOff?.choice},
- {kind:'window',event:'card',color:'red',from:0,to:130,choice:true,normalTimeOnly:true});
+ {kind:'window',event:'card',color:'red',from:0,to:130,choice:true});
 assert.deepEqual(parseSendingOffMarket({market_name:'Sending off?',outcome_name:'No'})?.choice,false);
 
 const firstCornerWindow=liveContract({market_name:'Who takes first corner in minutes 21-30 (10-minute interval)',outcome_name:'1'});
