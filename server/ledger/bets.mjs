@@ -56,6 +56,7 @@ import {isPlayerGoalSpecial,parsePlayerGoalSpecial} from './player-goal-specials
 import {playerGoalLiveGuard} from './player-goal-live-guard.mjs';
 import {isPeriodGoalTotal,parsePeriodGoalTotal} from './period-goal-totals.mjs';
 import {isStatisticMarket,statisticMarketContract} from './statistic-markets.mjs';
+import {isMultiscoresMarket} from './multiscores.mjs';
 
 const MIN_STAKE = 100; // LEK
 // Prematch prices are refreshed hourly (SUBSCRIBE/PREMATCH_REFRESH_MS) unless the fixture is
@@ -622,6 +623,15 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
     card:unstartedPrematch?zero:extractStatCounters('card'),
     foul:unstartedPrematch?zero:extractStatCounters('foul')
   };
+  const nativeMarketOutcomes=nativeQuoteVerified&&isMultiscoresMarket(row.market_name)
+    ?quotedOffers.filter(offer=>offer.market_key===row.market_key&&
+      String(offer.line??'')===String(row.line??''))
+      .map(offer=>({
+        key:offer.outcome_key??null,
+        name:offer.native_outcome_name??offer.outcome_name??offer.outcome_key??null
+      }))
+      .filter(option=>option.name!=null||option.key!=null).slice(0,500)
+    :null;
   return {
     matchId: String(matchId),
     marketKey: parsed.marketKey,
@@ -633,6 +643,7 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
     nativeMarketId:row.native_market_id??null,nativeOutcomeId:row.native_outcome_id??null,
     nativeMarketName:row.native_market_name??null,nativeOutcomeName:row.native_outcome_name??null,
     nativeParameters:row.native_parameters??null,
+    nativeMarketOutcomes,
     sourceProviderId:row.provider_id??match.provider_id??null,
     homeTeamName:match.home,awayTeamName:match.away,
     kickoffAt:match.start_at??null,offerObservedAt:row.updated_at??null,
@@ -753,7 +764,8 @@ export async function revalidateSelections(selections, lines, resolve = resolveS
       settlementHold:current.settlementHold??null,
       acceptedLiveSnapshot:current.acceptedLiveSnapshot??null,
       offerObservedAt:current.offerObservedAt??null,
-      nativeParameters:current.nativeParameters??null
+      nativeParameters:current.nativeParameters??null,
+      nativeMarketOutcomes:current.nativeMarketOutcomes??null
     });
   }));
   const rejected = results.find(result => result.status === 'rejected');
@@ -773,6 +785,7 @@ async function persistLiveContracts(runQuery,ticketId,lines){
    nativeMarketId:line.nativeMarketId??null,nativeOutcomeId:line.nativeOutcomeId??null,
    nativeMarketName:line.nativeMarketName??null,nativeOutcomeName:line.nativeOutcomeName??null,
    nativeParameters:line.nativeParameters??null,
+   nativeMarketOutcomes:line.nativeMarketOutcomes??null,
    sourceProviderId:line.sourceProviderId??null,
    homeTeamName:line.homeTeamName??null,awayTeamName:line.awayTeamName??null,
    kickoffAt:line.kickoffAt??null,offerObservedAt:line.offerObservedAt??null,
