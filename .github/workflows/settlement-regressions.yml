@@ -33,3 +33,5 @@ jobs:
       - run: npm ci
       - run: npm run test:settlement-focused
       - run: npm run test:markets
+      - run: npm ci --prefix web
+      - run: npm run build:web
