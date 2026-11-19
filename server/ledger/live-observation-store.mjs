@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import {pool} from '../db.mjs';
 import {normalizeEvents} from './event-evidence.mjs';
 import {persistVerifiedEventFacts} from './match-event-facts.mjs';
+import {providerResultPair} from '../match-statistics.mjs';
 const whole=v=>v==null||v===''||!Number.isInteger(Number(v))||Number(v)<0?null:Number(v);
 const count=(a,b)=>a==null||b==null?null:a+b;
 const asClock=game=>{
@@ -18,7 +19,23 @@ const score=game=>{
 export function normalizeLiveFrame(data){
  const game=data?.Match??{};
  const clock=asClock(game),goals=score(game);
- const corners={home:whole(game.CornersTeam1),away:whole(game.CornersTeam2)};
+ const finished=Number(game.EventStatus??game.MatchStatusID)===40;
+ const resultHalfCorners=providerResultPair(game,'RESULT_CORNERHT');
+ const resultFullCorners=providerResultPair(game,'RESULT_CORNERFT');
+ const runningCorners=providerResultPair(game,'Corners')??{
+  home:whole(game.CornersTeam1),away:whole(game.CornersTeam2)
+ };
+ // The official final corner pair is the authoritative cumulative count when
+ // the match has ended. The HT pair is stored separately and never replaces
+ // the current live count or the full-time coverage counter.
+ const corners=finished?(resultFullCorners??runningCorners):runningCorners;
+ const cornerPeriods=resultHalfCorners&&resultFullCorners&&
+  resultFullCorners.home>=resultHalfCorners.home&&
+  resultFullCorners.away>=resultHalfCorners.away
+  ?{firstHalf:resultHalfCorners,
+    secondHalf:{home:resultFullCorners.home-resultHalfCorners.home,
+     away:resultFullCorners.away-resultHalfCorners.away},
+    fullTime:resultFullCorners}:null;
  const fouls={home:whole(game.FoulsTeam1),away:whole(game.FoulsTeam2)};
  const offsides={home:whole(game.OffsidesTeam1??game.OffsideTeam1),away:whole(game.OffsidesTeam2??game.OffsideTeam2)};
  const yellows={home:whole(game.YellowCardsTeam1),away:whole(game.YellowCardsTeam2)};
@@ -61,7 +78,7 @@ export function normalizeLiveFrame(data){
    offside:count(offsides.home,offsides.away)
   },teams:{goal:goals,corner:corners,card:cards,foul:fouls,offside:offsides,
     yellowCard:yellows,redCard:reds},cardColorsVerified,events:events??[],
-  coverage,ended:Number(game.EventStatus??game.MatchStatusID)===40,
+  coverage,ended:finished,...(cornerPeriods?{cornerPeriods}:{}),
   eventListAvailable:!!events,rawTimeline,rawTimelineTruncated};
 }
 export const WATCHED_LIVE_LINES_SQL=
