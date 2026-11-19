@@ -523,6 +523,7 @@ function gradeOfficialCornerPeriodContract(contract,result){
 async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}={}){
  if(provider!=='zizobet')return null;
  const c=line?.live_contract;
+ const decision=truth=>truth?'WON':'LOST';
  if(!c||!SUPPORTED_FACT_KINDS.has(c.kind)||!validKind.has(c.event)||typeof execute!=='function')return null;
  const periodCornerResult=gradeOfficialCornerPeriodContract(c,result);
  if(periodCornerResult!==undefined)return periodCornerResult;
@@ -881,7 +882,6 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  const count=Number(c.cardColor?(c.side==='home'?data.color_home:c.side==='away'?data.color_away:data.color_total):
    (c.side==='home'?data.home:c.side==='away'?data.away:data.total));
  const expected=Number(c.target??c.threshold);
- const decision=truth=>truth?'WON':'LOST';
  if(c.kind==='window'){
   // A proven event decides YES immediately and NO as lost; a verified
   // absence cannot win until the full quoted time window is complete.

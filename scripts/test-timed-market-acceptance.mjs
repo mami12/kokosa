@@ -41,6 +41,22 @@ assert.deepEqual((()=>{
  const c=parseIntervalCount(pick('Total corners in minutes 1-15 (15-minute interval)','Over','0.5'));
  return [c.from,c.to];
 })(),[1,15],'1-15 labelled 15-minute market is inclusive in the provider notation');
+const openingGoal=pick('Goal in first 10 min. (00:00 - 09:59) (0.5)','Over','0.5');
+assert.deepEqual(parseClockWindowTotal(openingGoal),{
+ version:1,kind:'window-total',event:'goal',from:0,to:9,choice:'over',threshold:0.5
+},'The Zizobet first-ten-minute O/U market must become a fixed goal-event window');
+assert.deepEqual(liveContract(openingGoal),{
+ version:1,kind:'window-total',event:'goal',from:0,to:9,choice:'over',threshold:0.5
+});
+const openingGoalWithoutLine=pick('Goal in first 10 min. (00:00 - 09:59) (0.5)','Under','');
+assert.equal(parseClockWindowTotal(openingGoalWithoutLine)?.threshold,0.5,
+ 'The native title threshold remains usable when the separate line field is blank');
+assert.equal(liveContract(pick('Goal in first 10 min. (00:00 - 09:59) (0.5)','Under','0.5'))?.choice,'under');
+assert.equal(parseClockWindowTotal(pick('Goal in first 10 min. (01:00 - 09:59) (0.5)','Over','0.5')),null,
+ 'A malformed first-minute boundary must not be rounded into a valid window');
+assert.equal(parseClockWindowTotal(pick('Goal in first 10 min. (00:00 - 10:59) (0.5)','Over','0.5')),null,
+ 'A provider range that does not match the named ten-minute scope must stay unsupported');
+
 assert.equal(parseTimedResultMarket(pick('00:00 - 09:59 min. - Result','1'))?.kind,'interval-result');
 assert.equal(liveContract(pick('Next Goal 2nd','2'),{counts:{goal:{home:1,away:0}}})?.target,2);
 assert.equal(liveContract(pick('Which team wins race to 3 corners','1'))?.kind,'race');

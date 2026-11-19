@@ -8,18 +8,39 @@ export function isMultiscoresMarket(name = '') {
 export function gradeMultiscores(line, result) {
   const home = Number(result?.home_score);
   const away = Number(result?.away_score);
-  if (!Number.isFinite(home) || !Number.isFinite(away)) return null;
-  const raw = String(line.outcome_name ?? line.outcome_key ?? '').trim();
-  if (/\bother\b/i.test(raw)) return null;
+  if (!Number.isSafeInteger(home) || home < 0 ||
+      !Number.isSafeInteger(away) || away < 0) return null;
+  const raw = String(line?.outcome_name ?? line?.outcome_key ?? '').trim();
+  const label = raw.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase().replace(/\s+/g,' ').trim();
+  if (/^(?:x|draw|tie)$/.test(label)) return home === away ? 'WON' : 'LOST';
+
   const pairs = [];
   const regex = /(\d+)\s*[:\-]\s*(\d+)/g;
   let m;
-  while ((m = regex.exec(raw)) !== null) {
-    pairs.push([Number(m[1]), Number(m[2])]);
+  while ((m = regex.exec(raw)) !== null) pairs.push([Number(m[1]), Number(m[2])]);
+  if (pairs.length) return pairs.some(([h,a]) => h === home && a === away) ? 'WON' : 'LOST';
+
+  const other = label.match(/^(?:other\s+)?(home|away)(?:\s+team)?\s+win$/);
+  if (!other) return null;
+
+  // "Other home/away win" means a winner outside the exact scores displayed
+  // by this same provider market. Capture that menu when the ticket is accepted;
+  // never guess a score list after the bookmaker has removed the market.
+  const offered = line?.accepted_contract?.nativeMarketOutcomes ??
+    line?.nativeMarketOutcomes;
+  if (!Array.isArray(offered) || offered.length === 0 || offered.length > 500) return null;
+  const excluded = [];
+  for (const item of offered) {
+    const option = String(item?.outcomeName ?? item?.nativeOutcomeName ??
+      item?.outcomeKey ?? item?.nativeOutcomeKey ?? '').trim();
+    const match = option.match(/^(\d+)\s*[:\-]\s*(\d+)$/);
+    if (match) excluded.push([Number(match[1]), Number(match[2])]);
   }
-  if (!pairs.length) return null;
-  const matched = pairs.some(([h, a]) => h === home && a === away);
-  return matched ? 'WON' : 'LOST';
+  if (!excluded.length) return null;
+  const actualIsWinner = other[1] === 'home' ? home > away : away > home;
+  if (!actualIsWinner) return 'LOST';
+  return excluded.some(([h,a]) => h === home && a === away) ? 'LOST' : 'WON';
 }
 
 export function isMatchbetFirstGoalMarket(name = '') {

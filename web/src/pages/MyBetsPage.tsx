@@ -55,11 +55,11 @@ export default function MyBetsPage(){
   const statusInfo=(status:string)=>{
     switch(status){
       case 'WON':return {label:t('tickets.won'),Icon:CheckCircle2,
-        color:'text-emerald-300',border:'border-emerald-700/50'};
+        color:'text-emerald-200',border:'border-emerald-700/50'};
       case 'LOST':return {label:t('tickets.lost'),Icon:XCircle,
-        color:'text-rose-300',border:'border-rose-800/50'};
+        color:'text-rose-200',border:'border-rose-800/50'};
       case 'PENDING':return {label:t('tickets.pending'),Icon:Clock3,
-        color:'text-amber-200',border:'border-amber-800/40'};
+        color:'text-amber-100',border:'border-amber-800/40'};
       case 'VOID':return {label:t('tickets.void'),Icon:MinusCircle,
         color:'text-slate-300',border:'border-slate-600'};
       default:return {label:status,Icon:MinusCircle,
@@ -70,7 +70,7 @@ export default function MyBetsPage(){
   const renderTicket=(ticket:Ticket)=>{
     const state=statusInfo(ticket.status),StatusIcon=state.Icon;
     return <article key={ticket.id}
-      className="overflow-hidden rounded-lg border border-slate-700/80 bg-[#151e2b] text-slate-100 shadow-sm">
+      className="overflow-hidden rounded-lg border border-slate-700 bg-[#151e2b] text-slate-100 shadow-none">
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-700/70 bg-[#1b2736] px-4 py-3 sm:px-5">
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -80,7 +80,7 @@ export default function MyBetsPage(){
           </div>
           <p className="text-[11px] text-slate-400">{t('tickets.placed_at')}: {formatDate(ticket.placedAt)}</p>
         </div>
-        <span className={`inline-flex min-h-8 items-center gap-1.5 rounded-md border bg-[#121c29] px-2.5 py-1 text-xs font-semibold ${state.color} ${state.border}`}>
+        <span className={`inline-flex min-h-8 items-center gap-1.5 rounded-md border bg-[#101824] px-2.5 py-1 text-xs font-semibold ${state.color} ${state.border}`}>
           <StatusIcon size={14} aria-hidden="true"/>{state.label}
         </span>
       </header>
@@ -92,7 +92,7 @@ export default function MyBetsPage(){
             <div className="min-w-0">
               <p className="break-words text-sm font-semibold leading-snug text-slate-100">
                 {line.matchName}
-                {line.scoreAtPlacement && <span className="ml-1.5 font-bold text-accent-green">{line.scoreAtPlacementLabel ? `${line.scoreAtPlacementLabel} ` : ''}{line.scoreAtPlacement}</span>}
+                {line.scoreAtPlacement && <span className="ml-1.5 font-bold text-slate-100">{line.scoreAtPlacementLabel ? `${line.scoreAtPlacementLabel} ` : ''}{line.scoreAtPlacement}</span>}
               </p>
               <p className="mt-1 break-words text-xs leading-relaxed text-slate-400">
                 {formatMarketSelectionLabel(line.marketName,line.marketLine,t)}
@@ -111,7 +111,7 @@ export default function MyBetsPage(){
         })}
       </div>
 
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-slate-700 bg-[#111a27] px-4 py-3 sm:grid-cols-3 sm:px-5">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-slate-700 bg-[#101824] px-4 py-3 sm:grid-cols-3 sm:px-5">
         <div>
           <div className="text-[11px] text-slate-400">{t('tickets.stake')}</div>
           <div className="mt-0.5 font-mono text-sm font-semibold tabular-nums">{formatMoney(ticket.stake)} <span className="text-xs font-normal text-slate-400">Lek</span></div>
@@ -177,7 +177,7 @@ export default function MyBetsPage(){
             {tab.label} <span className="ml-1 font-mono tabular-nums opacity-75">({tab.count})</span>
           </button>)}
         </div>
-        {error&&<div role="alert" className="mb-4 rounded-md border border-amber-800/60 bg-amber-950/20 px-4 py-3 text-xs text-amber-200">
+        {error&&<div role="alert" className="mb-4 rounded-md border border-slate-700 bg-[#1b2736] px-4 py-3 text-xs text-amber-100">
           Nuk u rifreskuan biletat. Të dhënat e fundit të ngarkuara mbeten të shfaqura.
         </div>}
         {loading?<div role="status" className="py-14 text-center text-sm text-slate-400">{t('common.loading')}</div>:

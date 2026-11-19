@@ -117,6 +117,17 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
   // determines whether the Zizobet offer is authoritative for placement.
   // Unreadable native parameters require settlement review, not rejection.
   const nativeQuoteVerified=String(selectedRow.provider_id??'').toUpperCase()==='ZIZOBET';
+  // Preserve all outcomes in the exact accepted provider market. The list is
+  // part of the immutable quote snapshot, not a later odds lookup.
+  const nativeMarketOutcomes=nativeQuoteVerified
+    ?quotedOffers.filter(o=>o.market_key===selectedRow.market_key&&
+       String(o.line??'')===String(selectedRow.line??'')).slice(0,501).map(o=>({
+        outcomeKey:o.outcome_key??null,
+        outcomeName:o.outcome_name??null,
+        nativeOutcomeKey:o.native_outcome_id??null,
+        nativeOutcomeName:o.native_outcome_name??null
+      }))
+    :null;
   let settlementHold=null, row=selectedRow;
   try{row=nativeZizobetContractRow(selectedRow);}
   catch(error){
@@ -568,7 +579,8 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
     const {hasFinalSettlementRule}=await import('./market-settlement-preflight.mjs');
     if(!hasFinalSettlementRule({...row,market_name:row.market_name??raceName,
       outcome_name:row.outcome_name??parsed.outcomeKey,
-      outcome_key:row.outcome_key??parsed.outcomeKey},
+      outcome_key:row.outcome_key??parsed.outcomeKey,
+      nativeMarketOutcomes},
       {home:match.home,away:match.away}))
       settlementHold='NATIVE_FINAL_RULE_UNMAPPED';
   }
@@ -633,6 +645,7 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
     nativeMarketId:row.native_market_id??null,nativeOutcomeId:row.native_outcome_id??null,
     nativeMarketName:row.native_market_name??null,nativeOutcomeName:row.native_outcome_name??null,
     nativeParameters:row.native_parameters??null,
+    nativeMarketOutcomes,
     sourceProviderId:row.provider_id??match.provider_id??null,
     homeTeamName:match.home,awayTeamName:match.away,
     kickoffAt:match.start_at??null,offerObservedAt:row.updated_at??null,
@@ -753,7 +766,8 @@ export async function revalidateSelections(selections, lines, resolve = resolveS
       settlementHold:current.settlementHold??null,
       acceptedLiveSnapshot:current.acceptedLiveSnapshot??null,
       offerObservedAt:current.offerObservedAt??null,
-      nativeParameters:current.nativeParameters??null
+      nativeParameters:current.nativeParameters??null,
+      nativeMarketOutcomes:current.nativeMarketOutcomes??null
     });
   }));
   const rejected = results.find(result => result.status === 'rejected');
@@ -773,6 +787,7 @@ async function persistLiveContracts(runQuery,ticketId,lines){
    nativeMarketId:line.nativeMarketId??null,nativeOutcomeId:line.nativeOutcomeId??null,
    nativeMarketName:line.nativeMarketName??null,nativeOutcomeName:line.nativeOutcomeName??null,
    nativeParameters:line.nativeParameters??null,
+   nativeMarketOutcomes:line.nativeMarketOutcomes??null,
    sourceProviderId:line.sourceProviderId??null,
    homeTeamName:line.homeTeamName??null,awayTeamName:line.awayTeamName??null,
    kickoffAt:line.kickoffAt??null,offerObservedAt:line.offerObservedAt??null,
