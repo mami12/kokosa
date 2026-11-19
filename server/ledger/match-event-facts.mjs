@@ -18,7 +18,7 @@ create table if not exists app_match_event_fact (
  match_id bigint not null,
  provider text not null,
  provider_event_id text not null,
- kind text not null check (kind in ('goal','corner','card','foul')),
+ kind text not null check (kind in ('goal','corner','card','foul','offside')),
  team text not null check (team in ('home','away')),
  minute integer not null check (minute between 0 and 130),
  seconds numeric(12,3),
@@ -39,6 +39,11 @@ create table if not exists app_match_event_fact (
  observed_at timestamptz not null default now(),
  primary key(match_id,provider,provider_event_id,kind)
 );
+-- Existing installations keep the original inline CHECK constraint after CREATE TABLE IF NOT EXISTS.
+-- Rebuild it so persisted offside facts accepted by the collector are valid in PostgreSQL.
+alter table app_match_event_fact drop constraint if exists app_match_event_fact_kind_check;
+alter table app_match_event_fact add constraint app_match_event_fact_kind_check
+ check (kind in ('goal','corner','card','foul','offside'));
 alter table app_match_event_fact add column if not exists card_color text;
 alter table app_match_event_fact add column if not exists own_goal boolean;
 alter table app_match_event_fact add column if not exists aiscore_player_id text;
