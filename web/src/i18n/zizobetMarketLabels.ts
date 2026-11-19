@@ -209,9 +209,9 @@ export function translateZizobetMarketLabel(raw:string):string|null {
  const split=normalized.indexOf(' · ');
  if(split>=0){const translated=translateZizobetMarketLabel(normalized.slice(0,split));return translated?translated+normalized.slice(split):null;}
  const exact=labels[normalized.toLowerCase()];if(exact)return exact;
- const teamWin=normalized.match(/^(.+?)\\s+to win$/i);
+ const teamWin=normalized.match(/^(.+?)\s+to win$/i);
  if(teamWin)return teamWin[1]+' fiton';
- const teamNoBet=normalized.match(/^(.+?)\\s+no bet$/i);
+ const teamNoBet=normalized.match(/^(.+?)\s+no bet$/i);
  if(teamNoBet)return teamNoBet[1]+' nuk fiton (barazim ose humbje)';
  const period=normalized.match(/^(1st|first|2nd|second) half\s*[-–:.]\s*(.+)$/i);
  if(period){const label=translateZizobetMarketLabel(period[2]);if(label)return (/^(?:1st|first)$/i.test(period[1])?'Pjesa e parë: ':'Pjesa e dytë: ')+label;}
