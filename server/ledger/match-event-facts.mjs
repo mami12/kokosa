@@ -412,7 +412,8 @@ export function gradeHalfTotalFacts(contract,facts,{complete=false,cardColorsVer
   else if(second.has(phase)){if(minute<45)return null;half=2;}
   else if(phase)return null; // unknown phase, extra-time, penalties, etc
   else if(minute<45)half=1;
-  else return null; // missing phase can be 45+ 1H or ordinary 2H
+  else if(minute>45&&minute<=90)half=2;
+  else return null; // minute 45 without a phase can be 1H stoppage or 2H start
   if(half!==contract.half||contract.side!=null&&fact.team!==contract.side)continue;
   if(contract.cardColor){
    if(fact.card_color!=null&&!['yellow','red'].includes(fact.card_color))return null;
