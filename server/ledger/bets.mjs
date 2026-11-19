@@ -470,7 +470,7 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
   // Most Corners can be a two-way or a 1X2 quote. Freeze whether the
   // provider actually offered a draw; a tie cannot be presumed a loser.
   const quotedCornerComparison=parseCornerComparison(row);
-  const cornerDrawOffered=quotedCornerComparison?.mode==='period-result'&&
+  const cornerDrawOffered=['period-result','full-result'].includes(quotedCornerComparison?.mode)&&
     quotedOffers.some(o=>o.market_key===row.market_key&&
       String(o.line??'')===String(row.line??'')&&
       /^(?:x|draw|tie|barazim)$/i.test(String(o.outcome_name??o.outcome_key??'').trim()));
