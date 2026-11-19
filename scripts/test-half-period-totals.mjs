@@ -115,8 +115,10 @@ const makeDB=({facts=corners,complete=true,verified=true,event='corner'}={})=>{
   throw Error('Unexpected SQL '+sql.slice(0,100));
  };
  const result=event==='corner'
-  ?{home_score:0,away_score:0,corners_home:count('home'),corners_away:count('away'),cards_home:0,cards_away:0}
-  :{home_score:0,away_score:0,corners_home:0,corners_away:0,cards_home:count('home'),cards_away:count('away')};
+  ?{source:'ZIZOBET',statistics:{},home_score:0,away_score:0,
+    corners_home:count('home'),corners_away:count('away'),cards_home:0,cards_away:0}
+  :{source:'ZIZOBET',statistics:{},home_score:0,away_score:0,
+    corners_home:0,corners_away:0,cards_home:count('home'),cards_away:count('away')};
  return {execute,result};
 };
 const db=makeDB();
