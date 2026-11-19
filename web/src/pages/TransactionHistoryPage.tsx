@@ -267,7 +267,7 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
                   </select>
                 </label>
                 <button type="button" onClick={() => setBetRefresh(n => n + 1)}
-                  className="rounded-lg border border-tertiary bg-[#3f215e] px-3 py-2 text-xs font-semibold text-white hover:bg-[#522d7a]">
+                  className="rounded-lg border border-slate-700 bg-primary px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800">
                   {t("Rifresko")}</button>
               </div>
             </div>
@@ -276,7 +276,7 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
                 {t("Këtu shfaqen kërkesat e refuzuara nga serveri pas aktivizimit të këtij regjistrimi. Ato nuk janë bileta të pranuara dhe nuk kanë zbritur para nga llogaria.")}</p>
             )}
             {betLoading ? <div className="p-8 text-center text-text-secondary text-xs">{t("Duke ngarkuar bastet…")}</div> :
-              betError ? <div className="p-6 text-center text-rose-300 text-xs" role="alert">{t(betError)}</div> :
+              betError ? <div className="p-6 text-center text-slate-300 text-xs" role="alert">{t(betError)}</div> :
               betEntries.length === 0 ? (
                 <div className="p-8 text-center text-text-secondary text-xs">{t("Nuk ka baste për këtë filtër dhe periudhë.")}</div>
               ) : (
@@ -323,7 +323,7 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
                                 <div className="min-w-0">
                                   <div className="font-semibold text-white">
                                     {line.matchName}
-                                    {line.scoreAtPlacement && <span className="ml-1.5 text-accent-green font-bold">{line.scoreAtPlacement}</span>}
+                                    {line.scoreAtPlacement && <span className="ml-1.5 text-slate-100 font-semibold">{line.scoreAtPlacement}</span>}
                                   </div>
                                   <div className="text-text-secondary">
                                     {formatMarketSelectionLabel(line.marketName, line.marketLine, t)} ·{' '}
@@ -366,7 +366,7 @@ export default function TransactionHistoryPage({ embedded = false }: { embedded?
             </div>
           )}
           {loading ? <div className="p-16 text-center text-text-secondary">{t("Duke ngarkuar transaksionet…")}</div>
-            : error ? <div role="alert" className="p-8 text-center text-rose-300">{t(error)}</div>
+            : error ? <div role="alert" className="p-8 text-center text-slate-300">{t(error)}</div>
               : displayedTransactions.length === 0 ? <div className="p-12 text-center text-text-secondary">{t("Nuk ka transaksione për këtë filtër dhe periudhë.")}</div>
                 : (
                   <>
