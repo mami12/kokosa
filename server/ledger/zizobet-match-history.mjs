@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {pool} from '../db.mjs';
 import {normalizeLiveFrame} from './live-observation-store.mjs';
 import {persistVerifiedEventFacts,invalidateContradictedEventCoverage} from './match-event-facts.mjs';
+import {providerResultPair} from '../match-statistics.mjs';
 
 /** Independent sporting archive. It never contains prices and never pays bets. */
 export const ZIZOBET_MATCH_HISTORY_SQL = [
@@ -40,14 +41,24 @@ export function projectZizobetHistory(matchId,data,row={}){
    if(parsed.length&&parsed.every(Boolean))periods=parsed.slice(0,4);
   }
  }catch{}
+ const finished=Number(game.EventStatus??game.MatchStatusID)===40;
+ const cornerHT=providerResultPair(game,'RESULT_CORNERHT');
+ const cornerFT=providerResultPair(game,'RESULT_CORNERFT');
+ const liveCorners=pair(game,'Corners');
+ const finalCorners=finished?(cornerFT??liveCorners):liveCorners;
+ const cornerPeriods=cornerHT&&cornerFT&&
+  cornerFT.home>=cornerHT.home&&cornerFT.away>=cornerHT.away
+  ?{firstHalf:cornerHT,secondHalf:{home:cornerFT.home-cornerHT.home,
+     away:cornerFT.away-cornerHT.away},fullTime:cornerFT}:null;
  const details={
   provider:'zizobet', matchId:id, home:row.home??null, away:row.away??null,
   kickoffAt:row.start_at??null,
   phase:game.EventStatus??game.MatchStatusID??null,
   clockMinute:clockOf(game),periodScores:periods,
   goals:score?{home:Number(score[1]),away:Number(score[2])}:null,
-  corners:pair(game,'Corners'), yellowCards:pair(game,'YellowCards'),
-  redCards:pair(game,'RedCards'), fouls:pair(game,'Fouls'), shots:pair(game,'Shots')
+  corners:finalCorners,cornerPeriods,
+  yellowCards:pair(game,'YellowCards'),redCards:pair(game,'RedCards'),
+  fouls:pair(game,'Fouls'),shots:pair(game,'Shots')
  };
  // A missing field is unknown, never a fabricated zero or stale overwrite.
  const clean=Object.fromEntries(Object.entries(details).filter(([,v])=>v!==null));
