@@ -87,3 +87,42 @@ export function assertDistinctSelectionMarkets(selections) {
     seen.add(identity);
   }
 }
+
+/** Stable fixture identity shared by every market offered for the same match. */
+export function selectionMatchIdentity(selection) {
+  const outcome = String(selection?.outcomeId ?? '').split('|');
+  const market = String(selection?.marketId ?? '').split('|');
+  const explicit = selection?.matchId ?? selection?.match_id;
+  const matchId = explicit ?? (outcome[0] === 'BB' ? outcome[1] :
+    outcome.length >= 4 ? outcome[0] : market[0] === 'BB' ? market[1] :
+    market.length >= 3 ? market[0] : null);
+  return matchId == null || String(matchId).trim() === '' ? null : String(matchId);
+}
+
+/** Normal-player slip behavior: one pick for a fixture, across every market. */
+export function toggleMatchSelection(previous, selection) {
+  const sameOutcome = previous.some(pick => pick.outcomeId === selection.outcomeId);
+  const matchId = selectionMatchIdentity(selection);
+  if (matchId === null) return toggleMarketSelection(previous, selection);
+  const first = previous.findIndex(pick => selectionMatchIdentity(pick) === matchId);
+  const remaining = previous.filter(pick => selectionMatchIdentity(pick) !== matchId);
+  if (sameOutcome) return remaining;
+  if (first === -1) return [...remaining, selection];
+  remaining.splice(Math.min(first, remaining.length), 0, selection);
+  return remaining;
+}
+
+/** Backend guard for normal users; admin market-level rules remain unchanged. */
+export function assertDistinctSelectionMatches(selections) {
+  const seen = new Set();
+  for (const selection of selections) {
+    const matchId = selectionMatchIdentity(selection);
+    if (matchId === null) continue;
+    if (seen.has(matchId)) {
+      throw Object.assign(new Error('Lejohet vetëm një zgjedhje për çdo ndeshje. Hiq zgjedhjen tjetër dhe provo përsëri.'), {
+        status: 400, code: 'DUPLICATE_MATCH', outcomeId: selection.outcomeId,
+      });
+    }
+    seen.add(matchId);
+  }
+}
