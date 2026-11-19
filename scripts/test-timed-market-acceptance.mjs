@@ -48,6 +48,9 @@ assert.deepEqual(parseClockWindowTotal(openingGoal),{
 assert.deepEqual(liveContract(openingGoal),{
  version:1,kind:'window-total',event:'goal',from:0,to:9,choice:'over',threshold:0.5
 });
+const openingGoalWithoutLine=pick('Goal in first 10 min. (00:00 - 09:59) (0.5)','Under','');
+assert.equal(parseClockWindowTotal(openingGoalWithoutLine)?.threshold,0.5,
+ 'The native title threshold remains usable when the separate line field is blank');
 assert.equal(liveContract(pick('Goal in first 10 min. (00:00 - 09:59) (0.5)','Under','0.5'))?.choice,'under');
 assert.equal(parseClockWindowTotal(pick('Goal in first 10 min. (01:00 - 09:59) (0.5)','Over','0.5')),null,
  'A malformed first-minute boundary must not be rounded into a valid window');
