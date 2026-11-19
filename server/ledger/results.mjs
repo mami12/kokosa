@@ -81,7 +81,8 @@ export const FINISHED_RESULT_INSERT = `
     statistics = coalesce(app_match_result.statistics,'{}'::jsonb) || jsonb_build_object(
       'shots',coalesce(app_match_result.statistics->'shots','{}'::jsonb)||coalesce(excluded.statistics->'shots','{}'::jsonb),
       'shotsOnTarget',coalesce(app_match_result.statistics->'shotsOnTarget','{}'::jsonb)||coalesce(excluded.statistics->'shotsOnTarget','{}'::jsonb),
-      'fouls',coalesce(app_match_result.statistics->'fouls','{}'::jsonb)||coalesce(excluded.statistics->'fouls','{}'::jsonb)),
+      'fouls',coalesce(app_match_result.statistics->'fouls','{}'::jsonb)||coalesce(excluded.statistics->'fouls','{}'::jsonb),
+      'cornerPeriods',coalesce(excluded.statistics->'cornerPeriods',app_match_result.statistics->'cornerPeriods')),
     source = 'ZIZOBET'
   -- A verified admin correction or already-settled result must not be
   -- overwritten by a later stale or conflicting provider frame.
@@ -106,8 +107,20 @@ export function finishedResultParameters(row) {
     return yellow === null || red === null ? null : yellow + red;
   };
   const half = verifiedFirstHalf(row.periods_score);
+  const cornerHalf={home:statNum(homeTeam?.cornersHT),away:statNum(awayTeam?.cornersHT)};
+  const cornerFull={home:statNum(homeTeam?.cornersFT??homeTeam?.corners),
+    away:statNum(awayTeam?.cornersFT??awayTeam?.corners)};
+  const validPair=pair=>Number.isSafeInteger(pair.home)&&pair.home>=0&&
+    Number.isSafeInteger(pair.away)&&pair.away>=0;
+  const cornerPeriods=validPair(cornerHalf)&&validPair(cornerFull)&&
+    cornerFull.home>=cornerHalf.home&&cornerFull.away>=cornerHalf.away
+    ?{firstHalf:cornerHalf,secondHalf:{home:cornerFull.home-cornerHalf.home,
+       away:cornerFull.away-cornerHalf.away},fullTime:cornerFull,source:'ZIZOBET'}:null;
+  const statistics=verifiedFinalStatistics(row);
+  if(cornerPeriods)statistics.cornerPeriods=cornerPeriods;
   return [row.match_id, row.home, row.away, Number(row.home_score), Number(row.away_score),
-    home, away, cards(homeTeam), cards(awayTeam), half?.home ?? null, half?.away ?? null,JSON.stringify(verifiedFinalStatistics(row))];
+    cornerFull.home??home, cornerFull.away??away,cards(homeTeam),cards(awayTeam),
+    half?.home ?? null, half?.away ?? null,JSON.stringify(statistics)];
 }
 
 /**
