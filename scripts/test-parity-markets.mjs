@@ -36,6 +36,13 @@ assert.equal(gradeHalfParityFacts(half,events,{complete:true}),'WON');
 assert.equal(gradeHalfParityFacts({...half,half:2,choice:'even'},events,{complete:true}),'WON');
 assert.equal(gradeHalfParityFacts({...half,half:2,choice:'odd',side:'home'},events,{complete:true}),'WON');
 assert.equal(gradeHalfParityFacts(half,events,{complete:false}),null);
+
+const secondHalfNoPhase=[...events,
+ {team:'home',minute:60,phase:null},{team:'away',minute:67,phase:null}];
+assert.equal(gradeHalfParityFacts({...half,half:2,choice:'even'},
+ secondHalfNoPhase,{complete:true}),'WON',
+ 'Unlabelled absolute minutes above 45 count toward the second-half parity');
+
 assert.equal(gradeHalfParityFacts(half,[...events,{team:'away',minute:45,phase:null}],{complete:true}),null,
  'Minute 45 without period cannot be guessed as second half');
 console.log('PASS odd/even for goals, FT corners, team and half corners, incomplete and ambiguous evidence');
