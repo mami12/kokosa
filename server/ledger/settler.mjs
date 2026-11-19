@@ -500,7 +500,7 @@ export function classify(marketName = '') {
   if (/^(?:home|away)\s+team\s+no\s+bet\s*$/i.test(s.trim())) return 'DNB';
   if (/clean sheet/i.test(s)) return 'CLEAN_SHEET';
   if (/total goals?\s*\(?(?:exact|bands)\)?|exact goals|multigoals|number of goals|exact corners|corners?\s*\(?(?:exact|bands)\)?/i.test(s)) return 'BANDS_EXACT';
-  if (/corner.*(?:result|winner|1x2)|(?:result|winner|1x2).*corner/i.test(s)) return 'CORNER_1X2';
+  if (/corner.*(?:result|winner|1x2)|(?:result|winner|1x2).*corner|^(?:most|more)\s+corners?$/i.test(s.trim())) return 'CORNER_1X2';
   if (/corner/.test(s)) return 'CORNERS';
   if (/\bcards?\b|booking|yellow|red/.test(s)) return 'CARDS';
   if (/both teams to score|\bbtts\b|goal[\s/]*no\s*goal|gol[\s/]*pa\s*gol/i.test(s)) return 'BTTS';
@@ -596,7 +596,10 @@ export function hasRequiredSettlementEvidence(line, result) {
   if(isHandicapMarket(line))return legacyHandicapResult(line,result)!==null;
   // A final aggregate card count cannot tell red from yellow cards.
   if(/\b(?:yellow|red)\s+cards?\b/i.test(String(line?.market_name??'')))return false;
-  if(statisticsNeedReview(line,result))return false;
+  // Zizobet is the declared settlement authority. A missing secondary-provider
+  // comparison must not hold a verified Zizobet final corner/statistics result
+  // in PENDING; secondary feeds are enrichment only, not payout vetoes.
+  if(String(result?.source??'').toUpperCase()!=='ZIZOBET'&&statisticsNeedReview(line,result))return false;
   if (Array.isArray(line.builder_legs)) return line.builder_legs.every(leg => hasRequiredSettlementEvidence(leg, result));
   if (needsEvents(line)) return ['WON','LOST','VOID'].includes(gradeEventLine(line,result));
   if (isStatisticMarket(line)) return hasStatisticEvidence(line,result);
