@@ -41,6 +41,13 @@ assert.deepEqual((()=>{
  const c=parseIntervalCount(pick('Total corners in minutes 1-15 (15-minute interval)','Over','0.5'));
  return [c.from,c.to];
 })(),[1,15],'1-15 labelled 15-minute market is inclusive in the provider notation');
+const firstTenGoals=pick('Goal in first 10 min. (00:00 - 09:59) (0.5)','Over','0.5');
+const firstTenContract=parseClockWindowTotal(firstTenGoals);
+assert.deepEqual(firstTenContract,{
+ version:1,kind:'window-total',event:'goal',from:0,to:9,choice:'over',threshold:0.5
+},'Zizobet opening-ten-minute goals use the exact 00:00–09:59 interval');
+assert.deepEqual(frozenLiveContract(firstTenGoals,match,at),firstTenContract,
+ 'The original Zizobet time-window terms are frozen unchanged');
 assert.equal(parseTimedResultMarket(pick('00:00 - 09:59 min. - Result','1'))?.kind,'interval-result');
 assert.equal(liveContract(pick('Next Goal 2nd','2'),{counts:{goal:{home:1,away:0}}})?.target,2);
 assert.equal(liveContract(pick('Which team wins race to 3 corners','1'))?.kind,'race');
