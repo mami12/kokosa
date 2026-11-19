@@ -11,7 +11,9 @@ for(const [market,outcome,amount,event,side,kind] of [
  ['Team 2 Total Cards','Under','3.5','card','away','under'],
  ['Full time - Home team Total Cards (3.5)','Over','3.5','card','home','over'],
  ['Home Team Total Goals','Over','1.5','goal','home','team-total-goals'],
- ['Home Team Total Fouls','2+','','foul','home','atLeast']
+ ['Home Team Total Fouls','2+','','foul','home','atLeast'],
+ ['Hometeam total corners (8.5)','Over','8.5','corner','home','over'],
+ ['Awayteam total corners (5.5)','Under','5.5','corner','away','under']
 ]){
  const quote=line(market,outcome,amount);
  const contract=event==='foul'?parseTeamCountMarket(quote):liveContract(quote);
