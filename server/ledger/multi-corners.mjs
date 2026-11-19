@@ -55,6 +55,7 @@ export function gradeMultiCornerFacts(contract,facts,{complete=false}={}){
   else if(second.has(raw)){if(minute<45)return null;period=2;}
   else if(raw)return null;
   else if(minute<45)period=1;
+  else if(minute>45&&minute<=90)period=2;
   else return null;
   count[period][e.team]++;
  }
