@@ -118,6 +118,7 @@ export function gradeHalfCornerHandicapFacts(contract,facts,{complete=false}={})
   else if(second.has(phase)){if(minute<45)return null;half=2;}
   else if(phase)return null;
   else if(minute<45)half=1;
+  else if(minute>45&&minute<=90)half=2;
   else return null;
   if(half===contract.half)counts[fact.team]++;
  }
