@@ -20,7 +20,7 @@ export function cornerTotalContract(line={},teams={}){
  if(base(name))return {scope:'total',line:quotedLine};
  const home=norm(teams.home_team??teams.homeTeam??teams.home);
  const away=norm(teams.away_team??teams.awayTeam??teams.away);
- for(const [scope,aliases] of [['home',['home team','home','team 1','1st team',home]],['away',['away team','away','team 2','2nd team',away]]]){
+ for(const [scope,aliases] of [['home',['home team','hometeam','home','team 1','team1','1st team',home]],['away',['away team','awayteam','away','team 2','team2','2nd team',away]]]){
   for(const alias of [...new Set(aliases.filter(Boolean))]){
    if(name.startsWith(alias+' ')&&base(strip(name.slice(alias.length))))return {scope,line:quotedLine};
    if(name.endsWith(' '+alias)&&base(strip(name.slice(0,-alias.length))))return {scope,line:quotedLine};
