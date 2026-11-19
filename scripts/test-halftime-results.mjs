@@ -21,7 +21,7 @@ const inPlay=infoOf({match_id:123,service:'LIVE'},
 assert.equal(inPlay.periodsScore,undefined,
  'A single first-period value is not final before HT');
 const candidate=extractConfirmedHalfTimeCandidate(live);
-assert.equal(candidate.observedAt,live.clock_at,
+assert.equal(Date.parse(candidate.observedAt),Date.parse(live.clock_at),
  'HT confirmation uses the time of the provider clock snapshot, not frozen score/phase timestamps');
 const secondPoll=extractConfirmedHalfTimeCandidate({...live,
  clock_at:'2026-11-11T20:45:38Z'});
