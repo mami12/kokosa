@@ -102,6 +102,23 @@ params=finishedResultParameters({...raw,stats:{home:{yellow:3,red:0,corners:5},
  away:{yellow:1,red:0,corners:4}}});
 assert.equal(params[7],3);
 assert.equal(params[8],1);
+params=finishedResultParameters({...raw,stats:{
+ home:{yellow:1,red:0,corners:10,corners2H:6},
+ away:{yellow:0,red:0,corners:3,corners2H:1}
+}});
+const cornerPeriods=JSON.parse(params[11]).cornerPeriods;
+assert.deepEqual(cornerPeriods,{
+ firstHalf:{home:4,away:2},secondHalf:{home:6,away:1},
+ fullTime:{home:10,away:3},source:'ZIZOBET'
+},'Zizobet 2H corner counters plus FT counters must reconstruct both halves');
+params=finishedResultParameters({...raw,stats:{
+ home:{yellow:1,red:0,corners:10,cornersHT:4},
+ away:{yellow:0,red:0,corners:3,cornersHT:2}
+}});
+assert.deepEqual(JSON.parse(params[11]).cornerPeriods,{
+ firstHalf:{home:4,away:2},secondHalf:{home:6,away:1},
+ fullTime:{home:10,away:3},source:'ZIZOBET'
+},'Zizobet HT corner counters plus FT counters must reconstruct both halves');
 const finishedFrame={raw:{provider:'ZIZOBET'},feed_status:'FT',score_at:'2026-11-11T20:00:00Z',home_score:1,away_score:1};
 assert.equal(isFinished(finishedFrame),true);
 assert.equal(isFinished({...finishedFrame,raw:{provider:'FOTMOB'}}),false,
