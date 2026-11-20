@@ -129,6 +129,12 @@ const goalOver=pick('200|gGoals|1.5|Over',{matchId:'200',marketId:'200|gGoals|1.
 const goalUnderAlt=pick('200|gGoals|3.5|Under',{matchId:'200',marketId:'200|gGoals|3.5',marketName:'Total Goals',marketType:'over_under',marketLine:'3.5',outcomeName:'Under 3.5'});
 assert.equal(selectionConflict(goalOver,goalUnderAlt)?.code,'SAME_TOTAL_FAMILY',
   'Alternate lines in the same total family are incompatible');
+const cornersUnder=pick('200|gCorners|4.5|Under',{matchId:'200',marketId:'200|gCorners|4.5',marketName:'Total Corners',marketType:'over_under',marketLine:'4.5',outcomeName:'Under 4.5'});
+assert.equal(selectionConflict(corners,cornersUnder)?.code,'SAME_TOTAL_FAMILY',
+  'Only one total-corners Over/Under quote is allowed per period');
+const cardsUnder=pick('200|gCards|5.5|Under',{matchId:'200',marketId:'200|gCards|5.5',marketName:'Total Cards',marketType:'over_under',marketLine:'5.5',outcomeName:'Under 5.5'});
+assert.equal(selectionConflict(cards,cardsUnder)?.code,'SAME_TOTAL_FAMILY',
+  'Only one total-cards Over/Under quote is allowed per period');
 assert.equal(findSelectionConflict([matchResult,goalOver,goalUnderAlt])?.code,'SAME_TOTAL_FAMILY');
 assert.throws(()=>assertCompatibleSelections([goalOver,goalUnderAlt]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS');
@@ -175,4 +181,4 @@ assert.doesNotThrow(()=>assertDistinctSelectionMarkets([matchResult,matchTotal])
 // The stricter legacy helper remains available to older callers, but is not used for player slips.
 assert.deepEqual(toggleMatchSelection([matchResult],matchTotal),[matchTotal]);
 
-console.log('PASS one choice per match/market group across all lines, builder aliases, same-fixture different markets, no duplicate columns.');
+console.log('PASS compatible same-match combinations, result-family exclusions, statistic totals, periods, correlated no-goal picks, and backend-resolved contracts.');
