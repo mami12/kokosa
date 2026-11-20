@@ -129,7 +129,7 @@ export function assertDistinctSelectionMatches(selections) {
 
 
 const normalizedSelectionText = value => String(value ?? '')
-  .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 const selectionMarketName = selection =>
@@ -143,8 +143,8 @@ const selectionOutcomeName = selection =>
 
 const selectionPeriodScope = selection => {
   const title = normalizedSelectionText(selectionMarketName(selection));
-  if (/\\b(?:1st|first) half\\b/.test(title)) return 'period:1';
-  if (/\\b(?:2nd|second) half\\b/.test(title)) return 'period:2';
+  if (/\b(?:1st|first) half\b/.test(title)) return 'period:1';
+  if (/\b(?:2nd|second) half\b/.test(title)) return 'period:2';
   const explicit = selection?.providerPeriod ?? selection?.provider_period ??
     selection?.period;
   if (explicit !== null && explicit !== undefined && explicit !== '') {
@@ -156,17 +156,17 @@ const selectionPeriodScope = selection => {
 function selectionMetric(selection) {
   const name = normalizedSelectionText(selectionMarketName(selection));
   const type = normalizedSelectionText(selection?.marketType ?? selection?.market_type);
-  if (/\\b(?:bet builder|same game combo|combo)\\b/.test(name)) return null;
-  if (/\\b(?:corners?|corner kicks?)\\b/.test(name) || type === 'corners' || type === 'corner') return 'corners';
-  if (/\\b(?:cards?|bookings?|yellow card|red card|disciplin)\\b/.test(name) ||
+  if (/\b(?:bet builder|same game combo|combo)\b/.test(name)) return null;
+  if (/\b(?:corners?|corner kicks?)\b/.test(name) || type === 'corners' || type === 'corner') return 'corners';
+  if (/\b(?:cards?|bookings?|yellow card|red card|disciplin)\b/.test(name) ||
       type === 'cards' || type === 'card') return 'cards';
-  if (/\\b(?:shots? on target|on target shots?)\\b/.test(name) || type === 'shots_on_target') return 'shots_on_target';
-  if (/\\b(?:shots?|attempts?)\\b/.test(name) || type === 'shots') return 'shots';
-  if (/\\b(?:fouls?)\\b/.test(name) || type === 'fouls' || type === 'foul') return 'fouls';
-  if (/\\b(?:offsides?|offside)\\b/.test(name) || type === 'offsides') return 'offsides';
-  if (/\\b(?:throw ins?|throw ins)\\b/.test(name) || type === 'throw_ins') return 'throw_ins';
-  if (/\\b(?:saves?|goalkeeper saves?)\\b/.test(name) || type === 'saves') return 'saves';
-  if (/\\b(?:goals?|goal total)\\b/.test(name) ||
+  if (/\b(?:shots? on target|on target shots?)\b/.test(name) || type === 'shots_on_target') return 'shots_on_target';
+  if (/\b(?:shots?|attempts?)\b/.test(name) || type === 'shots') return 'shots';
+  if (/\b(?:fouls?)\b/.test(name) || type === 'fouls' || type === 'foul') return 'fouls';
+  if (/\b(?:offsides?|offside)\b/.test(name) || type === 'offsides') return 'offsides';
+  if (/\b(?:throw ins?|throw ins)\b/.test(name) || type === 'throw_ins') return 'throw_ins';
+  if (/\b(?:saves?|goalkeeper saves?)\b/.test(name) || type === 'saves') return 'saves';
+  if (/\b(?:goals?|goal total)\b/.test(name) ||
       ['goals','goal','total_goals'].includes(type)) return 'goals';
   return null;
 }
@@ -175,32 +175,32 @@ function isOverUnderChoice(selection) {
   const outcome = normalizedSelectionText(selectionOutcomeName(selection));
   const type = normalizedSelectionText(selection?.marketType ?? selection?.market_type);
   const name = normalizedSelectionText(selectionMarketName(selection));
-  return /^(?:over|under)(?:\\s|$)/.test(outcome) ||
-    (type === 'over_under' && /\\b(?:total|over under|over|under)\\b/.test(name));
+  return /^(?:over|under)(?:\s|$)/.test(outcome) ||
+    (type === 'over_under' && /\b(?:total|over under|over|under)\b/.test(name));
 }
 
 function isResultFamily(selection) {
   const name = normalizedSelectionText(selectionMarketName(selection));
-  if (/\\b(?:bet builder|same game combo)\\b/.test(name) ||
-      /\\b(?:correct score|result btts|result and btts|result plus btts)\\b/.test(name)) return false;
-  return /\\b(?:1x2|match result|full time result|match winner|winner|double chance|draw no bet|moneyline)\\b/.test(name) ||
+  if (/\b(?:bet builder|same game combo)\b/.test(name) ||
+      /\b(?:correct score|result btts|result and btts|result plus btts)\b/.test(name)) return false;
+  return /\b(?:1x2|match result|full time result|match winner|winner|double chance|draw no bet|moneyline)\b/.test(name) ||
     normalizedSelectionText(selection?.marketType ?? selection?.market_type) === '1x2';
 }
 
 function isCorrectScoreFamily(selection) {
   const name = normalizedSelectionText(selectionMarketName(selection));
-  return /\\bcorrect score\\b/.test(name) &&
-    !/\\brest of match\\b/.test(name) &&
-    !/\\b(?:1st|first|2nd|second) half\\b/.test(name);
+  return /\bcorrect score\b/.test(name) &&
+    !/\brest of match\b/.test(name) &&
+    !/\b(?:1st|first|2nd|second) half\b/.test(name);
 }
 
 function isUnderHalfGoals(selection) {
   if (selectionMetric(selection) !== 'goals' || !isOverUnderChoice(selection)) return false;
   const outcome = normalizedSelectionText(selectionOutcomeName(selection));
-  if (!/^under(?:\\s|$)/.test(outcome)) return false;
+  if (!/^under(?:\s|$)/.test(outcome)) return false;
   const rawLine = String(selection?.marketLine ?? selection?.market_line ??
     selection?.line ?? '').trim().replace(',', '.');
-  const parsedLine = rawLine.match(/\\d+(?:\\.\\d+)?/)?.[0];
+  const parsedLine = rawLine.match(/\d+(?:\.\d+)?/)?.[0];
   return parsedLine === '0.5';
 }
 
@@ -223,7 +223,7 @@ function isPrematchSelection(selection) {
 function isFirstGoalNoGoal(selection) {
   const market = normalizedSelectionText(selectionMarketName(selection));
   const outcome = normalizedSelectionText(selectionOutcomeName(selection));
-  return /\\bfirst goal\\b/.test(market) &&
+  return /\bfirst goal\b/.test(market) &&
     /^(?:no goal|none|no scorer|neither)$/.test(outcome);
 }
 
@@ -238,7 +238,9 @@ function noGoalPrematchScenario(selection) {
  * Names are the original provider names; translations are never consulted.
  */
 export function selectionConflict(first, second) {
-  if (!first || !second || first.outcomeId === second.outcomeId) return null;
+  if (!first || !second) return null;
+  if (first.outcomeId != null && second.outcomeId != null &&
+      String(first.outcomeId) === String(second.outcomeId)) return null;
   const firstMatch = selectionMatchIdentity(first);
   const secondMatch = selectionMatchIdentity(second);
   if (firstMatch === null || secondMatch === null || firstMatch !== secondMatch) return null;
@@ -311,7 +313,13 @@ export function toggleCompatibleSelection(previous, selection) {
 export function assertCompatibleSelections(selections) {
   const ids = new Set();
   for (const selection of selections ?? []) {
-    const id = String(selection?.outcomeId ?? '');
+    const explicitId = selection?.outcomeId;
+    const id = explicitId != null ? String(explicitId) : [
+      selectionMatchIdentity(selection) ?? '',
+      selection?.marketKey ?? selection?.market_key ?? selection?.marketId ?? '',
+      selection?.line ?? selection?.marketLine ?? '',
+      selection?.outcomeKey ?? selection?.outcome_key ?? selection?.outcomeName ?? ''
+    ].join('|');
     if (id && ids.has(id)) {
       throw Object.assign(new Error('E njëjta zgjedhje nuk mund të shtohet dy herë në biletë.'), {
         status: 400, code: 'DUPLICATE_SELECTION', outcomeId: id,
