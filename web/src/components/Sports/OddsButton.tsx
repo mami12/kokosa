@@ -156,7 +156,7 @@ function OddsButton({ match, market, outcome, isWide, showRawLabel = false, disp
       <span data-odds-value className={`shrink-0 font-mono text-xs font-black tabular-nums sm:text-sm ${
         isSuspended || selectionBlocked ? 'text-slate-400' : isSelected ? 'text-white' : 'text-accent-yellow group-hover:text-accent-yellow sm:text-text-primary'
       }`}>
-        {isSuspended ? <Lock size={14} strokeWidth={2.3} className="inline text-slate-400" aria-label={t("Koeficient i pezulluar")} /> : formatOdds(currentOdds)}
+        {isSuspended || selectionBlocked ? <Lock size={14} strokeWidth={2.3} className="inline text-slate-400" aria-label={selectionBlocked ? (lang==='en' ? 'Incompatible with betslip' : 'Zgjedhje e papajtueshme me biletën') : t("Koeficient i pezulluar")} /> : formatOdds(currentOdds)}
       </span>
     </button>
   );
