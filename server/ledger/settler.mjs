@@ -435,6 +435,16 @@ export function gradeHeldNativeCombo(line,result){
    return wt_resWins && wt_totalWins ? 'WON' : 'LOST';
  }
 
+ // A held native quote may still be covered by an existing, exact
+ // settlement rule added after the ticket was accepted. Only delegate after
+ // the immutable ZIZOBET market/outcome/line/period snapshot above has matched.
+ // The normal evidence gate rejects unknown composites, missing HT/stat facts,
+ // ambiguous team totals and event markets without their frozen event contract.
+ const ordinaryLine={...line,accepted_contract:undefined,period:rawPeriod};
+ if(hasRequiredSettlementEvidence(ordinaryLine,result)){
+  const status=gradeLine(ordinaryLine,result);
+  if(['WON','LOST','VOID'].includes(status))return status;
+ }
  return null;
 }
 /** Keyset round-robin for PENDING work, not OFFSET (which shifts as tickets
