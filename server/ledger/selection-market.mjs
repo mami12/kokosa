@@ -199,7 +199,8 @@ function isUnderHalfGoals(selection) {
   const outcome = normalizedSelectionText(selectionOutcomeName(selection));
   if (!/^under(?:\s|$)/.test(outcome)) return false;
   const rawLine = String(selection?.marketLine ?? selection?.market_line ??
-    selection?.line ?? '').trim().replace(',', '.');
+    selection?.line ?? selectionMarketName(selection).match(/\d+(?:\.\d+)?/)?.[0] ?? '')
+    .trim().replace(',', '.');
   const parsedLine = rawLine.match(/\d+(?:\.\d+)?/)?.[0];
   return parsedLine === '0.5';
 }
@@ -223,7 +224,7 @@ function isPrematchSelection(selection) {
 function isFirstGoalNoGoal(selection) {
   const market = normalizedSelectionText(selectionMarketName(selection));
   const outcome = normalizedSelectionText(selectionOutcomeName(selection));
-  return /\bfirst goal\b/.test(market) &&
+  return /\b(?:first|1st) goal\b/.test(market) &&
     /^(?:no goal|none|no scorer|neither)$/.test(outcome);
 }
 
