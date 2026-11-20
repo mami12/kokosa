@@ -129,7 +129,7 @@ function OddsButton({ match, market, outcome, isWide, showRawLabel = false, disp
     <button
       data-outcome-id={outcome.id}
       data-market-id={market.id}
-      data-odds-direction={isSuspended?undefined:flashClass==='animate-flash-green'?'up':flashClass==='animate-flash-red'?'down':undefined}
+      data-odds-direction={isSuspended || selectionBlocked?undefined:flashClass==='animate-flash-green'?'up':flashClass==='animate-flash-red'?'down':undefined}
       onClick={toggle}
       type="button"
       aria-pressed={isSelected}
@@ -147,14 +147,14 @@ function OddsButton({ match, market, outcome, isWide, showRawLabel = false, disp
         className={`text-[11px] font-semibold transition-colors sm:text-xs leading-snug ${
           scoringTimeLabel ? 'break-words whitespace-normal line-clamp-3' : isWide || label.length > 10 ? 'break-words line-clamp-2' : 'truncate'
         } ${
-          isSuspended ? 'text-slate-400' : isSelected ? 'text-white font-extrabold' : 'text-text-secondary group-hover:text-slate-200'
+          isSuspended || selectionBlocked ? 'text-slate-400' : isSelected ? 'text-white font-extrabold' : 'text-text-secondary group-hover:text-slate-200'
         }`}
         title={label}
       >
         {label}
       </span>
       <span data-odds-value className={`shrink-0 font-mono text-xs font-black tabular-nums sm:text-sm ${
-        isSuspended ? 'text-slate-400' : isSelected ? 'text-white' : 'text-accent-yellow group-hover:text-accent-yellow sm:text-text-primary'
+        isSuspended || selectionBlocked ? 'text-slate-400' : isSelected ? 'text-white' : 'text-accent-yellow group-hover:text-accent-yellow sm:text-text-primary'
       }`}>
         {isSuspended ? <Lock size={14} strokeWidth={2.3} className="inline text-slate-400" aria-label={t("Koeficient i pezulluar")} /> : formatOdds(currentOdds)}
       </span>
