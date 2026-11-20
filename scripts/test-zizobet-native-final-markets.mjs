@@ -66,7 +66,7 @@ const heldMultiscore=held('Multiscores','Other home win','',{
  nativeMarketOutcomes:['1:0','2:0','2:1','0:1','0:2']
 });
 assert.equal(gradeLine(heldMultiscore,{...result,home_score:3,away_score:1}),'WON');
-const heldUnknownComposite=held('Double Chance And Total Goals','12/Over','2.5');
+const heldUnknownComposite=held('Double Chance & First Corner','12/1','');
 assert.equal(gradeLine(heldUnknownComposite,result),null,
  'an unparsed composite must remain pending even when one constituent looks familiar');
 const mismatchedHeld=held('Match Result','1');
