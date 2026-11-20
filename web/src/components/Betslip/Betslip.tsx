@@ -21,6 +21,7 @@ import {useQuoteExpiry} from '../../hooks/useQuoteExpiry';
 import {selectionQuoteDeadline,earliestQuoteDeadline} from '../../utils/quoteValidity';
 import './betslip.css';
 import {totalFromColumnStake} from '../../utils/zshopStake';
+import {findSelectionConflict} from '../../../../server/ledger/selection-market.mjs';
 
 export default function Betslip() {
   const { 
@@ -41,6 +42,9 @@ export default function Betslip() {
     return feedMode!=='live'||quoteExpired(selectionQuoteDeadline(s,oddsDeltas))||locked||isImpossibleLiveCombination(match,market)||filterDecidedOutcomes([outcome],market,match).length===0;
   });
   const hasUnavailable = unavailableSelections.length>0;
+  const slipConflict = findSelectionConflict(selections);
+  const hasSelectionConflict = user?.role === 'ADMIN' ? false : Boolean(slipConflict);
+  const hasBookingConflict = Boolean(slipConflict);
   const blockedCombos = !combosEnabled && selections.some(s => s.outcomeId.startsWith('BB|') || isComboMarket(s.marketName));
   const invalidQuote = columnPreviews.some(column => column.invalid);
   
@@ -339,13 +343,13 @@ export default function Betslip() {
               <div className="zs-stake-row"><label htmlFor="betslip-stake">{tr('Shuma totale','Total stake')}</label><div className="zs-stake-control"><input id="betslip-stake" type="number" inputMode="decimal" min="100" step="0.01" value={stake} onChange={e=>setTotal(e.target.value)}/></div></div>
               {hasMultipleColumns&&!columnsOverflow&&<div className="zs-stake-row"><label htmlFor="betslip-column-stake">{tr('Shuma për kolonë','Stake per column')}</label><div className="zs-stake-control"><span>{columns.length} ×</span><input id="betslip-column-stake" type="number" inputMode="decimal" min="0.01" step="0.01" value={columnDraft??perColumnMinimum.toFixed(2)} onChange={e=>setColumn(e.target.value)} onBlur={()=>{if(!invalidColumnInput)setColumnDraft(null);}} aria-invalid={invalidColumnInput}/></div></div>}
               {hasMultipleColumns&&perColumnMinimum!==perColumnMaximum&&<p className="text-[10px] text-text-secondary" data-stake-rounding>{perColumnMinimum.toFixed(2)}–{perColumnMaximum.toFixed(2)} {tr('Lek për kolonë; diferenca 0.01 ndahet te kolonat e para.','ALL per column; the 0.01 remainder goes to the first columns.')}</p>}
-              <div className="betslip-notices max-h-12 overflow-y-auto text-[11px]">{stakeError&&<p role="alert" className="text-rose-300">{t(stakeError)}</p>}{isOverPayoutLimit&&<p role="alert" className="text-rose-300 font-bold">{t('Ka kaluar limitin e fitimit (Maksimumi 500,000 Lek).')}</p>}{invalidColumnInput&&<p role="alert" className="text-rose-300">{tr('Vendos shumën për kolonë me maksimumi 2 shifra pas presjes.','Enter a column stake with at most 2 decimal places.')}</p>}{blockedCombos&&<p role="alert" className="text-rose-300">{t('Combot janë çaktivizuar. Hiqi nga bileta për të vazhduar.')}</p>}{invalidQuote&&<p role="alert" className="text-rose-300">{t('Një koeficient ose kthim është i pavlefshëm. Rifresko kuotat ose hiqe zgjedhjen.')}</p>}</div>
+              <div className="betslip-notices max-h-12 overflow-y-auto text-[11px]">{stakeError&&<p role="alert" className="text-rose-300">{t(stakeError)}</p>}{isOverPayoutLimit&&<p role="alert" className="text-rose-300 font-bold">{t('Ka kaluar limitin e fitimit (Maksimumi 500,000 Lek).')}</p>}{invalidColumnInput&&<p role="alert" className="text-rose-300">{tr('Vendos shumën për kolonë me maksimumi 2 shifra pas presjes.','Enter a column stake with at most 2 decimal places.')}</p>}{hasSelectionConflict&&<p role="alert" className="text-rose-300">{slipConflict?.message}</p>}{blockedCombos&&<p role="alert" className="text-rose-300">{t('Combot janë çaktivizuar. Hiqi nga bileta për të vazhduar.')}</p>}{invalidQuote&&<p role="alert" className="text-rose-300">{t('Një koeficient ose kthim është i pavlefshëm. Rifresko kuotat ose hiqe zgjedhjen.')}</p>}</div>
               <div className="betslip-quick-stakes grid grid-cols-4 gap-1">{[100,500,1000,5000].map(amount=><button type="button" key={amount} onClick={()=>setTotal(String(amount))}>{amount.toLocaleString(lang==='en'?'en-GB':'sq-AL')}</button>)}</div>
               {hasMultipleColumns&&!columnsOverflow?<div data-zshop-column-returns><div className="zs-return-row"><span>{tr('Kthimi minimal për kolonë fituese','Min. return per winning column')}</span><strong>{invalidQuote?'—':Math.min(...columnPreviews.map(c=>c.payout)).toFixed(2)}</strong></div><div className="zs-return-row"><span>{tr('Kthimi maksimal për kolonë fituese','Max. return per winning column')}</span><strong>{invalidQuote?'—':Math.max(...columnPreviews.map(c=>c.payout)).toFixed(2)}</strong></div></div>:<div className="zs-return-row"><span>{t('betslip.potential_payout')}</span><strong>{invalidQuote?'—':potentialPayout.toFixed(2)} {tr('Lek','ALL')}</strong></div>}
             </div>
             <div className="betslip-actions grid gap-px bg-[#0b1018] p-px">
               {user ? (
-                <button type="button" data-betslip-place onClick={handlePlaceBet} disabled={isPlacingBet || columnsOverflow || blockedCombos || invalidQuote || hasUnavailable || invalidColumnInput || isOverPayoutLimit}
+                <button type="button" data-betslip-place onClick={handlePlaceBet} disabled={isPlacingBet || columnsOverflow || blockedCombos || invalidQuote || hasUnavailable || invalidColumnInput || isOverPayoutLimit || hasSelectionConflict}
                   aria-busy={isPlacingBet}
                   className="bg-accent-yellow py-3 text-sm font-bold text-[#17212c] hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:cursor-wait disabled:opacity-60">
                   {isPlacingBet ? 'Duke vendosur bastin...' : t('betslip.place_bet')}
@@ -353,7 +357,7 @@ export default function Betslip() {
               ) : (
                 <button disabled className="bg-tertiary/60 py-3 text-sm font-semibold text-text-muted">{t("Identifikohu për të vendosur bast")}</button>
               )}
-              <button type="button" onClick={handleBook} disabled={hasMultipleColumns || isPlacingBet || blockedCombos || invalidQuote || hasUnavailable || isOverPayoutLimit}
+              <button type="button" onClick={handleBook} disabled={hasMultipleColumns || isPlacingBet || blockedCombos || invalidQuote || hasUnavailable || isOverPayoutLimit || hasBookingConflict}
                 title={hasMultipleColumns ? 'Prenotimi për shumë kolona nuk është aktiv' : undefined}
                 className="betslip-book bg-[#424e60] py-2 text-xs font-semibold text-white hover:bg-[#465870]">
                 {t('betslip.book_ticket')}
