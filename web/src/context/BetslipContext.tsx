@@ -5,7 +5,7 @@ import { BetSelection } from '../types';
 import { apiClient } from '../api/client';
 import { useAuth } from './AuthContext';
 import { buildBetslipColumns, MIN_TOTAL_STAKE_CENTS, previewColumnPayouts, splitStakeCents, stakeToCents } from '../utils/betslipColumns';
-import { toggleMarketSelection, toggleMatchSelection } from '../../../server/ledger/selection-market.mjs';
+import { toggleMarketSelection, toggleCompatibleSelection, findSelectionConflict } from '../../../server/ledger/selection-market.mjs';
 import {createClientRequestId} from '../utils/clientRequestId.mjs';
 
 interface BetslipContextType {
@@ -50,7 +50,7 @@ export const BetslipProvider = ({ children }: { children: React.ReactNode }) => 
   const addSelection = useCallback((s: BetSelection) => {
     setSelections(previous => user?.role === 'ADMIN'
       ? toggleMarketSelection(previous, s)
-      : toggleMatchSelection(previous, s));
+      : toggleCompatibleSelection(previous, s));
   },[user?.role]);
 
   const removeSelection = useCallback((outcomeId: string) => {
@@ -75,6 +75,10 @@ export const BetslipProvider = ({ children }: { children: React.ReactNode }) => 
     if (inFlightBet.current) return inFlightBet.current;
 
     if (!selections.length) return Promise.reject(new Error('Zgjidh të paktën një kuotë.'));
+    if (user?.role !== 'ADMIN') {
+      const conflict = findSelectionConflict(selections);
+      if (conflict) return Promise.reject(new Error(conflict.message));
+    }
     if (stakeCents == null) return Promise.reject(new Error('Shuma duhet të ketë maksimumi 2 shifra pas presjes.'));
     if (stakeCents < MIN_TOTAL_STAKE_CENTS) return Promise.reject(new Error('Shuma minimale totale është 100 Lek'));
     if (columnsOverflow) return Promise.reject(new Error('Maksimumi 24 kolona për kupon.'));
@@ -129,6 +133,10 @@ export const BetslipProvider = ({ children }: { children: React.ReactNode }) => 
 
   const bookTicket = async () => {
     if (!selections.length) throw new Error('Zgjidh të paktën një kuotë.');
+    if (user?.role !== 'ADMIN') {
+      const conflict = findSelectionConflict(selections);
+      if (conflict) throw new Error(conflict.message);
+    }
     if (automaticSystem) throw new Error('Prenotimi i shumë kolonave nuk është ende i disponueshëm.');
     if (columnPreviews.some(column => column.invalid)) throw new Error('Një kuotë ose pagesë është e pavlefshme. Rifresko zgjedhjet.');
     if (stakeCents == null) throw new Error('Shuma duhet të ketë maksimumi 2 shifra pas presjes.');
@@ -150,7 +158,11 @@ export const BetslipProvider = ({ children }: { children: React.ReactNode }) => 
     return res.data;
   };
 
-  const selectionFeed=useMemo(()=>({store:selectionStore.current,addSelection,removeSelection}),[addSelection,removeSelection]);
+  const selectionFeed=useMemo(()=>({
+    store:selectionStore.current,
+    conflictFor:(candidate:BetSelection)=>user?.role==='ADMIN'?null:selectionStore.current.conflictFor(candidate),
+    addSelection,removeSelection
+  }),[addSelection,removeSelection,user?.role]);
   return (
     <SelectionFeedContext.Provider value={selectionFeed}><BetslipContext.Provider value={{
       selections, columns, columnsOverflow, columnStakes, columnPreviews, stake, setStake, ticketType: effectiveTicketType,
