@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
-import {assertDistinctSelectionMarkets, assertDistinctSelectionMatches, selectionMarketIdentity, toggleMarketSelection, toggleMatchSelection}
-  from '../server/ledger/selection-market.mjs';
+import {
+  assertDistinctSelectionMarkets, assertCompatibleSelections, selectionMarketIdentity,
+  selectionConflict, toggleMarketSelection, toggleMatchSelection, toggleCompatibleSelection, findSelectionConflict
+} from '../server/ledger/selection-market.mjs';
 import {buildBetslipColumns} from '../web/src/utils/betslipColumns.ts';
 
 const pick=(outcomeId,extra={})=>({outcomeId,...extra});
@@ -103,22 +105,80 @@ const changed=toggleMarketSelection(distinct,{...distinct[0],outcomeId:'100|1x2|
 assert.equal(buildBetslipColumns(changed).columns.length,1);
 assert.deepEqual(changed.map(v=>v.outcomeId),['100|1x2||X','100|btts||Yes','101|1x2||2']);
 
-// Normal users may hold only one selection per fixture, across all market families.
-const matchResult=pick('200|g1x2||1',{matchId:'200',marketId:'200|g1x2|'});
-const matchTotal=pick('200|g6379|2.5|Over',{matchId:'200',marketId:'200|g6379|2.5'});
-const otherFixture=pick('201|g1x2||1',{matchId:'201',marketId:'201|g1x2|'});
-assert.deepEqual(toggleMatchSelection([matchResult,otherFixture],matchTotal),[matchTotal,otherFixture],
-  'A different market from the same match replaces the previous pick');
-assert.deepEqual(toggleMatchSelection([matchTotal,otherFixture],matchTotal),[otherFixture],
-  'Clicking the selected match outcome removes it');
-assert.throws(()=>assertDistinctSelectionMatches([matchResult,matchTotal]),
-  error=>error.status===400&&error.code==='DUPLICATE_MATCH');
-assert.doesNotThrow(()=>assertDistinctSelectionMatches([matchResult,otherFixture]));
+// Normal users may combine independent markets from the same fixture.
+const matchResult=pick('200|g1x2||1',{matchId:'200',marketId:'200|g1x2|',marketName:'Match Result',marketType:'1x2'});
+const doubleChance=pick('200|gdc||1X',{matchId:'200',marketId:'200|gdc|',marketName:'Double Chance'});
+const drawNoBet=pick('200|gdnb||1',{matchId:'200',marketId:'200|gdnb|',marketName:'Draw No Bet'});
+const matchTotal=pick('200|g6379|2.5|Over',{matchId:'200',marketId:'200|g6379|2.5',marketName:'Total Goals',marketType:'over_under',marketLine:'2.5',outcomeName:'Over 2.5'});
+const corners=pick('200|gCorners|2.5|Over',{matchId:'200',marketId:'200|gCorners|2.5',marketName:'Total Corners',marketType:'over_under',marketLine:'2.5',outcomeName:'Over 2.5'});
+const cards=pick('200|gCards|4.5|Over',{matchId:'200',marketId:'200|gCards|4.5',marketName:'Total Cards',marketType:'over_under',marketLine:'4.5',outcomeName:'Over 4.5'});
+const otherFixture=pick('201|g1x2||1',{matchId:'201',marketId:'201|g1x2|',marketName:'Match Result'});
+assert.deepEqual(toggleCompatibleSelection([matchResult,otherFixture],matchTotal),[matchResult,otherFixture,matchTotal],
+  'Goals totals can combine with the result market from the same fixture');
+assert.deepEqual(toggleCompatibleSelection([matchResult,otherFixture],corners),[matchResult,otherFixture,corners],
+  'Corners can combine with result markets');
+assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,matchTotal,corners,cards,otherFixture]));
+assert.equal(selectionConflict(matchResult,doubleChance)?.code,'RESULT_FAMILY');
+assert.equal(selectionConflict(matchResult,drawNoBet)?.code,'RESULT_FAMILY');
+assert.equal(toggleCompatibleSelection([matchResult],doubleChance).length,1,
+  'A conflicting result-family selection is not silently substituted');
+assert.throws(()=>assertCompatibleSelections([matchResult,doubleChance]),
+  error=>error.status===400&&error.code==='INCOMPATIBLE_SELECTIONS');
+
+const goalOver=pick('200|gGoals|1.5|Over',{matchId:'200',marketId:'200|gGoals|1.5',marketName:'Total Goals',marketType:'over_under',marketLine:'1.5',outcomeName:'Over 1.5'});
+const goalUnderAlt=pick('200|gGoals|3.5|Under',{matchId:'200',marketId:'200|gGoals|3.5',marketName:'Total Goals',marketType:'over_under',marketLine:'3.5',outcomeName:'Under 3.5'});
+assert.equal(selectionConflict(goalOver,goalUnderAlt)?.code,'SAME_TOTAL_FAMILY',
+  'Alternate lines in the same total family are incompatible');
+const cornersUnder=pick('200|gCorners|4.5|Under',{matchId:'200',marketId:'200|gCorners|4.5',marketName:'Total Corners',marketType:'over_under',marketLine:'4.5',outcomeName:'Under 4.5'});
+assert.equal(selectionConflict(corners,cornersUnder)?.code,'SAME_TOTAL_FAMILY',
+  'Only one total-corners Over/Under quote is allowed per period');
+const cardsUnder=pick('200|gCards|5.5|Under',{matchId:'200',marketId:'200|gCards|5.5',marketName:'Total Cards',marketType:'over_under',marketLine:'5.5',outcomeName:'Under 5.5'});
+assert.equal(selectionConflict(cards,cardsUnder)?.code,'SAME_TOTAL_FAMILY',
+  'Only one total-cards Over/Under quote is allowed per period');
+assert.equal(findSelectionConflict([matchResult,goalOver,goalUnderAlt])?.code,'SAME_TOTAL_FAMILY');
+assert.throws(()=>assertCompatibleSelections([goalOver,goalUnderAlt]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS');
+const firstHalfGoals={...goalUnderAlt,outcomeId:'200|gGoals1h|1.5|Under',marketId:'200|gGoals1h|1.5',marketName:'1st Half Total Goals',marketLine:'1.5',period:1};
+assert.doesNotThrow(()=>assertCompatibleSelections([goalOver,firstHalfGoals]),
+  'Full-time and first-half totals have independent scopes');
+
+const correctScore=pick('200|gCorrectScore||0:0',{matchId:'200',marketId:'200|gCorrectScore|',marketName:'Correct Score',outcomeName:'0:0'});
+assert.equal(selectionConflict(matchResult,correctScore)?.code,'RESULT_CORRELATION',
+  'A correct score cannot be stacked with a result selection');
+assert.equal(selectionConflict(doubleChance,correctScore)?.code,'RESULT_CORRELATION');
+
+const prematch={status:'PREMATCH'};
+const underHalf=pick('200|gGoals|0.5|Under',{matchId:'200',marketId:'200|gGoals|0.5',marketName:'Total Goals',marketType:'over_under',marketLine:'0.5',outcomeName:'Under 0.5',matchSnapshot:prematch});
+const zeroZero=pick('200|gCorrectScore||0:0',{matchId:'200',marketId:'200|gCorrectScore|',marketName:'Correct Score',outcomeName:'0:0',matchSnapshot:prematch});
+const noFirstGoal=pick('200|gFirstGoal||None',{matchId:'200',marketId:'200|gFirstGoal|',marketName:'First Goal',outcomeName:'No Goal',matchSnapshot:prematch});
+assert.equal(selectionConflict(underHalf,zeroZero)?.code,'NO_GOAL_PREMATCH');
+assert.equal(selectionConflict(underHalf,noFirstGoal)?.code,'NO_GOAL_PREMATCH');
+assert.equal(selectionConflict(zeroZero,noFirstGoal)?.code,'NO_GOAL_PREMATCH');
+assert.throws(()=>assertCompatibleSelections([underHalf,zeroZero,noFirstGoal]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS');
+const resolvedUnder = {matchId:'200',marketKey:'gGoals',line:'0.5',outcomeKey:'Under',outcomeName:'Under 0.5',
+  marketName:'Total Goals',marketType:'over_under',acceptedLiveSnapshot:{isLive:false}};
+const resolvedFirstGoal = {matchId:'200',marketKey:'gFirstGoal',line:'',outcomeKey:'None',outcomeName:'No Goal',
+  marketName:'First Goal',acceptedLiveSnapshot:{isLive:false}};
+assert.equal(selectionConflict(resolvedUnder,resolvedFirstGoal)?.code,'NO_GOAL_PREMATCH',
+  'Server-resolved provider rows are checked without a client outcomeId');
+assert.throws(()=>assertCompatibleSelections([resolvedUnder,resolvedFirstGoal]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS');
+
+const bttsNo=pick('200|gBtts||No',{matchId:'200',marketId:'200|gBtts|',marketName:'Both Teams To Score',outcomeName:'No',matchSnapshot:prematch});
+assert.equal(selectionConflict(underHalf,bttsNo),null,
+  'BTTS No is not treated as the same contract as no goal');
+const liveNoFirstGoal={...noFirstGoal,matchSnapshot:{status:'LIVE'}};
+assert.equal(selectionConflict(underHalf,liveNoFirstGoal),null,
+  'A live no-next-goal quote is not mistaken for a prematch 0:0 contract');
+
+assert.equal(selectionConflict(matchResult,otherFixture),null);
+assert.deepEqual(toggleCompatibleSelection([matchResult],matchResult),[],
+  'Clicking a selected outcome removes it');
 // Admin retains the pre-existing behavior: different markets on the same match coexist.
 assert.deepEqual(toggleMarketSelection([matchResult],matchTotal),[matchResult,matchTotal]);
 assert.doesNotThrow(()=>assertDistinctSelectionMarkets([matchResult,matchTotal]));
-// Native market IDs, translated market labels and builder selections still resolve to fixture identity.
-assert.deepEqual(toggleMatchSelection([matchResult],pick('BB|200|builder-template')),
-  [pick('BB|200|builder-template')]);
+// The stricter legacy helper remains available to older callers, but is not used for player slips.
+assert.deepEqual(toggleMatchSelection([matchResult],matchTotal),[matchTotal]);
 
-console.log('PASS one choice per match/market group across all lines, builder aliases, same-fixture different markets, no duplicate columns.');
+console.log('PASS compatible same-match combinations, result-family exclusions, statistic totals, periods, correlated no-goal picks, and backend-resolved contracts.');

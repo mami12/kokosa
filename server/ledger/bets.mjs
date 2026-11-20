@@ -37,7 +37,7 @@ import { isResultTotalMarket, isTotalBttsMarket, isFirstHalfResultBtts, parseRes
 import { buildSystemColumns, splitSystemStake, moneyCents, frozenSelectionPrice, systemColumnPayout } from './system-columns.mjs';
 import { aggregateSystemTicket, parseSystemTicketId, systemTicketId, SYSTEM_STATUS_SQL } from './system-ticket-view.mjs';
 import { isImpossibleLiveCombination } from './combo-feasibility.mjs';
-import { assertDistinctSelectionMarkets, assertDistinctSelectionMatches } from './selection-market.mjs';
+import { assertDistinctSelectionMarkets, assertCompatibleSelections } from './selection-market.mjs';
 import {quoteValidUntil,quoteExpired} from './quote-validity.mjs';
 import {isSyntheticFootballMatch} from '../football-competitions.mjs';
 import {frozenLiveContract} from './live-contract-context.mjs';
@@ -643,6 +643,7 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
     outcomeName: row.outcome_name ?? parsed.outcomeKey,
     marketName: row.market_name ?? parsed.marketKey,
     providerPeriod: Number.isInteger(Number(row.period??0))?Number(row.period??0):null,
+    marketType: row.market_type ?? row.marketType ?? null,
     nativeMarketId:row.native_market_id??null,nativeOutcomeId:row.native_outcome_id??null,
     nativeMarketName:row.native_market_name??null,nativeOutcomeName:row.native_outcome_name??null,
     nativeParameters:row.native_parameters??null,
@@ -1018,9 +1019,10 @@ export async function placeBet({ user, stake, selections = [], ticketType = null
   }
 
   const type = ticketTypeForSelectionCount(ticketType, selections.length);
-  // Admins retain the existing market-level slip rules. Every non-admin account
-  // is limited to one selection per fixture, regardless of the market type.
-  const assertSlipRule = user?.role === 'ADMIN' ? assertDistinctSelectionMarkets : assertDistinctSelectionMatches;
+  // Admins retain their existing provider-market rule. Other users may combine
+  // independent markets from the same fixture, but not correlated selections.
+  // The same rule runs again on canonical rows returned by the server-side resolver.
+  const assertSlipRule = user?.role === 'ADMIN' ? assertDistinctSelectionMarkets : assertCompatibleSelections;
   assertSlipRule(selections);
   // Independent odds checks can be awaited together instead of serially.
   const lines = (await Promise.all(selections.map(resolve))).map(line => ({ ...line, price: frozenSelectionPrice(line.price) }));
@@ -1207,11 +1209,10 @@ return async function placeSystemColumns({ user, totalStake, stake, selections, 
     const line = await resolve(pick);
     return [String(pick.outcomeId), { ...line, price: frozenSelectionPrice(line.price) }];
   })));
-  // Raw outcome IDs are not authoritative. Confirm canonical market and
-  // line identities against the actual feed, across the entire logical wager.
-  // (Only historical integration tests use the old alternative-column mode.)
+  // Raw outcome IDs are not authoritative. Validate every pick using market
+  // names, periods and contract metadata from the resolved provider offers.
   if(!allowHistoricalSystemAlternatives)
-    assertDistinctSelectionMarkets([...linesById.values()]);
+    assertCompatibleSelections([...linesById.values()]);
   const resolved = grouped.map(column => column.map(pick => linesById.get(String(pick.outcomeId))));
   resolved.forEach(assertDistinctSelectionMarkets);
   const priced = resolved.map((lines, i) => ({
@@ -1310,12 +1311,11 @@ export async function bookTicket({ stake, selections = [], ticketType = null, sy
   if (!Array.isArray(selections) || selections.length < 1 || selections.length > 20) throw badRequest('Zgjidh 1–20 kuota për kolonë.');
 
   const type = ticketTypeForSelectionCount(ticketType, selections.length);
-  // Booking is public and has no authenticated admin role, so it follows the
-  // normal-player one-selection-per-match rule.
-  assertDistinctSelectionMatches(selections);
+  // Booking has no authenticated admin role. Resolve first, then check the
+  // authoritative provider contracts rather than trusting browser market labels.
   const lines = [];
   for (const selection of selections) lines.push(await resolveSelection(selection));
-  assertDistinctSelectionMatches(lines);
+  assertCompatibleSelections(lines);
 
   const totalOdds = totalOddsForSelections(lines);
   const payout = systemColumnPayout(amount, lines.map(line => line.price));

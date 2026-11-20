@@ -20,7 +20,24 @@ import { repairDisplayText } from '../../utils/repairDisplayText';
 interface Props { match: Match; market: Market; outcome: Outcome; isWide?: boolean; showRawLabel?: boolean; displayLabel?: string; }
 
 function OddsButton({ match, market, outcome, isWide, showRawLabel = false, displayLabel }: Props) {
-  const {isSelected,addSelection,removeSelection}=useOutcomeSelection(outcome.id);
+  const selectionCandidate = {
+    outcomeId: outcome.id,
+    matchId: match.id,
+    marketId: market.id,
+    outcomeName: outcome.name,
+    outcomeCode: outcome.code,
+    marketName: market.name,
+    marketType: market.marketType,
+    marketLine: market.line || market.specifier,
+    matchName: `${match.homeTeam} vs ${match.awayTeam}`,
+    odds: outcome.odds,
+    period: market.period,
+    matchSnapshot: {status:match.status,homeTeam:match.homeTeam,awayTeam:match.awayTeam,
+      homeScore:match.homeScore,awayScore:match.awayScore,scoreAt:match.scoreAt,
+      period:match.period,currentMinute:match.currentMinute}
+  };
+  const {isSelected,conflictMessage,addSelection,removeSelection}=useOutcomeSelection(outcome.id,selectionCandidate);
+  const selectionBlocked = Boolean(conflictMessage) && !isSelected;
   const { oddsDeltas, lockedOutcomes, riskLockedOutcomes, lockedMarkets, lockedMatches, combosEnabled,feedMode } = useOutcomeFeed(String(match.id),market.id,outcome.id,market.builderLegs);
   const { t, lang } = useLanguage();
   const [flashClass, setFlashClass] = useState('');
@@ -83,7 +100,7 @@ function OddsButton({ match, market, outcome, isWide, showRawLabel = false, disp
   },[outcome.id,currentOdds]);
 
   const toggle = () => {
-    if (isSuspended) return;
+    if (isSuspended || selectionBlocked) return;
     if (isSelected) {
       removeSelection(outcome.id);
     } else {
@@ -112,13 +129,14 @@ function OddsButton({ match, market, outcome, isWide, showRawLabel = false, disp
     <button
       data-outcome-id={outcome.id}
       data-market-id={market.id}
-      data-odds-direction={isSuspended?undefined:flashClass==='animate-flash-green'?'up':flashClass==='animate-flash-red'?'down':undefined}
+      data-odds-direction={isSuspended || selectionBlocked?undefined:flashClass==='animate-flash-green'?'up':flashClass==='animate-flash-red'?'down':undefined}
       onClick={toggle}
       type="button"
       aria-pressed={isSelected}
-      disabled={isSuspended}
+      disabled={isSuspended || selectionBlocked}
+      title={selectionBlocked ? (lang==='en' ? 'Conflicts with a selection already in the betslip' : 'Nuk mund të kombinohet me zgjedhjen në biletë') : undefined}
       className={`group relative flex items-center ${scoringTimeLabel ? 'flex-col justify-center gap-1 py-2.5 text-center' : 'justify-between gap-2'} rounded-sm border-0 px-2 py-2 text-left transition-colors duration-150 select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-green focus-visible:outline-offset-[-2px] ${flashClass} ${
-        isSuspended
+        isSuspended || selectionBlocked
           ? '!bg-[#29313d] cursor-not-allowed !text-slate-400 opacity-85'
           : isSelected
           ? '!bg-[#347d48] hover:!bg-[#3b9354] text-white ring-2 ring-inset ring-[#f2c04f] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.25)]'
@@ -129,16 +147,16 @@ function OddsButton({ match, market, outcome, isWide, showRawLabel = false, disp
         className={`text-[11px] font-semibold transition-colors sm:text-xs leading-snug ${
           scoringTimeLabel ? 'break-words whitespace-normal line-clamp-3' : isWide || label.length > 10 ? 'break-words line-clamp-2' : 'truncate'
         } ${
-          isSuspended ? 'text-slate-400' : isSelected ? 'text-white font-extrabold' : 'text-text-secondary group-hover:text-slate-200'
+          isSuspended || selectionBlocked ? 'text-slate-400' : isSelected ? 'text-white font-extrabold' : 'text-text-secondary group-hover:text-slate-200'
         }`}
         title={label}
       >
         {label}
       </span>
       <span data-odds-value className={`shrink-0 font-mono text-xs font-black tabular-nums sm:text-sm ${
-        isSuspended ? 'text-slate-400' : isSelected ? 'text-white' : 'text-accent-yellow group-hover:text-accent-yellow sm:text-text-primary'
+        isSuspended || selectionBlocked ? 'text-slate-400' : isSelected ? 'text-white' : 'text-accent-yellow group-hover:text-accent-yellow sm:text-text-primary'
       }`}>
-        {isSuspended ? <Lock size={14} strokeWidth={2.3} className="inline text-slate-400" aria-label={t("Koeficient i pezulluar")} /> : formatOdds(currentOdds)}
+        {isSuspended || selectionBlocked ? <Lock size={14} strokeWidth={2.3} className="inline text-slate-400" aria-label={selectionBlocked ? (lang==='en' ? 'Incompatible with betslip' : 'Zgjedhje e papajtueshme me biletën') : t("Koeficient i pezulluar")} /> : formatOdds(currentOdds)}
       </span>
     </button>
   );
