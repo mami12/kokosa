@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   assertDistinctSelectionMarkets, assertCompatibleSelections, selectionMarketIdentity,
-  selectionConflict, toggleMarketSelection, toggleCompatibleSelection, findSelectionConflict
+  selectionConflict, toggleMarketSelection, toggleMatchSelection, toggleCompatibleSelection, findSelectionConflict
 } from '../server/ledger/selection-market.mjs';
 import {buildBetslipColumns} from '../web/src/utils/betslipColumns.ts';
 
@@ -150,6 +150,15 @@ assert.equal(selectionConflict(underHalf,noFirstGoal)?.code,'NO_GOAL_PREMATCH');
 assert.equal(selectionConflict(zeroZero,noFirstGoal)?.code,'NO_GOAL_PREMATCH');
 assert.throws(()=>assertCompatibleSelections([underHalf,zeroZero,noFirstGoal]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS');
+const resolvedUnder = {matchId:'200',marketKey:'gGoals',line:'0.5',outcomeKey:'Under',outcomeName:'Under 0.5',
+  marketName:'Total Goals',marketType:'over_under',acceptedLiveSnapshot:{isLive:false}};
+const resolvedFirstGoal = {matchId:'200',marketKey:'gFirstGoal',line:'',outcomeKey:'None',outcomeName:'No Goal',
+  marketName:'First Goal',acceptedLiveSnapshot:{isLive:false}};
+assert.equal(selectionConflict(resolvedUnder,resolvedFirstGoal)?.code,'NO_GOAL_PREMATCH',
+  'Server-resolved provider rows are checked without a client outcomeId');
+assert.throws(()=>assertCompatibleSelections([resolvedUnder,resolvedFirstGoal]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS');
+
 const bttsNo=pick('200|gBtts||No',{matchId:'200',marketId:'200|gBtts|',marketName:'Both Teams To Score',outcomeName:'No',matchSnapshot:prematch});
 assert.equal(selectionConflict(underHalf,bttsNo),null,
   'BTTS No is not treated as the same contract as no goal');
