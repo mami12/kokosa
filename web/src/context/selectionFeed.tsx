@@ -2,7 +2,7 @@ import {createContext,useContext,useSyncExternalStore} from 'react';
 import type {BetSelection} from '../types';
 import {selectionConflictWithSlip} from '../../../server/ledger/selection-market.mjs';
 
-type SelectionCandidate = Partial<BetSelection> & Pick<BetSelection,'outcomeId'>;
+type SelectionCandidate = BetSelection;
 
 export function createSelectionStore(){
   let ids=new Set<string>(),values:BetSelection[]=[],signature='';
