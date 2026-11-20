@@ -33,6 +33,47 @@ for(const [market,selection,expected] of [
   'A named team and verified scoreboards are sufficient: '+market);
 }
 
+
+// A held Zizobet quote can use a normal grader only after its exact frozen
+// provider identity matches. This repairs accepted standard markets without
+// opening a generic fallback for unknown compound or event contracts.
+const held=(market,outcome,line='',extra={})=>{
+ const marketKey='native-market-key',outcomeKey=outcome;
+ return quote(market,outcome,{
+  line,market_key:marketKey,outcome_key:outcomeKey,
+  accepted_contract:{
+   sourceProviderId:'ZIZOBET',settlementHold:'NATIVE_FINAL_RULE_UNMAPPED',
+   providerMarketName:market,providerOutcomeName:outcome,
+   providerMarketKey:marketKey,providerOutcomeKey:outcomeKey,
+   line,providerPeriod:0,...extra
+  }
+ });
+};
+for(const [market,outcome,line,expected] of [
+ ['Match Result','1','','WON'],
+ ['Double Chance','X2','','LOST'],
+ ['Draw No Bet','1','','WON'],
+ ['Clean sheet awayteam','No','','WON'],
+ ['Total Goals','Over','2.5','WON'],
+ ['Correct Score','2:1','','WON']
+]){
+ const ticket=held(market,outcome,line);
+ assert.equal(gradeLine(ticket,result),expected,'held native '+market+' / '+outcome);
+ assert.equal(hasRequiredSettlementEvidence(ticket,result),true,
+  'held native quote has sufficient verified evidence: '+market);
+}
+const heldMultiscore=held('Multiscores','Other home win','',{
+ nativeMarketOutcomes:['1:0','2:0','2:1','0:1','0:2']
+});
+assert.equal(gradeLine(heldMultiscore,{...result,home_score:3,away_score:1}),'WON');
+const heldUnknownComposite=held('Double Chance & First Corner','12/1','');
+assert.equal(gradeLine(heldUnknownComposite,result),null,
+ 'an unparsed composite must remain pending even when one constituent looks familiar');
+const mismatchedHeld=held('Match Result','1');
+mismatchedHeld.market_name='Double Chance';
+assert.equal(gradeLine(mismatchedHeld,result),null,
+ 'a modified display/market name cannot override the immutable accepted quote');
+
 assert.equal(grade('Hometeam odd/even','Even'),'WON');
 assert.equal(grade('Awayteam odd/even','Odd'),'WON');
 assert.equal(grade('2nd half - Hometeam odd/even','Odd'),'WON');
