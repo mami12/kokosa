@@ -142,14 +142,14 @@ const selectionOutcomeName = selection =>
     selection?.outcomeCode ?? selection?.outcome_key ?? '');
 
 const selectionPeriodScope = selection => {
+  const title = normalizedSelectionText(selectionMarketName(selection));
+  if (/\\b(?:1st|first) half\\b/.test(title)) return 'period:1';
+  if (/\\b(?:2nd|second) half\\b/.test(title)) return 'period:2';
   const explicit = selection?.providerPeriod ?? selection?.provider_period ??
     selection?.period;
   if (explicit !== null && explicit !== undefined && explicit !== '') {
     return 'period:' + String(explicit);
   }
-  const title = normalizedSelectionText(selectionMarketName(selection));
-  if (/\\b(?:1st|first) half\\b/.test(title)) return 'period:1';
-  if (/\\b(?:2nd|second) half\\b/.test(title)) return 'period:2';
   return 'period:0';
 };
 
@@ -168,7 +168,6 @@ function selectionMetric(selection) {
   if (/\\b(?:saves?|goalkeeper saves?)\\b/.test(name) || type === 'saves') return 'saves';
   if (/\\b(?:goals?|goal total)\\b/.test(name) ||
       ['goals','goal','total_goals'].includes(type)) return 'goals';
-  if (type === 'over_under' && /\\btotal\\b/.test(name)) return 'total';
   return null;
 }
 
@@ -310,6 +309,16 @@ export function toggleCompatibleSelection(previous, selection) {
  * structural check; client-supplied market labels are never authoritative.
  */
 export function assertCompatibleSelections(selections) {
+  const ids = new Set();
+  for (const selection of selections ?? []) {
+    const id = String(selection?.outcomeId ?? '');
+    if (id && ids.has(id)) {
+      throw Object.assign(new Error('E njëjta zgjedhje nuk mund të shtohet dy herë në biletë.'), {
+        status: 400, code: 'DUPLICATE_SELECTION', outcomeId: id,
+      });
+    }
+    if (id) ids.add(id);
+  }
   const conflict = findSelectionConflict(selections);
   if (!conflict) return;
   throw Object.assign(new Error(conflict.message), {
