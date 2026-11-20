@@ -3,6 +3,7 @@ import {useFeedScope} from '../api/feedScope';
 import { createContext, useContext, useState, useMemo, useRef,useCallback,useLayoutEffect } from 'react';
 import { BetSelection } from '../types';
 import { apiClient } from '../api/client';
+import { useAuth } from './AuthContext';
 import { buildBetslipColumns, MIN_TOTAL_STAKE_CENTS, previewColumnPayouts, splitStakeCents, stakeToCents } from '../utils/betslipColumns';
 import { toggleMarketSelection, toggleMatchSelection } from '../../../server/ledger/selection-market.mjs';
 import {createClientRequestId} from '../utils/clientRequestId.mjs';
@@ -30,6 +31,7 @@ interface BetslipContextType {
 const BetslipContext = createContext<BetslipContextType>({} as BetslipContextType);
 
 export const BetslipProvider = ({ children }: { children: React.ReactNode }) => {
+  const { user } = useAuth();
   const [selections, setSelections] = useState<BetSelection[]>([]);
   const selectionStore=useRef(createSelectionStore());
   useLayoutEffect(()=>selectionStore.current.publish(selections),[selections]);
