@@ -246,11 +246,13 @@ export function selectionConflict(first, second) {
   if (firstMatch === null || secondMatch === null || firstMatch !== secondMatch) return null;
   const samePeriod = selectionPeriodScope(first) === selectionPeriodScope(second);
 
-  if (selectionMarketIdentity(first) !== null &&
-      selectionMarketIdentity(first) === selectionMarketIdentity(second)) {
-    return { code: 'SAME_MARKET_GROUP', message: 'Lejohet vetëm një zgjedhje nga i njëjti treg.' };
+  const sameMarketGroup = selectionMarketIdentity(first) !== null &&
+    selectionMarketIdentity(first) === selectionMarketIdentity(second);
+  if (!samePeriod) {
+    return sameMarketGroup
+      ? { code: 'SAME_MARKET_GROUP', message: 'Lejohet vetëm një zgjedhje nga i njëjti treg.' }
+      : null;
   }
-  if (!samePeriod) return null;
 
   if ((isResultFamily(first) && isResultFamily(second)) ||
       (isCorrectScoreFamily(first) && isCorrectScoreFamily(second))) {
@@ -266,6 +268,10 @@ export function selectionConflict(first, second) {
   if (firstMetric && firstMetric === secondMetric &&
       isOverUnderChoice(first) && isOverUnderChoice(second)) {
     return { code: 'SAME_TOTAL_FAMILY', message: 'Lejohet vetëm një kuotë Over/Under për të njëjtën statistikë dhe pjesë të ndeshjes.' };
+  }
+
+  if (sameMarketGroup) {
+    return { code: 'SAME_MARKET_GROUP', message: 'Lejohet vetëm një zgjedhje nga i njëjti treg.' };
   }
 
   if (noGoalPrematchScenario(first) && noGoalPrematchScenario(second)) {
