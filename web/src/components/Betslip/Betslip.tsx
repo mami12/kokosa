@@ -351,7 +351,7 @@ export default function Betslip() {
               {user ? (
                 <button type="button" data-betslip-place onClick={handlePlaceBet} disabled={isPlacingBet || columnsOverflow || blockedCombos || invalidQuote || hasUnavailable || invalidColumnInput || isOverPayoutLimit || hasSelectionConflict}
                   aria-busy={isPlacingBet}
-                  className="bg-accent-yellow py-3 text-sm font-bold text-[#17212c] hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:cursor-wait disabled:opacity-60">
+                  className="bg-accent-yellow py-3 text-sm font-bold text-[#17212c] hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:!bg-[#4b5563] disabled:!text-slate-300 disabled:opacity-100">
                   {isPlacingBet ? 'Duke vendosur bastin...' : t('betslip.place_bet')}
                 </button>
               ) : (
