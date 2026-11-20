@@ -14,8 +14,7 @@ export function createSelectionStore(){
     publish(nextValues:BetSelection[]){
       const nextSignature=JSON.stringify(nextValues.map(s=>[
         s.outcomeId,s.matchId,s.marketId,s.marketName,s.marketType,s.marketLine,
-        s.outcomeName,s.outcomeCode,s.period,s.matchSnapshot?.status,
-        s.acceptedLiveSnapshot?.isLive
+        s.outcomeName,s.outcomeCode,s.period,s.matchSnapshot?.status
       ]));
       if(nextSignature===signature)return;
       signature=nextSignature;
