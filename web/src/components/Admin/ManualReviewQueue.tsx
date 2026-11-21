@@ -41,6 +41,12 @@ type EventCoverage = {
   cardColorsVerified?: boolean;
 };
 type ReviewItem = {
+  finalCounters?: {
+    corners?: Pair | null;
+    cards?: Pair | null;
+    statistics?: Record<string, Pair | null>;
+    source?: string | null;
+  } | null;
   lineId: string;
   ticketId: string;
   matchId: string;
@@ -163,6 +169,15 @@ function PlacementEvidence({ item }: { item: ReviewItem }) {
     ['Pozicion', 'possession'], ['Jashtë loje', 'offsides'],
     ['Kartona të verdhë', 'yellow'], ['Kartona të kuq', 'red'],
   ] as const;
+  const finalStatistics = item.finalCounters?.statistics ?? item.finalStatistics ?? {};
+  const finalRows = [
+    { label: 'Kornera', value: pairText(item.finalCounters?.corners) },
+    { label: 'Kartona', value: pairText(item.finalCounters?.cards) },
+    { label: 'Gjuajtje', value: pairText(finalStatistics.shots) },
+    { label: 'Gjuajtje në kuadrat', value: pairText(finalStatistics.shotsOnTarget) },
+    { label: 'Faulle', value: pairText(finalStatistics.fouls) },
+    { label: 'Jashtë loje', value: pairText(finalStatistics.offsides) },
+  ].filter(row => row.value !== null);
   const otherRows = extraStats.map(([label, key]) => {
     const value = pairText({ home: home[key], away: away[key] });
     return { label, value: key === 'possession' && value ? value.replace(' – ', '% – ') + '%' : value };
@@ -212,6 +227,22 @@ function PlacementEvidence({ item }: { item: ReviewItem }) {
           <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-text-secondary">Statistika shtesë në vendosje</div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {otherRows.map(row => (
+              <div key={row.label} className="flex items-center justify-between gap-2 rounded-lg border border-tertiary/80 bg-secondary/50 px-3 py-2">
+                <span className="text-[11px] text-text-secondary">{row.label}</span>
+                <span className="text-xs font-bold tabular-nums text-white">{row.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {finalRows.length > 0 && (
+        <div>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">Statistika finale të arkivuara</div>
+            <span className="text-[10px] text-text-secondary">Burimi: {item.finalCounters?.source ?? 'I panjohur'}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {finalRows.map(row => (
               <div key={row.label} className="flex items-center justify-between gap-2 rounded-lg border border-tertiary/80 bg-secondary/50 px-3 py-2">
                 <span className="text-[11px] text-text-secondary">{row.label}</span>
                 <span className="text-xs font-bold tabular-nums text-white">{row.value}</span>
