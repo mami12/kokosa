@@ -136,6 +136,27 @@ const cardsUnder=pick('200|gCards|5.5|Under',{matchId:'200',marketId:'200|gCards
 assert.equal(selectionConflict(cards,cardsUnder)?.code,'SAME_TOTAL_FAMILY',
   'Only one total-cards Over/Under quote is allowed per period');
 assert.equal(findSelectionConflict([matchResult,goalOver,goalUnderAlt])?.code,'SAME_TOTAL_FAMILY');
+
+// One selection per visible market category for the same fixture, even when
+// the provider gives the offers different market IDs and different names.
+const nextGoal=pick('200|gNextGoal||Home',{matchId:'200',marketId:'200|gNextGoal|',marketName:'Next Goal',outcomeName:'Home'});
+assert.equal(selectionConflict(goalOver,nextGoal)?.code,'SAME_MARKET_CATEGORY',
+  'Goals totals and Next Goal belong to the same Goals category');
+assert.deepEqual(toggleCompatibleSelection([goalOver],nextGoal),[goalOver],
+  'The slip refuses a second Goals-category market without silently replacing the first');
+assert.throws(()=>assertCompatibleSelections([goalOver,nextGoal]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS',
+  'The backend rejects different provider market IDs in one category');
+
+const raceCorners=pick('200|gRaceCorners||7',{matchId:'200',marketId:'200|gRaceCorners|',marketName:'Race to 7 Corners',outcomeName:'First to 7'});
+assert.equal(selectionConflict(corners,raceCorners)?.code,'SAME_MARKET_CATEGORY',
+  'Total Corners and Race to X Corners share the Corners category');
+const cardsOther=pick('200|gCards||Over',{matchId:'200',marketId:'200|gCards|',marketName:'Total Cards',outcomeName:'Over'});
+const playerOther=pick('200|gBooked||Yes',{matchId:'200',marketId:'200|gBooked|',marketName:'Player to be Booked',outcomeName:'Yes'});
+assert.equal(selectionConflict(cardsOther,playerOther)?.code,'SAME_MARKET_CATEGORY',
+  'Different markets classified under Other cannot be stacked for one match');
+assert.equal(selectionConflict(goalOver,corners),null,
+  'Different visible categories remain compatible within one match');
 assert.throws(()=>assertCompatibleSelections([goalOver,goalUnderAlt]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS');
 const firstHalfGoals={...goalUnderAlt,outcomeId:'200|gGoals1h|1.5|Under',marketId:'200|gGoals1h|1.5',marketName:'1st Half Total Goals',marketLine:'1.5',period:1};
