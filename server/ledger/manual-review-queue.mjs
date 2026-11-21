@@ -105,6 +105,11 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
    homeTeamName:row.home_team_name??null,awayTeamName:row.away_team_name??null,
    liveContract:row.live_contract??null,
    finalStatistics:row.final_statistics??null,
+   finalCounters:row.result_id!=null?{
+    corners:{home:row.corners_home,away:row.corners_away},
+    cards:{home:row.cards_home,away:row.cards_away},
+    statistics:row.final_statistics??{}
+   }:null,
    reason,conflicts:row.statistics_review?.conflicts??null});
  }
  const matchIds=[...new Set(items.map(item=>Number(item.matchId)).filter(id=>Number.isSafeInteger(id)&&id>0))];
