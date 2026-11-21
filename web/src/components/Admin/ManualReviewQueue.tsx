@@ -3,7 +3,7 @@ import { apiClient } from '../../api/client';
 import {
   AlertTriangle, RefreshCw, Calendar, Clock, User,
   CheckCircle2, XCircle, RotateCcw, ShieldCheck, Ticket,
-  Search, Activity, History, Gauge
+  Search, History, Gauge
 } from 'lucide-react';
 
 type Pair = { home?: number | string | null; away?: number | string | null };
@@ -43,6 +43,8 @@ type ReviewItem = {
   lineId: string;
   ticketId: string;
   matchId: string;
+  homeTeamName?: string | null;
+  awayTeamName?: string | null;
   marketName: string;
   matchName: string;
   outcomeName: string;
@@ -141,8 +143,8 @@ function PlacementEvidence({ item }: { item: ReviewItem }) {
   const minute = asNumber(snapshot?.clockMilliseconds);
   const counters = snapshot?.counters ?? {};
   const statistics = snapshot?.statistics ?? {};
-  const home = statistics.home ?? {};
-  const away = statistics.away ?? {};
+  const home = (statistics.home ?? {}) as Record<string, number | string | null>;
+  const away = (statistics.away ?? {}) as Record<string, number | string | null>;
   const totalCards = (side: Record<string, any>) => {
     const yellow = asNumber(side.yellow), red = asNumber(side.red);
     return yellow === null && red === null ? null : (yellow ?? 0) + (red ?? 0);
@@ -267,7 +269,7 @@ function MatchTimeline({ item }: { item: ReviewItem }) {
                     <span className="text-[10px] text-text-secondary">{eventTime(event)}</span>
                   </div>
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-secondary">
-                    <span>{isHome ? 'Vendasit' : 'Miqtë'}</span>
+                    <span>{isHome ? (item.homeTeamName || 'Vendasit') : (item.awayTeamName || 'Miqtë')}</span>
                     {event.playerName && <span className="font-medium text-white">{event.playerName}</span>}
                     {event.phase && <span>· {event.phase}</span>}
                     {relation && (
