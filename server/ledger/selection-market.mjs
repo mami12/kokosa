@@ -266,10 +266,8 @@ export function selectionConflict(first, second) {
 
   const sameMarketGroup = selectionMarketIdentity(first) !== null &&
     selectionMarketIdentity(first) === selectionMarketIdentity(second);
-  if (!samePeriod) {
-    return sameMarketGroup
-      ? { code: 'SAME_MARKET_GROUP', message: 'Lejohet vetëm një zgjedhje nga i njëjti treg.' }
-      : null;
+  if (!samePeriod && sameMarketGroup) {
+    return { code: 'SAME_MARKET_GROUP', message: 'Lejohet vetëm një zgjedhje nga i njëjti treg.' };
   }
 
   if ((isResultFamily(first) && isResultFamily(second)) ||
