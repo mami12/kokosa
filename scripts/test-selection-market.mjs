@@ -157,6 +157,17 @@ assert.equal(selectionConflict(cardsOther,playerOther)?.code,'SAME_MARKET_CATEGO
   'Different markets classified under Other cannot be stacked for one match');
 assert.equal(selectionConflict(goalOver,corners),null,
   'Different visible categories remain compatible within one match');
+assert.equal(selectionConflict(matchResult,corners),null,
+  'Corners must combine with full-time result markets');
+assert.equal(selectionConflict(corners,matchResult),null,
+  'Corners must combine with full-time result markets in either selection order');
+const genericallyNamedCorners = pick('200|zzCorners@total|2.5|Over', {
+  matchId:'200', marketId:'200|zzCorners@total|2.5',
+  marketKey:'zzCorners@total', marketName:'Over/Under',
+  marketType:'over_under', marketLine:'2.5', outcomeName:'Over 2.5'
+});
+assert.equal(selectionConflict(matchResult,genericallyNamedCorners),null,
+  'Native corner market key identifies a generic Over/Under title as Corners');
 const firstHalfTotal=pick('200|gGoals1h|1.5|Over',{matchId:'200',marketId:'200|gGoals1h|1.5',marketName:'1st Half Total Goals',marketType:'over_under',marketLine:'1.5',outcomeName:'Over 1.5',period:1});
 const sameGameCombo=pick('200|BB|template-a',{matchId:'200',marketId:'200|BB|template-a',marketName:'Bet Builder'});
 assert.equal(selectionConflict(matchResult,firstHalfTotal)?.code,'MAIN_PERIOD_COMBO',
