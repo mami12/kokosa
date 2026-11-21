@@ -70,16 +70,29 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
         or coalesce(l.accepted_contract->>'settlementHold','')<>'')
     order by case when l.status='VOID' then 0 else 1 end,t.placed_at desc
     limit $1`,[scanLimit])).rows;
- const items=[];
+ const eligible=[];
  for(const row of rows){
   const reason=reviewReason(row,now);if(!reason)continue;
-  let firstSeenAt=row.first_seen_at;
-  if(!firstSeenAt){
-   const notice=await runQuery(`insert into app_manual_review_notice(line_id,first_seen_at)
-    values($1,$2) on conflict(line_id) do update set first_seen_at=app_manual_review_notice.first_seen_at
-    returning first_seen_at`,[row.line_id,new Date(now)]);
-   firstSeenAt=notice.rows[0].first_seen_at;
-  }
+  eligible.push({row,reason});
+  if(eligible.length>=cap)break;
+ }
+ // Register unseen notices in one batch. Expanding the review queue must not
+ // turn 2,000 tickets into 2,000 sequential database round trips.
+ const missingNoticeIds=eligible.filter(({row})=>!row.first_seen_at).map(({row})=>row.line_id);
+ const noticeTimes=new Map(eligible.filter(({row})=>row.first_seen_at)
+  .map(({row})=>[String(row.line_id),row.first_seen_at]));
+ if(missingNoticeIds.length){
+  await runQuery(`insert into app_manual_review_notice(line_id,first_seen_at)
+   select unnest($1::uuid[]),$2::timestamptz
+   on conflict(line_id) do nothing`,[missingNoticeIds,new Date(now)]);
+  const saved=(await runQuery(
+   'select line_id,first_seen_at from app_manual_review_notice where line_id=any($1::uuid[])',
+   [missingNoticeIds])).rows;
+  for(const row of saved)noticeTimes.set(String(row.line_id),row.first_seen_at);
+ }
+ const items=[];
+ for(const {row,reason} of eligible){
+  const firstSeenAt=noticeTimes.get(String(row.line_id))??new Date(now);
   const noticeExpiresAt=new Date(nowDate(firstSeenAt)+NOTICE_LIFETIME_MS);
   items.push({noticeExpiresAt:noticeExpiresAt.toISOString(),notificationActive:now<noticeExpiresAt.getTime(),lineId:row.line_id,ticketId:row.ticket_id,matchId:String(row.match_id),
    marketKey:row.market_key,marketLine:row.line??'',marketName:row.market_name,
@@ -93,7 +106,6 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
    liveContract:row.live_contract??null,
    finalStatistics:row.final_statistics??null,
    reason,conflicts:row.statistics_review?.conflicts??null});
-  if(items.length>=cap)break;
  }
  const matchIds=[...new Set(items.map(item=>Number(item.matchId)).filter(id=>Number.isSafeInteger(id)&&id>0))];
  const eventsByMatch=new Map(),coverageByMatch=new Map();
