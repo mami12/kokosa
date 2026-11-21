@@ -91,5 +91,36 @@ try{
  assert.equal(await grade(nextGoal),'WON','third match goal is the next goal after accepted 2-0 score');
  assert.equal(await grade(lateRange),'LOST','third goal at 37 is not in the later 76-90 interval');
  checked+=2;
+
+ // For "Who scores Goal 1 in minutes 46-60", a Goal 1 already scored at
+ // 27' makes "No goal" a correct immediate result, even at minute 43.
+ // The bulk test must therefore exclude the market instead of creating probes.
+ const alreadyDecided=97008;
+ await run('insert into app_live_event_cursor(match_id,last_seen_at) values($1,$2)',[alreadyDecided,observed]);
+ await add(alreadyDecided,'goal','ordinal-goal-1','home',27);
+ await add(alreadyDecided,'goal','ordinal-goal-2','away',30);
+ await setCoverage(alreadyDecided,'goal',1,1,43);
+ const goalOneInterval={id,match_id:alreadyDecided,live_contract:{
+  version:1,kind:'nth-time',event:'goal',target:1,from:46,to:60,choice:'none'}};
+ assert.equal(await grade(goalOneInterval),'WON',
+  'Goal 1 before the interval makes No goal a decided result before minute 46');
+ checked++;
+
+ // In contrast, a genuinely unscored Goal 1 must remain unresolved until
+ // the entire interval has passed. It must not become WON at minute 43 or 46.
+ const openInterval=97009;
+ await run('insert into app_live_event_cursor(match_id,last_seen_at) values($1,$2)',[openInterval,observed]);
+ const noGoalYet={id,match_id:openInterval,live_contract:{
+  version:1,kind:'nth-time',event:'goal',target:1,from:46,to:60,choice:'none'}};
+ await setCoverage(openInterval,'goal',0,0,43);
+ assert.equal(await grade(noGoalYet),null,'No goal must stay PENDING before the interval opens');
+ await setCoverage(openInterval,'goal',0,0,46);
+ assert.equal(await grade(noGoalYet),null,'No goal must stay PENDING while the interval is in progress');
+ await setCoverage(openInterval,'goal',0,0,60);
+ assert.equal(await grade(noGoalYet),null,'No goal must stay PENDING through minute 60');
+ await setCoverage(openInterval,'goal',0,0,61);
+ assert.equal(await grade(noGoalYet),'WON','No goal wins only after the 46-60 window has elapsed');
+ checked+=4;
+
  console.log('PASS '+checked+' LIVE PostgreSQL grading checks: purchased event baselines, four kinds, total-vs-ordinal, and 90-0');
 }finally{await db.close();}
