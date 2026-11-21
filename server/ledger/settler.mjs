@@ -612,7 +612,11 @@ function gradeFinalTeamCornerMarket(line,result){
 function namedFinalTeamContract(line,result){
  const period=Number(line?.period??line?.accepted_contract?.providerPeriod??0);
  if(period!==0)return undefined;
- const title=normalizedTeamLabel(line?.market_name??line?.accepted_contract?.providerMarketName);
+ const rawTitle=String(line?.market_name??line?.accepted_contract?.providerMarketName??'').trim();
+ const title=normalizedTeamLabel(rawTitle);
+ // Generic Draw No Bet and Home/Away Team No Bet already have their own
+ // standard DNB grader. Only a literal fixture-team prefix is a named offer.
+ if(plainDnb(rawTitle)||/^(?:home|away)(?: team)? no bet$/i.test(title))return undefined;
  const suffix=title.endsWith(' to win')?' to win':
   title.endsWith(' wins')?' wins':title.endsWith(' win')?' win':
   title.endsWith(' no bet')?' no bet':null;
