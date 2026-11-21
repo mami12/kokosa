@@ -161,8 +161,10 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
   // The raw Zizobet archive is deliberately separate from financial facts.
   // If a timeline fails reconciliation, keep its native incidents visible in
   // Admin as unconfirmed instead of making them disappear from the audit.
-  const archivedRows=(await runQuery(`select z.match_id,z.provider_event_id,z.kind,z.team,
-      z.minute,z.detail
+  const archivedRows=(await runQuery(`with archived as (
+    select z.match_id,z.provider_event_id,z.kind,z.team,z.minute,z.detail,
+      row_number() over(partition by z.match_id order by z.minute,
+        nullif(z.detail->>'seconds','')::numeric nulls last,z.provider_event_id) as event_index
     from app_zizobet_match_incident z
     where z.match_id=any($1::bigint[]) and z.active=true
       and not exists(
@@ -171,8 +173,10 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
         on c.match_id=f.match_id and c.provider=f.provider and c.kind=f.kind
        where f.match_id=z.match_id and f.provider='zizobet'
          and f.provider_event_id=z.provider_event_id and f.kind=z.kind and f.active=true)
-    order by z.match_id,z.minute,
-      nullif(z.detail->>'seconds','')::numeric nulls last,z.provider_event_id`,[matchIds])).rows;
+   )
+   select match_id,provider_event_id,kind,team,minute,detail
+   from archived where event_index<=250
+   order by match_id,minute,nullif(detail->>'seconds','')::numeric nulls last,provider_event_id`,[matchIds])).rows;
   for(const row of archivedRows){
    const id=String(row.match_id);
    let detail=row.detail??{};
