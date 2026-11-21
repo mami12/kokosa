@@ -70,6 +70,10 @@ const runQuery=async(sql,params)=>{
  if(sql.includes('select line_id,first_seen_at from app_manual_review_notice')){
   return {rows:params[0].filter(id=>notices.has(id)).map(id=>({line_id:id,first_seen_at:notices.get(id)}))};
  }
+ if(sql.includes('from app_zizobet_match_incident z')){
+  return {rows:[{match_id:123,provider_event_id:'corner-90-plus-4',kind:'corner',
+   team:'home',minute:94,detail:{minuteLabel:'90+4',seconds:5646,phase:'2nd half'}}]};
+ }
  if(sql.includes('from app_match_event_coverage c')){
   return {rows:[
    {match_id:123,coverage_kind:'goal',through_minute:90,complete:true,
@@ -116,7 +120,8 @@ assert.equal(queue.items[0].finalCounters.statistics.shotsOnTarget.home,3);
 assert.equal(queue.items[0].finalCounters.source,'ZIZOBET');
 assert.equal(queue.items[0].placementSnapshot.scoreHome,1);
 assert.equal(queue.items[0].placementSnapshot.scoreAway,0);
-assert.equal(queue.items[0].eventTimeline.length,4);
+assert.equal(queue.items[0].eventTimeline.length,5,
+ 'Raw Zizobet archive events remain visible when no canonical fact row is available');
 assert.equal(queue.items[0].eventTimeline[0].minute,24);
 assert.equal(queue.items[0].eventTimeline[0].playerName,'Test Scorer');
 assert.equal(queue.items[0].eventTimeline[1].kind,'corner');
@@ -124,6 +129,10 @@ assert.equal(queue.items[0].eventTimeline[1].verified,false,'archived but unconf
 assert.equal(queue.items[0].eventTimeline[2].kind,'card');
 assert.equal(queue.items[0].eventTimeline[2].cardColor,'yellow');
 assert.equal(queue.items[0].eventTimeline[3].kind,'foul');
+assert.equal(queue.items[0].eventTimeline[4].minute,94);
+assert.equal(queue.items[0].eventTimeline[4].minuteLabel,'90+4');
+assert.equal(queue.items[0].eventTimeline[4].verified,false,
+ 'The 90+4 native incident is visible but remains explicitly unconfirmed');
 assert.equal(queue.items[0].eventCoverage.find(item=>item.kind==='card').cardColorsVerified,true);
 assert.equal(queue.items[0].eventCoverage.find(item=>item.kind==='goal').countHome,2);
 assert.equal(queue.items[0].eventTimelineSource,'ZIZOBET_ARCHIVED');
