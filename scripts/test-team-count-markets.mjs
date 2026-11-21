@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {parseTeamCountMarket,liveContract,gradeLiveContract} from '../server/ledger/live-contract-rules.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
+import {gradeLine,hasRequiredSettlementEvidence} from '../server/ledger/settler.mjs';
 const line=(market_name,outcome_name,amount='')=>({market_name,outcome_name,line:amount});
 for(const [market,outcome,amount,event,side,kind] of [
  ['Home Team Total Corners','Over','2.5','corner','home','over'],
@@ -72,4 +73,35 @@ assert.equal(await gradeStoredEventContract({
  live_contract:liveContract(line('Home Team Yellow Cards','Over','1.5'))
 },{home_score:0,away_score:0,cards_home:2,cards_away:2},{execute}),'WON',
  'Persisted confirmed player/team card colors grade the correct home side');
-console.log('PASS scoped team goals/corners/cards/fouls parsing and color-safe financial evidence');
+
+// A completed Zizobet corner scoreboard is sufficient for full-match team
+// totals and bands. These markets must not wait for the independent event
+// chronology when its list is incomplete.
+const finalCorners={home_team:'Rubin Kazan',away_team:'FK Zenit Saint Petersburg',
+ home_score:3,away_score:1,corners_home:5,corners_away:4,source:'ZIZOBET'};
+for(const [market,outcome,amount,expected] of [
+ ['Total Corners Hometeam (3.5)','Over','3.5','WON'],
+ ['Total Corners Awayteam (6.5)','Under','6.5','WON'],
+ ['Corners Hometeam','5-6','','WON'],
+ ['Corners Hometeam','7+','','LOST'],
+ ['Corners Hometeam','3-4','','LOST'],
+ ['Corners Awayteam','3-4','','WON'],
+ ['Corners Awayteam','5-6','','LOST'],
+ ['Corners Awayteam','0-2','','LOST']
+]){
+ const quote={...line(market,outcome,amount),outcome_key:outcome,
+  live_contract:liveContract(line(market,outcome,amount))};
+ assert.equal(gradeLine(quote,finalCorners),expected,market+' '+outcome);
+ assert.equal(hasRequiredSettlementEvidence(quote,finalCorners),true,
+  'Final Zizobet team corner counters are enough: '+market+' '+outcome);
+}
+// Chronological corner markets are deliberately excluded from aggregate
+// grading. A 5-4 counter cannot identify which team took the first corner
+// in a time window.
+const timedFirst={market_name:'Who takes first corner in minutes 61-75',
+ outcome_name:'Rubin Kazan',outcome_key:'1',
+ live_contract:liveContract({market_name:'Who takes first corner in minutes 61-75',
+  outcome_name:'1'})};
+assert.equal(gradeLine(timedFirst,finalCorners),null,
+ 'A final 5-4 corner total cannot settle a first-corner interval');
+console.log('PASS scoped team goals/corners/cards/fouls parsing, counter-based final corner bands and interval safety');
