@@ -4,6 +4,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {LEDGER_SQL} from '../server/ledger/schema.mjs';
 import {normalizeLiveFrame} from '../server/ledger/live-observation-store.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
+import {providerTimeline} from '../server/live-event-timeline.mjs';
 import {parseHalfTotal,parseParityMarket} from '../server/ledger/live-contract-rules.mjs';
 import {parseHalfExactMarket} from '../server/ledger/half-exact-markets.mjs';
 import {parseCornerComparison} from '../server/ledger/corner-comparisons.mjs';
@@ -15,6 +16,27 @@ const frame=(corners,events)=>normalizeLiveFrame({
   RedCardsTeam1:0,RedCardsTeam2:0,EventStatus:6},
  TimeLines:events
 });
+// Zizobet may expose stoppage time as gt=90 plus a precise clk=94:06,
+// or provide both minute=90 and gt=90+4. Both forms must survive Admin
+// projection and become a 94th-minute second-half event in the fact store.
+const lateCorner={id:'corner-90-plus-4',type:'corner_kick',team:1,
+ gt:'90',minute:90,clk:'94:06',isTaken:true};
+const lateProjection=providerTimeline(7199001,[lateCorner])[0];
+assert.deepEqual(
+ {minute:lateProjection.minute,addedMinute:lateProjection.addedMinute,minuteLabel:lateProjection.minuteLabel},
+ {minute:90,addedMinute:4,minuteLabel:'90+4'},
+ 'Admin chronology keeps the provider 90+4 incident label'
+);
+const lateNormalized=normalizeLiveFrame({
+ Match:{Score:'3:1',MatchTimeExtended:'94:06',CornersTeam1:1,CornersTeam2:0,EventStatus:40},
+ TimeLines:[lateCorner]
+}).events[0];
+assert.equal(lateNormalized.minute,94,'The event fact uses absolute minute 94');
+assert.equal(lateNormalized.seconds,94*60+6,'The event fact retains exact 94:06 clock');
+assert.equal(lateNormalized.phase,'2nd half','Stoppage event remains in normal second-half scope');
+const explicitLate=providerTimeline(7199001,[{...lateCorner,gt:'90+4'}])[0];
+assert.equal(explicitLate.minuteLabel,'90+4',
+ 'An explicit gt=90+4 takes precedence over a numeric minute=90');
 const awarded={id:'awarded',type:'corner_kick',team:1,gt:12,clk:'12:05',status:'awarded'};
 const notTaken={id:'never-taken',type:'corner_kick',team:1,gt:13,clk:'13:05',isTaken:false};
 const taken={id:'taken',type:'corner_kick',team:1,gt:14,clk:'14:05',isTaken:true};
