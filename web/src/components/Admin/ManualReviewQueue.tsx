@@ -110,12 +110,15 @@ function pairText(pair?: Pair | null) {
   const home = asNumber(pair?.home), away = asNumber(pair?.away);
   return home === null || away === null ? null : `${home} – ${away}`;
 }
-function eventTitle(event: TimelineEvent) {
-  if (event.kind === 'goal') return event.ownGoal ? 'Autogol' : 'Gol';
-  if (event.kind === 'corner') return 'Korner';
-  if (event.kind === 'card') return event.cardColor === 'red' ? 'Kartoni i kuq'
-    : event.cardColor === 'yellow' ? 'Kartoni i verdhë' : 'Kartoni';
-  if (event.kind === 'foul') return 'Faull';
+function eventTitle(event: TimelineEvent, ordinal?: number) {
+  if (event.kind === 'goal') return ordinal ? `Goli #${ordinal}` : event.ownGoal ? 'Autogol' : 'Gol';
+  if (event.kind === 'corner') return ordinal ? `Korneri #${ordinal}` : 'Korner';
+  if (event.kind === 'card') {
+    const label = event.cardColor === 'red' ? 'Kartoni i kuq'
+      : event.cardColor === 'yellow' ? 'Kartoni i verdhë' : 'Kartoni';
+    return ordinal ? `${label} #${ordinal}` : label;
+  }
+  if (event.kind === 'foul') return ordinal ? `Faulli #${ordinal}` : 'Faull';
   return event.kind;
 }
 function eventRelation(event: TimelineEvent, snapshot?: PlacementSnapshot | null) {
@@ -265,6 +268,24 @@ function MatchTimeline({ item }: { item: ReviewItem }) {
   const snapshot = item.placementSnapshot ?? (item.liveContract?.acceptedLiveSnapshot as PlacementSnapshot | undefined) ?? null;
   const coverage = item.eventCoverage ?? [];
   const coverageLabels: Record<string, string> = { goal: 'Gola', corner: 'Kornera', card: 'Kartona', foul: 'Faulle' };
+  const eventOrdinals = new Map<string, number>();
+  const scoreAfterGoal = new Map<string, string>();
+  for (const kind of ['goal', 'corner', 'card', 'foul']) {
+    const proof = coverage.find(entry => entry.kind === kind);
+    const kindEvents = events.filter(event => event.kind === kind);
+    if (proof?.confirmed && proof.complete &&
+        proof.countHome + proof.countAway === kindEvents.length && kindEvents.length > 0) {
+      kindEvents.forEach((event, index) => eventOrdinals.set(event.id, index + 1));
+      if (kind === 'goal' && !kindEvents.some(event => event.ownGoal === true)) {
+        let homeGoals = 0, awayGoals = 0;
+        for (const event of kindEvents) {
+          if (event.team === 'home') homeGoals++;
+          else if (event.team === 'away') awayGoals++;
+          scoreAfterGoal.set(event.id, `${homeGoals} – ${awayGoals}`);
+        }
+      }
+    }
+  }
 
   return (
     <section className="rounded-xl border border-tertiary bg-primary/60 p-4 space-y-3">
@@ -300,11 +321,14 @@ function MatchTimeline({ item }: { item: ReviewItem }) {
                 </span>
                 <div className="min-w-0 flex-1 rounded-lg border border-tertiary/80 bg-secondary/50 px-3 py-2">
                   <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                    <span className="text-xs font-bold text-white">{eventTitle(event)}</span>
+                    <span className="text-xs font-bold text-white">{eventTitle(event, eventOrdinals.get(event.id))}</span>
                     <span className="text-[10px] text-text-secondary">{eventTime(event)}</span>
                   </div>
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-secondary">
                     <span>{isHome ? (item.homeTeamName || 'Vendasit') : (item.awayTeamName || 'Miqtë')}</span>
+                    {scoreAfterGoal.has(event.id) && (
+                      <span className="font-semibold text-white">Rezultati: {scoreAfterGoal.get(event.id)}</span>
+                    )}
                     {event.playerName && <span className="font-medium text-white">{event.playerName}</span>}
                     {event.phase && <span>· {event.phase}</span>}
                     {relation && (
