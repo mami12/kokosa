@@ -157,6 +157,22 @@ assert.equal(selectionConflict(cardsOther,playerOther)?.code,'SAME_MARKET_CATEGO
   'Different markets classified under Other cannot be stacked for one match');
 assert.equal(selectionConflict(goalOver,corners),null,
   'Different visible categories remain compatible within one match');
+const firstHalfTotal=pick('200|gGoals1h|1.5|Over',{matchId:'200',marketId:'200|gGoals1h|1.5',marketName:'1st Half Total Goals',marketType:'over_under',marketLine:'1.5',outcomeName:'Over 1.5',period:1});
+const sameGameCombo=pick('200|BB|template-a',{matchId:'200',marketId:'200|BB|template-a',marketName:'Bet Builder'});
+assert.equal(selectionConflict(matchResult,firstHalfTotal)?.code,'MAIN_PERIOD_COMBO',
+  'Main Market cannot combine with a Periods selection in the same fixture');
+assert.equal(selectionConflict(matchResult,sameGameCombo)?.code,'MAIN_PERIOD_COMBO',
+  'Main Market cannot combine with a Combo in the same fixture');
+assert.equal(selectionConflict(firstHalfTotal,sameGameCombo)?.code,'MAIN_PERIOD_COMBO',
+  'Periods cannot combine with Combos in the same fixture');
+assert.equal(selectionConflict(matchResult,{...sameGameCombo,matchId:'201',marketId:'201|BB|template-a'}),null,
+  'Main Market and Combos remain compatible when they belong to different fixtures');
+assert.throws(()=>assertCompatibleSelections([matchResult,firstHalfTotal]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS'&&error.conflictCode==='MAIN_PERIOD_COMBO');
+assert.throws(()=>assertCompatibleSelections([matchResult,sameGameCombo]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS'&&error.conflictCode==='MAIN_PERIOD_COMBO');
+assert.throws(()=>assertCompatibleSelections([firstHalfTotal,sameGameCombo]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS'&&error.conflictCode==='MAIN_PERIOD_COMBO');
 assert.throws(()=>assertCompatibleSelections([goalOver,goalUnderAlt]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS');
 const firstHalfGoals={...goalUnderAlt,outcomeId:'200|gGoals1h|1.5|Under',marketId:'200|gGoals1h|1.5',marketName:'1st Half Total Goals',marketLine:'1.5',period:1};
