@@ -163,7 +163,7 @@ assert.equal(selectionConflict(corners,matchResult),null,
   'Corners must combine with full-time result markets in either selection order');
 const genericallyNamedCorners = pick('200|zzCorners@total|2.5|Over', {
   matchId:'200', marketId:'200|zzCorners@total|2.5',
-  marketKey:'zzCorners@total', marketName:'Over/Under',
+  marketKey:'gCorners', marketName:'Over/Under',
   marketType:'over_under', marketLine:'2.5', outcomeName:'Over 2.5'
 });
 assert.equal(selectionConflict(matchResult,genericallyNamedCorners),null,
