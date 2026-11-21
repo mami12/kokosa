@@ -181,7 +181,7 @@ function selectionCategory(selection) {
   if (/\b(?:bet builder|same game combo|combo)\b/.test(name)) return 'mixed';
   // Zizobet can label corner totals as generic Over/Under markets. Inspect
   // native market identifiers as well as the visible title before classifying.
-  if (type === 'corners' || /\bcorners?\b|\bcorner kicks?\b/.test(categoryText)) return 'corners';
+  if (type === 'corners' || /\b(?:g|zz)?corners?\b|\bcorner kicks?\b/.test(categoryText)) return 'corners';
   if (type === 'cards' || /\bcards?\b|\bbookings?\b|yellow card|red card|disciplin/.test(categoryText)) return 'other';
   if (/\bplayers?\b|goalscorer|scorer|to be booked|player shots?/.test(categoryText)) return 'other';
   if (/\b(?:result|winner|1x2)\b.*\b(?:total|goals|btts|both teams)\b|\b(?:total|goals|btts)\b.*\b(?:both teams|btts)\b/.test(name)) return 'mixed';
