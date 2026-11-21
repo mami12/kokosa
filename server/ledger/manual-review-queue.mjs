@@ -157,6 +157,41 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
    }
   }
  }
+ if(matchIds.length){
+  // The raw Zizobet archive is deliberately separate from financial facts.
+  // If a timeline fails reconciliation, keep its native incidents visible in
+  // Admin as unconfirmed instead of making them disappear from the audit.
+  const archivedRows=(await runQuery(`select z.match_id,z.provider_event_id,z.kind,z.team,
+      z.minute,z.detail
+    from app_zizobet_match_incident z
+    where z.match_id=any($1::bigint[]) and z.active=true
+      and not exists(
+       select 1 from app_match_event_fact f
+       join app_match_event_coverage c
+        on c.match_id=f.match_id and c.provider=f.provider and c.kind=f.kind
+       where f.match_id=z.match_id and f.provider='zizobet'
+         and f.provider_event_id=z.provider_event_id and f.kind=z.kind and f.active=true)
+    order by z.match_id,z.minute,
+      nullif(z.detail->>'seconds','')::numeric nulls last,z.provider_event_id`,[matchIds])).rows;
+  for(const row of archivedRows){
+   const id=String(row.match_id);
+   let detail=row.detail??{};
+   if(typeof detail==='string'){try{detail=JSON.parse(detail);}catch{detail={};}}
+   if(!eventsByMatch.has(id))eventsByMatch.set(id,[]);
+   eventsByMatch.get(id).push({
+    id:String(row.provider_event_id),kind:String(row.kind),team:String(row.team),
+    minute:Number(row.minute),
+    seconds:detail.seconds==null?null:Number(detail.seconds),
+    minuteLabel:detail.minuteLabel??null,
+    playerName:detail.playerName??detail.player??null,
+    cardColor:detail.cardColor??null,ownGoal:detail.ownGoal??null,
+    phase:detail.phase??null,verified:false
+   });
+  }
+  for(const events of eventsByMatch.values())
+   events.sort((a,b)=>a.minute-b.minute||
+    (a.seconds??Infinity)-(b.seconds??Infinity)||a.id.localeCompare(b.id));
+ }
  for(const item of items){
   const id=String(item.matchId);
   item.eventTimeline=eventsByMatch.get(id)??[];
