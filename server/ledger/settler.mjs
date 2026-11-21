@@ -442,6 +442,9 @@ export function gradeHeldNativeCombo(line,result){
  const frozenFinalLine={...line,market_name:m,outcome_name:saved.providerOutcomeName,
   outcome_key:saved.providerOutcomeKey,line:String(saved.line??''),period:rawPeriod,
   accepted_contract:saved};
+ // Multiscores "Other home/away win" depends on the immutable native outcome
+ // grid stored at acceptance. Do not discard that grid after identity checks.
+ if(isMultiscoresMarket(m))return gradeMultiscores(frozenFinalLine,result);
  const cornerStatus=gradeFinalTeamCornerMarket(frozenFinalLine,result);
  if(cornerStatus!==undefined)return cornerStatus;
  const namedStatus=gradeNamedFinalTeamMarket(frozenFinalLine,result);
@@ -610,7 +613,9 @@ function namedFinalTeamContract(line,result){
  const period=Number(line?.period??line?.accepted_contract?.providerPeriod??0);
  if(period!==0)return undefined;
  const title=normalizedTeamLabel(line?.market_name??line?.accepted_contract?.providerMarketName);
- const suffix=title.endsWith(' to win')?' to win':title.endsWith(' no bet')?' no bet':null;
+ const suffix=title.endsWith(' to win')?' to win':
+  title.endsWith(' wins')?' wins':title.endsWith(' win')?' win':
+  title.endsWith(' no bet')?' no bet':null;
  if(!suffix)return undefined;
  const prefix=title.slice(0,-suffix.length).trim();
  const homeName=normalizedTeamLabel(line?.accepted_contract?.homeTeamName??line?.home_team??result?.home_team);
