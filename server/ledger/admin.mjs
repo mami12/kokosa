@@ -20,7 +20,7 @@ import { withOdds, serializeMatch } from '../collector.mjs';
 import { toClientMatch, toClientMatches } from './view.mjs';
 import { marketCategories, MARKET_CATEGORY_IDS } from '../market-catalog.mjs';
 import {isSyntheticFootballMatch} from '../football-competitions.mjs';
-import {isDecidedLiveMarket, isDecidedLiveOutcome, isZizobetNativeOffer} from './decided-markets.mjs';
+import {isDecidedLiveMarket, isDecidedLiveOutcome, isDecidedLiveNumberedGoalWindow, isZizobetNativeOffer} from './decided-markets.mjs';
 import {isExcludedOfferMarket, isRetiredPlayerOfferMarket, isHandicapOfferMarket} from '../market-policy.mjs';
 import {isCurrentSettlementCheckQuote} from './settlement-check.mjs';
 
@@ -156,6 +156,10 @@ async function settlementCheckSelections(matchIds, refresh) {
       // Exclude markets we do NOT want (cards, fouls, shots on target, saves, tackles, throw-ins, offsides, player props, Asian handicap)
       if (isExcludedOfferMarket(market) || isRetiredPlayerOfferMarket(market) || isHandicapOfferMarket(market)) continue;
       const nativeZizobet = isZizobetNativeOffer(market, current);
+      // A numbered-goal interval becomes unbettable as soon as that goal
+      // ordinal has already happened, even if Zizobet still exposes the quote.
+      // Also exclude a no-goal result only after the whole quoted interval ends.
+      if (isLiveMatch && isDecidedLiveNumberedGoalWindow(current, market)) continue;
       // Zizobet is authoritative for its currently offered native contracts.
       // Local score/clock heuristics are fallback rules for non-native feeds only.
       if (isLiveMatch && !nativeZizobet) {
