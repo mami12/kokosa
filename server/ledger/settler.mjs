@@ -40,6 +40,7 @@ import {isHalfComboFamily,parseHalfCombination,gradeHalfCombination} from './hal
 import {isPeriodGoalTotal,parsePeriodGoalTotal,gradePeriodGoalTotal} from './period-goal-totals.mjs';
 import {isHalfExactMarketFamily} from './half-exact-markets.mjs';
 import {cornerTotalContract} from './corner-total-contract.mjs';
+import {parseTeamCountMarket} from './live-contract-rules.mjs';
 import {statisticsNeedReview} from './settlement-review.mjs';
 import {createLiveSettlementPreviews} from './live-shadow-settlement.mjs';
 import {gradeStoredEventContract,SUPPORTED_FACT_KINDS} from './match-event-facts.mjs';
@@ -435,6 +436,17 @@ export function gradeHeldNativeCombo(line,result){
    return wt_resWins && wt_totalWins ? 'WON' : 'LOST';
  }
 
+ // Full-match aggregate corner counters and exact fixture-name final-result
+ // markets do not need an event chronology. They are safe only after the
+ // immutable ZIZOBET quote identity and fixture names above have matched.
+ const frozenFinalLine={...line,market_name:m,outcome_name:saved.providerOutcomeName,
+  outcome_key:saved.providerOutcomeKey,line:String(saved.line??''),period:rawPeriod,
+  accepted_contract:saved};
+ const cornerStatus=gradeFinalTeamCornerMarket(frozenFinalLine,result);
+ if(cornerStatus!==undefined)return cornerStatus;
+ const namedStatus=gradeNamedFinalTeamMarket(frozenFinalLine,result);
+ if(namedStatus!==undefined)return namedStatus;
+
  // A held native quote may still be covered by an existing, exact
  // settlement rule added after the ticket was accepted. Only delegate after
  // the immutable ZIZOBET market/outcome/line/period snapshot above has matched.
@@ -560,6 +572,81 @@ const plainDnb=name=>/^(?:(?:full[ .-]*time|match|(?:first|1st|second|2nd)\s+hal
  .test(String(name??'').trim());
 const scoreValue=v=>v!=null&&v!==''&&Number.isSafeInteger(Number(v))&&
   Number(v)>=0&&Number(v)<=200?Number(v):null;
+const normalizedTeamLabel=value=>String(value??'').normalize('NFD')
+ .replace(/[\u0300-\u036f]/g,'').toLowerCase()
+ .replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+
+/** Full-time team corner counts are final Zizobet result facts, not event-order
+ * facts. Grade only the explicit full-match team count grammar; interval,
+ * race, first/next and half markets never enter this path.
+ */
+function gradeFinalTeamCornerMarket(line,result){
+ const period=Number(line?.period??line?.accepted_contract?.providerPeriod??0);
+ if(period!==0)return undefined;
+ const contract=parseTeamCountMarket({...line,period:0});
+ if(!contract||contract.event!=='corner')return undefined;
+ const source=String(result?.source??'').toUpperCase();
+ if(source&&!['ZIZOBET','ADMIN','FEED'].includes(source))return null;
+ const home=scoreValue(result?.corners_home),away=scoreValue(result?.corners_away);
+ const count=contract.side==='home'?home:contract.side==='away'?away:null;
+ if(count===null)return null;
+ const decide=value=>value?'WON':'LOST';
+ if(contract.kind==='over'||contract.kind==='under'){
+  const threshold=Number(contract.threshold);
+  if(!Number.isFinite(threshold)||threshold<0||!Number.isInteger(threshold*2))return null;
+  if(Number.isInteger(threshold)&&count===threshold)return 'VOID';
+  return decide(contract.kind==='over'?count>threshold:count<threshold);
+ }
+ if(contract.kind==='exact')return decide(count===Number(contract.target));
+ if(contract.kind==='range')return decide(count>=Number(contract.min)&&count<=Number(contract.max));
+ if(contract.kind==='atLeast')return decide(count>=Number(contract.target));
+ return null;
+}
+
+/** Match team-named final-result markets only against the exact fixture names
+ * frozen on the accepted quote or present in the verified final result.
+ */
+function namedFinalTeamContract(line,result){
+ const period=Number(line?.period??line?.accepted_contract?.providerPeriod??0);
+ if(period!==0)return undefined;
+ const title=normalizedTeamLabel(line?.market_name??line?.accepted_contract?.providerMarketName);
+ const suffix=title.endsWith(' to win')?' to win':title.endsWith(' no bet')?' no bet':null;
+ if(!suffix)return undefined;
+ const prefix=title.slice(0,-suffix.length).trim();
+ const homeName=normalizedTeamLabel(line?.accepted_contract?.homeTeamName??line?.home_team??result?.home_team);
+ const awayName=normalizedTeamLabel(line?.accepted_contract?.awayTeamName??line?.away_team??result?.away_team);
+ const side=prefix&&homeName&&prefix===homeName?'home':
+  prefix&&awayName&&prefix===awayName?'away':null;
+ if(!side)return null;
+ return {kind:suffix===' to win'?'team-win':'named-dnb',side,homeName,awayName};
+}
+function gradeNamedFinalTeamMarket(line,result){
+ const contract=namedFinalTeamContract(line,result);
+ if(contract===undefined)return undefined;
+ if(!contract)return null;
+ const home=scoreValue(result?.home_score),away=scoreValue(result?.away_score);
+ if(home===null||away===null)return null;
+ const homeWin=home>away,awayWin=away>home,draw=home===away;
+ const choice=normalizedTeamLabel(line?.outcome_name??line?.outcome_key);
+ const decide=value=>value?'WON':'LOST';
+ if(contract.kind==='team-win'){
+  if(choice==='yes'||choice==='po')return decide(contract.side==='home'?homeWin:awayWin);
+  if(choice==='no'||choice==='jo')return decide(contract.side==='home'?!homeWin:!awayWin);
+  return null;
+ }
+ // Native team-specific "no bet" offers sometimes expose 1/X/2 outcomes.
+ // Treat those literal outcomes as the corresponding final match result;
+ // a direct team-name/home/away pick retains standard DNB draw protection.
+ if(choice==='x'||choice==='draw'||choice==='tie')return decide(draw);
+ if(choice==='1')return decide(homeWin);
+ if(choice==='2')return decide(awayWin);
+ const selectedSide=choice==='home'||choice===contract.homeName?'home':
+  choice==='away'||choice===contract.awayName?'away':null;
+ if(!selectedSide)return null;
+ if(draw)return 'WON';
+ return decide(selectedSide==='home'?homeWin:awayWin);
+}
+
 const periodScores=(line,result)=>{
  const period=scorePeriodOf(line);
  if(period===null)return null;
@@ -585,6 +672,10 @@ export function hasRequiredSettlementEvidence(line, result) {
   if(/^full[\s.-]*time[\s:.-]*(?:1up|2up|3up)$/i.test(String(line.market_name??'').trim()))
     return hasRequiredSettlementEvidence({...line,market_name:'Full Time Result',live_contract:null},result);
   if (!result||scoreValue(result.home_score)===null||scoreValue(result.away_score)===null)return false;
+  const cornerResult=gradeFinalTeamCornerMarket(line,result);
+  if(cornerResult!==undefined)return ['WON','LOST','VOID'].includes(cornerResult);
+  const namedResult=gradeNamedFinalTeamMarket(line,result);
+  if(namedResult!==undefined)return ['WON','LOST','VOID'].includes(namedResult);
   if(!Array.isArray(line.builder_legs)&&unverifiedCompositeLine(line,result))return false;
   if(line.live_contract?.kind==='half-combo')
    return gradeHalfCombination(line.live_contract,result)!==null;
@@ -687,6 +778,10 @@ export function hasRequiredSettlementEvidence(line, result) {
 export function gradeLine(line, result) {
   if(line?.accepted_contract?.settlementHold)
     return gradeHeldNativeCombo(line,result);
+  const cornerResult=gradeFinalTeamCornerMarket(line,result);
+  if(cornerResult!==undefined)return cornerResult;
+  const namedResult=gradeNamedFinalTeamMarket(line,result);
+  if(namedResult!==undefined)return namedResult;
   line=withFrozenPeriod(line);
   if(/^full[\s.-]*time[\s:.-]*(?:1up|2up|3up)$/i.test(String(line.market_name??'').trim()))
     return gradeLine({...line,market_name:'Full Time Result',live_contract:null},result);
@@ -1272,7 +1367,12 @@ export function isProvenTwoWayTotalPush(line,result){
 
 /** A DNB draw is a winning selection, repriced to 1.00 at settlement. */
 export function settledOddsFor(line,result,status){
- if(status!=='WON'||!line||!result||Array.isArray(line.builder_legs)||!plainDnb(line.market_name))return null;
+ if(status!=='WON'||!line||!result||Array.isArray(line.builder_legs))return null;
+ const named=namedFinalTeamContract(line,result);
+ const pick=normalizedTeamLabel(line.outcome_name??line.outcome_key);
+ const namedDnbTeamPick=named?.kind==='named-dnb'&&
+  ['home','away',named.homeName,named.awayName].includes(pick);
+ if(!plainDnb(line.market_name)&&!namedDnbTeamPick)return null;
  line=withFrozenPeriod(line);
  const period=periodScores(line,result);
  return period&&period.home===period.away?1:null;
