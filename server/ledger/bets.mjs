@@ -653,12 +653,14 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
     kickoffAt:match.start_at??null,offerObservedAt:row.updated_at??null,
     acceptedLiveSnapshot:{
       isLive:!unstartedPrematch,
+      capturedAt:new Date(snapshotAt).toISOString(),
       scoreHome:unstartedPrematch?0:match.home_score??null,
       scoreAway:unstartedPrematch?0:match.away_score??null,
       scoreObservedAt:match.score_at??null,clockMilliseconds:match.match_time_ms??null,
       clockObservedAt:match.clock_at??null,feedPhase:match.feed_status??null,
       feedPhaseObservedAt:match.feed_status_at??null,
-      counters:acceptedCounters
+      counters:acceptedCounters,
+      statistics:teamStatisticsFromRow(match)
     },
     matchName: `${match.home} vs ${match.away}`,
     price,
