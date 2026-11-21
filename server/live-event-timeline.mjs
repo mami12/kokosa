@@ -7,9 +7,16 @@ export function providerTimeline(matchId,rows){
    if(row.id!=null)events.delete(String(row.id));
    continue;
   }
-  const clock=String(row.minute??row.gt??'').match(/^(\d{1,3})(?:\s*\+\s*(\d{1,2}))?$/);
+  const rawTime=String(row.gt??row.minute??row.time??'').trim();
+  const clock=rawTime.match(/^(\d{1,3})(?:\s*\+\s*(\d{1,2}))?$/);
   if(!clock)continue;
-  const minute=Number(clock[1]),added=Number(clock[2]??row.injury??0);
+  const minute=Number(clock[1]);
+  let added=Number(clock[2]??row.injury??0);
+  const eventClock=String(row.clk??row.clock??'').match(/^(\d{1,3}):([0-5]\d)$/);
+  const clockMinute=eventClock?Number(eventClock[1]):null;
+  if(added===0&&(minute===45||minute===90)&&clockMinute!==null&&
+     clockMinute>minute&&clockMinute<=minute+15)
+   added=clockMinute-minute;
   if(minute>120||!Number.isInteger(added)||added<0)continue;
   const team=/^(?:home|h|1)$/i.test(String(row.team))?'home':/^(?:away|a|2)$/i.test(String(row.team))?'away':null;
   if(!team)continue;
