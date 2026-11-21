@@ -99,6 +99,26 @@ assert.equal(gradeLine(quote('Multiscores','X',acceptedGrid),
  {...result,home_score:1,away_score:1}),'WON');
 assert.equal(gradeLine(quote('Multiscores','Other home win'),result),null);
 
+// Named final-result markets use exact fixture team names, not fuzzy prefixes.
+const namedResult={...result,home_team:'Rubin Kazan',away_team:'FK Zenit Saint Petersburg',
+ home_score:3,away_score:1};
+assert.equal(gradeLine(quote('Rubin Kazan to win','Yes'),namedResult),'WON');
+assert.equal(gradeLine(quote('Rubin Kazan to win','No'),namedResult),'LOST');
+assert.equal(gradeLine(quote('FK Zenit Saint Petersburg to win','Yes'),namedResult),'LOST');
+assert.equal(gradeLine(quote('FK Zenit Saint Petersburg to win','No'),namedResult),'WON');
+const hajdukResult={...namedResult,home_team:'NK Lokomotiva Zagreb',
+ away_team:'Hajduk Split',home_score:1,away_score:2};
+assert.equal(gradeLine(quote('Hajduk Split to win','No'),hajdukResult),'LOST',
+ 'The explicit No selection loses because the exact named team won');
+assert.equal(gradeLine(held('Rubin Kazan to win','Yes'),namedResult),'WON',
+ 'An identity-matched held Zizobet named-team winner can use the final score');
+assert.equal(gradeLine(held('Rubin Kazan no bet','2'),namedResult),'LOST',
+ 'A held named no-bet market settles its frozen 2 outcome against FT');
+assert.equal(gradeLine(quote('Rubin Kazan no bet','X'),namedResult),'LOST');
+assert.equal(gradeLine(quote('Rubin Kazan no bet','X'),
+ {...namedResult,home_score:1,away_score:1}),'WON',
+ 'The explicit X outcome is the draw result, not missing evidence');
+
 for(const [selection,choice] of [['Over','over'],['Under','under']]) {
  const contract=liveContract(quote(
   'Goal in first 10 min. (00:00 - 09:59) (0.5)',selection,{line:'0.5'}
