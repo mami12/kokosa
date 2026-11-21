@@ -51,7 +51,7 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
     l.accepted_contract->>'awayTeamName' as away_team_name,
     l.settlement_reason,
     t.status as ticket_status,t.placed_at,t.stake,t.original_potential_payout,
-    u.username,r.match_id as result_id,r.home_score,r.away_score,r.statistics as final_statistics,
+    u.username,r.match_id as result_id,r.home_score,r.away_score,r.statistics as final_statistics,r.source as result_source,
     r.half_home_score,r.half_away_score,r.corners_home,r.corners_away,r.cards_home,r.cards_away,
     sr.payload as statistics_review,m.status as match_status,m.feed_status,
     o.status as override_status,n.first_seen_at
@@ -108,7 +108,7 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
    finalCounters:row.result_id!=null?{
     corners:{home:row.corners_home,away:row.corners_away},
     cards:{home:row.cards_home,away:row.cards_away},
-    statistics:row.final_statistics??{}
+    statistics:row.final_statistics??{},source:row.result_source??null
    }:null,
    reason,conflicts:row.statistics_review?.conflicts??null});
  }
