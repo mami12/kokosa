@@ -126,7 +126,6 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
       on f.match_id=c.match_id and f.provider=c.provider
       and f.kind=c.kind and f.active=true
     where c.match_id=any($1::bigint[]) and c.provider='zizobet'
-      and c.confirmed_at is not null
       and c.kind in ('goal','corner','card','foul')
   )
   select * from confirmed where event_index<=250
@@ -137,7 +136,8 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
    if(kind&&!coverageByMatch.get(id).has(kind)){
     coverageByMatch.get(id).set(kind,{
      kind,throughMinute:Number(row.through_minute),complete:row.complete===true,
-     confirmedAt:row.confirmed_at,countHome:Number(row.count_home),countAway:Number(row.count_away),
+     confirmed:row.confirmed_at!=null,confirmedAt:row.confirmed_at,
+     countHome:Number(row.count_home),countAway:Number(row.count_away),
      cardColorsVerified:row.card_colors_verified===true
     });
    }
@@ -147,7 +147,7 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
      id:String(row.provider_event_id),kind:String(row.event_kind),team:String(row.team),
      minute:Number(row.minute),seconds:row.seconds==null?null:Number(row.seconds),
      playerName:row.player_name??null,cardColor:row.card_color??null,
-     ownGoal:row.own_goal??null,phase:row.phase??null,verified:true
+     ownGoal:row.own_goal??null,phase:row.phase??null,verified:row.confirmed_at!=null
     });
    }
   }
@@ -156,7 +156,8 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
   const id=String(item.matchId);
   item.eventTimeline=eventsByMatch.get(id)??[];
   item.eventCoverage=[...(coverageByMatch.get(id)?.values()??[])];
-  item.eventTimelineSource=item.eventTimeline.length?'ZIZOBET_CONFIRMED':'UNAVAILABLE';
+  item.eventTimelineSource=!item.eventTimeline.length?'UNAVAILABLE':
+   item.eventTimeline.every(event=>event.verified)?'ZIZOBET_CONFIRMED':'ZIZOBET_ARCHIVED';
  }
  return {items,count:items.length,notificationCount:items.filter(item=>item.notificationActive).length,hasMore:items.length>=cap||rows.length===scanLimit};
 }
