@@ -175,10 +175,15 @@ function selectionMetric(selection) {
 function selectionCategory(selection) {
   const name = normalizedSelectionText(selectionMarketName(selection));
   const type = normalizedSelectionText(selection?.marketType ?? selection?.market_type);
+  const marketKey = normalizedSelectionText(selection?.marketKey ?? selection?.market_key ?? '');
+  const marketId = normalizedSelectionText(selection?.marketId ?? selection?.market_id ?? '');
+  const categoryText = [name, marketKey, marketId].join(' ');
   if (/\b(?:bet builder|same game combo|combo)\b/.test(name)) return 'mixed';
-  if (type === 'corners' || /\bcorners?\b|\bcorner kicks?\b/.test(name)) return 'corners';
-  if (type === 'cards' || /\bcards?\b|\bbookings?\b|yellow card|red card|disciplin/.test(name)) return 'other';
-  if (/\bplayers?\b|goalscorer|scorer|to be booked|player shots?/.test(name)) return 'other';
+  // Zizobet can label corner totals as generic Over/Under markets. Inspect
+  // native market identifiers as well as the visible title before classifying.
+  if (type === 'corners' || /\bcorners?\b|\bcorner kicks?\b/.test(categoryText)) return 'corners';
+  if (type === 'cards' || /\bcards?\b|\bbookings?\b|yellow card|red card|disciplin/.test(categoryText)) return 'other';
+  if (/\bplayers?\b|goalscorer|scorer|to be booked|player shots?/.test(categoryText)) return 'other';
   if (/\b(?:result|winner|1x2)\b.*\b(?:total|goals|btts|both teams)\b|\b(?:total|goals|btts)\b.*\b(?:both teams|btts)\b/.test(name)) return 'mixed';
   if (/halftime\s*\/?\s*fulltime|half\s*time\s*\/\s*full\s*time|ht\s*\/\s*ft|\b(?:1st|2nd|first|second)\s+half\b|\bperiod\b/.test(name) ||
       Number(selection?.period ?? selection?.providerPeriod ?? 0) === 1 ||
@@ -307,7 +312,10 @@ export function selectionConflict(first, second) {
       message: 'Main Market, Periods dhe Combos nuk mund të kombinohen me njëri-tjetrin në të njëjtën ndeshje.',
     };
   }
-  if (firstCategory === secondCategory) {
+  // Corners are intentionally cross-combinable with every other market
+  // category. Their own duplicate-market and same-total safeguards above remain.
+  if (firstCategory === secondCategory &&
+      firstCategory !== 'corners') {
     return {
       code: 'SAME_MARKET_CATEGORY',
       message: 'Lejohet vetëm një bast nga e njëjta kategori tregu për të njëjtën ndeshje.',
