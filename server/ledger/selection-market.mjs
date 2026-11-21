@@ -175,16 +175,16 @@ function selectionMetric(selection) {
 function selectionCategory(selection) {
   const name = normalizedSelectionText(selectionMarketName(selection));
   const type = normalizedSelectionText(selection?.marketType ?? selection?.market_type);
-  if (/\\b(?:bet builder|same game combo|combo)\\b/.test(name)) return 'mixed';
-  if (type === 'corners' || /\\bcorners?\\b|\\bcorner kicks?\\b/.test(name)) return 'corners';
-  if (type === 'cards' || /\\bcards?\\b|\\bbookings?\\b|yellow card|red card|disciplin/.test(name)) return 'other';
-  if (/\\bplayers?\\b|goalscorer|scorer|to be booked|player shots?/.test(name)) return 'other';
-  if (/\\b(?:result|winner|1x2)\\b.*\\b(?:total|goals|btts|both teams)\\b|\\b(?:total|goals|btts)\\b.*\\b(?:both teams|btts)\\b/.test(name)) return 'mixed';
-  if (/halftime\\s*\\/?\\s*fulltime|half\\s*time\\s*\\/\\s*full\\s*time|ht\\s*\\/\\s*ft|\\b(?:1st|2nd|first|second)\\s+half\\b|\\bperiod\\b/.test(name) ||
+  if (/\b(?:bet builder|same game combo|combo)\b/.test(name)) return 'mixed';
+  if (type === 'corners' || /\bcorners?\b|\bcorner kicks?\b/.test(name)) return 'corners';
+  if (type === 'cards' || /\bcards?\b|\bbookings?\b|yellow card|red card|disciplin/.test(name)) return 'other';
+  if (/\bplayers?\b|goalscorer|scorer|to be booked|player shots?/.test(name)) return 'other';
+  if (/\b(?:result|winner|1x2)\b.*\b(?:total|goals|btts|both teams)\b|\b(?:total|goals|btts)\b.*\b(?:both teams|btts)\b/.test(name)) return 'mixed';
+  if (/halftime\s*\/?\s*fulltime|half\s*time\s*\/\s*full\s*time|ht\s*\/\s*ft|\b(?:1st|2nd|first|second)\s+half\b|\bperiod\b/.test(name) ||
       Number(selection?.period ?? selection?.providerPeriod ?? 0) === 1 ||
       Number(selection?.period ?? selection?.providerPeriod ?? 0) === 2) return 'htft';
-  if (/\\b(?:1x2|match result|full time result|winner|double chance|draw no bet|moneyline|qualify|result)\\b/.test(name) || type === '1x2') return 'main';
-  if (type === 'over_under' || /\\bgoals?\\b|\\btotal\\b|over\\s*\\/?\\s*under|both teams|btts|correct score|odd\\s*\\/\\s*even/.test(name)) return 'goals';
+  if (/\b(?:1x2|match result|full time result|winner|double chance|draw no bet|moneyline|qualify|result)\b/.test(name) || type === '1x2') return 'main';
+  if (type === 'over_under' || /\bgoals?\b|\btotal\b|over\s*\/?\s*under|both teams|btts|correct score|odd\s*\/\s*even/.test(name)) return 'goals';
   return 'other';
 }
 
