@@ -23,6 +23,7 @@ type TimelineEvent = {
   kind: 'goal' | 'corner' | 'card' | 'foul' | string;
   team: 'home' | 'away' | string;
   minute: number;
+  minuteLabel?: string | null;
   seconds?: number | null;
   playerName?: string | null;
   cardColor?: string | null;
@@ -136,8 +137,20 @@ function eventRelation(event: TimelineEvent, snapshot?: PlacementSnapshot | null
   if (event.minute > betMinute) return 'Pas bastit';
   return 'E njëjta minutë';
 }
+function eventMinuteLabel(event: TimelineEvent) {
+  const saved = String(event.minuteLabel ?? '').trim();
+  if (saved) return saved;
+  const phase = String(event.phase ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (['2','2h','h2','2ndhalf','secondhalf'].includes(phase) &&
+      event.minute > 90 && event.minute <= 105) return '90+' + (event.minute - 90);
+  if (['1','1h','h1','1sthalf','firsthalf'].includes(phase) &&
+      event.minute > 45 && event.minute <= 60) return '45+' + (event.minute - 45);
+  return String(event.minute);
+}
 function eventTime(event: TimelineEvent) {
-  return `${event.minute}'${event.seconds != null ? ` · ${Math.floor(Number(event.seconds) % 60).toString().padStart(2, '0')}s` : ''}`;
+  const seconds = event.seconds != null
+    ? ' · ' + Math.floor(Number(event.seconds) % 60).toString().padStart(2, '0') + 's' : '';
+  return eventMinuteLabel(event) + "'" + seconds;
 }
 function statusText(status: string) {
   return ({ WON: 'Fituese', LOST: 'Humbëse', VOID: 'E pavlefshme', PENDING: 'Në pritje' } as Record<string, string>)[status] ?? status;
@@ -317,7 +330,7 @@ function MatchTimeline({ item }: { item: ReviewItem }) {
             return (
               <div key={event.id} className="relative flex items-start gap-3">
                 <span className="z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-tertiary bg-secondary text-[10px] font-black tabular-nums text-white">
-                  {event.minute}′
+                  {eventMinuteLabel(event)}′
                 </span>
                 <div className="min-w-0 flex-1 rounded-lg border border-tertiary/80 bg-secondary/50 px-3 py-2">
                   <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
