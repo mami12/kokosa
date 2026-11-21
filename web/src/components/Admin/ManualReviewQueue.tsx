@@ -113,6 +113,7 @@ function eventTitle(event: TimelineEvent) {
   return event.kind;
 }
 function eventRelation(event: TimelineEvent, snapshot?: PlacementSnapshot | null) {
+  if (snapshot?.isLive === false) return 'Pas bastit';
   const clock = asNumber(snapshot?.clockMilliseconds);
   if (clock === null) return null;
   if (event.seconds != null && Number.isFinite(Number(event.seconds))) {
