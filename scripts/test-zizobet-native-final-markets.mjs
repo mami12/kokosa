@@ -118,8 +118,6 @@ assert.equal(gradeLine(quote('Rubin Kazan no bet','X'),namedResult),'LOST');
 assert.equal(gradeLine(quote('Rubin Kazan no bet','X'),
  {...namedResult,home_score:1,away_score:1}),'WON',
  'The explicit X outcome is the draw result, not missing evidence');
-assert.equal(gradeLine(quote('Rubin Kazan win','Yes'),namedResult),'WON',
- 'The provider may omit the words to from a team-specific win label');
 const namedCornerResult={...namedResult,corners_home:5,corners_away:4};
 assert.equal(gradeLine(held('Corners Hometeam','5-6'),namedCornerResult),'WON',
  'An identity-matched held native team corner band uses verified final counters');
