@@ -69,11 +69,25 @@ function zizobetMinute(value){
  const minute=Number(match[1])+Number(match[2]??0);
  return Number.isSafeInteger(minute)&&minute>=0&&minute<=130?minute:null;
 }
-function zizobetEventSeconds(clock,minute){
- const time=String(clock??'').match(/^(\d{1,3}):([0-5]\d)$/);
- if(!time||minute===null)return null;
- const seconds=Number(time[1])*60+Number(time[2]);
- return Math.abs(seconds/60-minute)<=1?seconds:null;
+function zizobetEventTime(value,clock){
+ const raw=String(value??'').trim();
+ const match=raw.match(/^(\d{1,3})(?:\s*\+\s*(\d{1,2}))?$/);
+ if(!match)return {minute:null,seconds:null,phase:null,label:raw||null};
+ const base=Number(match[1]);
+ let added=Number(match[2]??0);
+ const clockMatch=String(clock??'').match(/^(\d{1,3}):([0-5]\d)$/);
+ const clockMinute=clockMatch?Number(clockMatch[1]):null;
+ // Some Zizobet timeline records keep gt/minute at 90 but put the actual
+ // stoppage-time clock in clk (for example 94:06). Preserve that time.
+ if(added===0&&(base===45||base===90)&&clockMinute!==null&&
+    clockMinute>base&&clockMinute<=base+15)
+  added=clockMinute-base;
+ const minute=base+added;
+ const seconds=clockMatch?Number(clockMatch[1])*60+Number(clockMatch[2]):null;
+ const preciseSeconds=seconds!==null&&Math.abs(seconds/60-minute)<=1?seconds:null;
+ return {minute,seconds:preciseSeconds,added,
+  phase:added>0?(base===45?'1st half':base===90?'2nd half':null):null,
+  label:added>0?base+'+'+added:raw};
 }
 
 export function normalizeEvents(data,source){
@@ -115,29 +129,27 @@ export function normalizeEvents(data,source){
   // A content-derived identity is stable across polls; indistinguishable
   // duplicate events fail reconciliation rather than fabricating order.
   return 'anonymous:'+createHash('sha256').update(JSON.stringify([
-   e.type??null,e.team??null,e.gt??null,e.clk??null,
+   e.type??null,e.team??null,e.gt??e.minute??e.time??null,e.clk??null,
    e.pl??null,e.playerId??e.player_id??null,e.cardColor??e.card_color??e.color??null
   ])).digest('hex').slice(0,32);
  };
  if(source==='zizobet')events=(data.TimeLines??[]).map(e=>{
   const type=String(e.type??'').toLowerCase();
-  const minute=zizobetMinute(e.gt),color=explicitCardColor(e);
+  const eventTime=zizobetEventTime(e.gt??e.minute??e.time,e.clk),minute=eventTime.minute,color=explicitCardColor(e);
   return {disabled:!active(e)||cornerNotTaken(e),id:stableZizoId(e),
    type:type==='score_change'?'goal':type==='corner_kick'?'corner':/card|booking/.test(type)?'card':/foul/.test(type)?'foul':/offside/.test(type)?'offside':e.type,
    cardColor:/card|booking/.test(type)?color:null,
    ownGoal:type==='score_change'?explicitOwnGoal(e):null,
    team:/^(?:1|home|h)$/i.test(String(e.team))?'home':/^(?:2|away|a)$/i.test(String(e.team))?'away':null,
-   minute:minute??NaN,seconds:zizobetEventSeconds(e.clk,minute),
-   minuteLabel:e.gt==null?null:String(e.gt),
+   minute:minute??NaN,seconds:eventTime.seconds,
+   minuteLabel:eventTime.label,
    player:[e.pl,e.player,e.player_name,e.playerName,e.actor]
      .map(v=>typeof v==='string'?v.trim():v&&typeof v==='object'?
        String(v.name??v.fullName??v.full_name??'').trim():'').find(Boolean)??null,
    playerId:e.playerId??e.player_id??e.player?.id??null,
    // The provider's 45+N notation unambiguously belongs to first-half
    // stoppage. Keep it as phase evidence: 45+2 must not be treated as 2H.
-   phase:e.phase??e.period??e.periodName??e.period_name??e.half??
-     (/^45\s*\+\s*[1-9]\d?$/.test(String(e.gt??'').trim())?'1st half':
-     /^90\s*\+\s*[1-9]\d?$/.test(String(e.gt??'').trim())?'2nd half':null),
+   phase:e.phase??e.period??e.periodName??e.period_name??e.half??eventTime.phase,
    updatedAt:e.updated_uts??null};
  });
  const unique=new Map();for(const event of events){const key=String(event.id),old=unique.get(key);if(!old||Number(event.updatedAt??0)>=Number(old.updatedAt??0)||!Number.isFinite(Number(old.updatedAt)))unique.set(key,event);}
