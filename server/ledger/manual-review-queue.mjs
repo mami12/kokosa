@@ -47,6 +47,8 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
     l.outcome_name,l.market_name,l.match_name,l.status as line_status,l.odds_at_placement,
     l.accepted_contract,l.live_contract,
     l.accepted_contract->'acceptedLiveSnapshot' as placement_snapshot,
+    l.accepted_contract->>'homeTeamName' as home_team_name,
+    l.accepted_contract->>'awayTeamName' as away_team_name,
     l.settlement_reason,
     t.status as ticket_status,t.placed_at,t.stake,t.original_potential_payout,
     u.username,r.match_id as result_id,r.home_score,r.away_score,r.statistics as final_statistics,
@@ -87,6 +89,7 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
    potentialPayout:row.original_potential_payout,
    finalScore:row.result_id!=null?row.home_score+' - '+row.away_score:null,
    placementSnapshot:row.placement_snapshot??null,
+   homeTeamName:row.home_team_name??null,awayTeamName:row.away_team_name??null,
    liveContract:row.live_contract??null,
    finalStatistics:row.final_statistics??null,
    reason,conflicts:row.statistics_review?.conflicts??null});
