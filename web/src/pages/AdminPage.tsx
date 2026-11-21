@@ -59,7 +59,7 @@ export default function AdminPage() {
   useEffect(()=>{
     let active=true;
     const refresh=async()=>{
-      try{const res=await apiClient.get('/admin/settlement-review-queue',{params:{limit:200}});
+      try{const res=await apiClient.get('/admin/settlement-review-queue',{params:{limit:2000}});
         if(active)setReviewCount(Number(res.data?.notificationCount)||0);
       }catch{if(active)setReviewCount(0);}
     };
