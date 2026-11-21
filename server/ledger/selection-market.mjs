@@ -298,6 +298,15 @@ export function selectionConflict(first, second) {
   // contract checks above, preserving their clearer error messages.
   const firstCategory = selectionCategory(first);
   const secondCategory = selectionCategory(second);
+  const restrictedCoreCategories = new Set(['main', 'htft', 'mixed']);
+  if (firstCategory !== secondCategory &&
+      restrictedCoreCategories.has(firstCategory) &&
+      restrictedCoreCategories.has(secondCategory)) {
+    return {
+      code: 'MAIN_PERIOD_COMBO',
+      message: 'Main Market, Periods dhe Combos nuk mund të kombinohen me njëri-tjetrin në të njëjtën ndeshje.',
+    };
+  }
   if (firstCategory === secondCategory) {
     return {
       code: 'SAME_MARKET_CATEGORY',
