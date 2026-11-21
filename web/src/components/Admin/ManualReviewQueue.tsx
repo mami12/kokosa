@@ -34,6 +34,7 @@ type EventCoverage = {
   kind: string;
   throughMinute: number;
   complete: boolean;
+  confirmed?: boolean;
   confirmedAt: string | null;
   countHome: number;
   countAway: number;
@@ -239,7 +240,7 @@ function MatchTimeline({ item }: { item: ReviewItem }) {
           <History size={16} className="text-sky-400" />
           Kronologjia e ndeshjes
         </div>
-        <span className="text-[11px] text-text-secondary">{events.length} ngjarje të konfirmuara</span>
+        <span className="text-[11px] text-text-secondary">{events.length} ngjarje në arkiv</span>
       </div>
       {coverage.length > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -249,6 +250,7 @@ function MatchTimeline({ item }: { item: ReviewItem }) {
               <span>{entry.countHome}–{entry.countAway}</span>
               <span>deri në {entry.throughMinute}′</span>
               <span className={entry.complete ? 'text-emerald-300' : 'text-amber-300'}>{entry.complete ? 'E plotë' : 'Pjesore'}</span>
+              <span className={entry.confirmed ? 'text-emerald-300' : 'text-amber-300'}>{entry.confirmed ? 'Konfirmuar' : 'Pakonfirmuar'}</span>
             </span>
           ))}
         </div>
@@ -277,6 +279,9 @@ function MatchTimeline({ item }: { item: ReviewItem }) {
                         · {relation}
                       </span>
                     )}
+                    <span className={event.verified ? 'text-emerald-300' : 'text-amber-300'}>
+                      · {event.verified ? 'E konfirmuar' : 'E arkivuar, pa konfirmim'}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -285,14 +290,14 @@ function MatchTimeline({ item }: { item: ReviewItem }) {
         </div>
       ) : (
         <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-3">
-          <div className="text-xs font-semibold text-amber-200">Nuk ka kronologji të konfirmuar të ruajtur për këtë ndeshje.</div>
+          <div className="text-xs font-semibold text-amber-200">Nuk ka ngjarje të arkivuara për këtë ndeshje.</div>
           <p className="mt-1 text-[11px] text-text-secondary">
             Kjo nuk do të thotë se nuk pati ngjarje. Sistemi nuk shfaq ngjarje pa prova të ruajtura nga burimi kryesor.
           </p>
         </div>
       )}
       <p className="text-[10px] leading-relaxed text-text-secondary">
-        Kronologjia tregon gola, kornera, kartona dhe faulle të konfirmuara. Statistika si gjuajtjet dhe pozicioni ruhen si numërues në snapshot, jo si ngjarje individuale.
+        Kronologjia përfshin ngjarjet e arkivuara të Zizobet. Çdo rresht shënohet si i konfirmuar ose jo; vetëm ngjarjet e konfirmuara janë prova të verifikuara. Gjuajtjet dhe pozicioni ruhen si numërues në snapshot, jo si ngjarje individuale.
       </p>
     </section>
   );
