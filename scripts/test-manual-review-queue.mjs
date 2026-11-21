@@ -80,6 +80,16 @@ const runQuery=async(sql,params)=>{
     card_colors_verified:false,provider_event_id:'corner-31',event_kind:'corner',
     team:'away',minute:31,seconds:1870,player_name:null,card_color:null,
     own_goal:null,phase:'2'},
+   {match_id:123,coverage_kind:'card',through_minute:90,complete:true,
+    confirmed_at:new Date(now).toISOString(),count_home:1,count_away:1,
+    card_colors_verified:true,provider_event_id:'card-40',event_kind:'card',
+    team:'home',minute:40,seconds:2405,player_name:'Booked Player',card_color:'yellow',
+    own_goal:null,phase:'2'},
+   {match_id:123,coverage_kind:'foul',through_minute:90,complete:true,
+    confirmed_at:null,count_home:8,count_away:6,
+    card_colors_verified:false,provider_event_id:'foul-42',event_kind:'foul',
+    team:'away',minute:42,seconds:2530,player_name:null,card_color:null,
+    own_goal:null,phase:'2'},
   ]};
  }
  observedSql=sql;observedParams=params;
@@ -100,11 +110,15 @@ assert.deepEqual(queue.items.map(r=>r.lineId),['line-a','line-b','line-c','line-
 assert.equal(queue.items[0].finalScore,'2 - 1');
 assert.equal(queue.items[0].placementSnapshot.scoreHome,1);
 assert.equal(queue.items[0].placementSnapshot.scoreAway,0);
-assert.equal(queue.items[0].eventTimeline.length,2);
+assert.equal(queue.items[0].eventTimeline.length,4);
 assert.equal(queue.items[0].eventTimeline[0].minute,24);
 assert.equal(queue.items[0].eventTimeline[0].playerName,'Test Scorer');
 assert.equal(queue.items[0].eventTimeline[1].kind,'corner');
 assert.equal(queue.items[0].eventTimeline[1].verified,false,'archived but unconfirmed incidents remain visible and clearly labelled');
+assert.equal(queue.items[0].eventTimeline[2].kind,'card');
+assert.equal(queue.items[0].eventTimeline[2].cardColor,'yellow');
+assert.equal(queue.items[0].eventTimeline[3].kind,'foul');
+assert.equal(queue.items[0].eventCoverage.find(item=>item.kind==='card').cardColorsVerified,true);
 assert.equal(queue.items[0].eventCoverage.find(item=>item.kind==='goal').countHome,2);
 assert.equal(queue.items[0].eventTimelineSource,'ZIZOBET_ARCHIVED');
 assert.equal(queue.items[2].lineStatus,'VOID');
