@@ -150,8 +150,9 @@ function PlacementEvidence({ item }: { item: ReviewItem }) {
     const yellow = asNumber(side.yellow), red = asNumber(side.red);
     return yellow === null && red === null ? null : (yellow ?? 0) + (red ?? 0);
   };
+  const goalBaseline = contract?.event === 'goal' ? pairText(contract?.entryBaseline) : null;
   const metricRows: { label: string; value: string | null }[] = [
-    { label: 'Golat', value: pairText(counters.goal) ?? (scoreHome !== null && scoreAway !== null ? score : null) },
+    { label: 'Golat', value: score ?? (snapshot?.isLive === false ? pairText(counters.goal) : goalBaseline) },
     { label: 'Kornerat', value: pairText(counters.corner) ?? pairText({ home: home.corners, away: away.corners }) },
     { label: 'Kartona gjithsej', value: pairText(counters.card) ?? pairText({ home: totalCards(home), away: totalCards(away) }) },
     { label: 'Faulle', value: pairText(counters.foul) ?? pairText({ home: home.fouls, away: away.fouls }) },
@@ -163,7 +164,7 @@ function PlacementEvidence({ item }: { item: ReviewItem }) {
   ] as const;
   const otherRows = extraStats.map(([label, key]) => {
     const value = pairText({ home: home[key], away: away[key] });
-    return { label, value: key === 'possession' && value ? value.replace(' – ', ' – ') + '%' : value };
+    return { label, value: key === 'possession' && value ? value.replace(' – ', '% – ') + '%' : value };
   }).filter(row => row.value !== null);
 
   return (
