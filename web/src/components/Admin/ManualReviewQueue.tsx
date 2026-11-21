@@ -315,6 +315,7 @@ export default function ManualReviewQueue({ onlyLineId, onSaved }: { onlyLineId?
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [hasMore, setHasMore] = useState(false);
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
 
   async function load() {
     setRefreshing(true);
@@ -488,6 +489,7 @@ export default function ManualReviewQueue({ onlyLineId, onSaved }: { onlyLineId?
           const stakeNum = Number(item.stake || 0);
           const oddsNum = Number(item.odds || 0);
           const potentialNum = item.potentialPayout ? Number(item.potentialPayout) : stakeNum * oddsNum;
+          const evidenceExpanded = expandedItems[item.lineId] === true;
 
           return (
             <article key={item.lineId} className="overflow-hidden rounded-xl border border-tertiary bg-secondary/60 shadow-sm">
@@ -543,8 +545,23 @@ export default function ManualReviewQueue({ onlyLineId, onSaved }: { onlyLineId?
                   </div>
                 </div>
 
-                <PlacementEvidence item={item} />
-                <MatchTimeline item={item} />
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    aria-expanded={evidenceExpanded}
+                    onClick={() => setExpandedItems(prev => ({ ...prev, [item.lineId]: !evidenceExpanded }))}
+                    className="inline-flex items-center gap-2 rounded-lg border border-tertiary bg-primary/60 px-3 py-2 text-[11px] font-semibold text-sky-200 transition hover:border-sky-500/50 hover:bg-primary"
+                  >
+                    <History size={14} />
+                    {evidenceExpanded ? 'Mbyll provat dhe kronologjinë' : 'Shfaq snapshot-in dhe kronologjinë'}
+                  </button>
+                </div>
+                {evidenceExpanded && (
+                  <div className="space-y-3">
+                    <PlacementEvidence item={item} />
+                    <MatchTimeline item={item} />
+                  </div>
+                )}
 
                 <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3.5">
                   <div className="flex items-start gap-2.5">
