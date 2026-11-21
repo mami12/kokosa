@@ -11,6 +11,8 @@ const base={line_id:'line-a',ticket_id:'ticket-a',match_id:123,
  line_status:'PENDING',ticket_status:'PENDING',result_id:123,
  placed_at:new Date(now-86400000).toISOString(),stake:100,odds_at_placement:2,
  username:'tester',home_score:2,away_score:1,statistics_review:null,
+ placement_snapshot:{isLive:true,scoreHome:1,scoreAway:0,clockMilliseconds:20*60000,
+  counters:{goal:{home:1,away:0}},statistics:{home:{shots:3,shotsOnTarget:1},away:{shots:2,shotsOnTarget:0}}},
  feed_status:'FT',match_status:'ended'};
 assert.equal(reviewReason(base,now),'MISSING_EVENT_TIMELINE');
 assert.equal(reviewReason({...base,market_name:'Total Corners'},now),'MISSING_MARKET_STATISTICS');
@@ -62,6 +64,20 @@ const runQuery=async(sql,params)=>{
   if(!notices.has(params[0]))notices.set(params[0],params[1]);
   return {rows:[{first_seen_at:notices.get(params[0])}]};
  }
+ if(sql.includes('from app_match_event_coverage c')){
+  return {rows:[
+   {match_id:123,coverage_kind:'goal',through_minute:90,complete:true,
+    confirmed_at:new Date(now).toISOString(),count_home:2,count_away:1,
+    card_colors_verified:false,provider_event_id:'goal-24',event_kind:'goal',
+    team:'home',minute:24,seconds:1450,player_name:'Test Scorer',card_color:null,
+    own_goal:false,phase:'2'},
+   {match_id:123,coverage_kind:'corner',through_minute:90,complete:true,
+    confirmed_at:new Date(now).toISOString(),count_home:4,count_away:2,
+    card_colors_verified:false,provider_event_id:'corner-31',event_kind:'corner',
+    team:'away',minute:31,seconds:1870,player_name:null,card_color:null,
+    own_goal:null,phase:'2'},
+  ]};
+ }
  observedSql=sql;observedParams=params;
  return {rows:rows.map(row=>({...row,first_seen_at:notices.get(row.line_id)}))};
 };
@@ -77,9 +93,20 @@ assert.match(observedSql,/o.status='PENDING'/,'an explicit pending decision keep
 assert.equal(queue.items.length,4);
 assert.deepEqual(queue.items.map(r=>r.lineId),['line-a','line-b','line-c','line-g']);
 assert.equal(queue.items[0].finalScore,'2 - 1');
+assert.equal(queue.items[0].placementSnapshot.scoreHome,1);
+assert.equal(queue.items[0].placementSnapshot.scoreAway,0);
+assert.equal(queue.items[0].eventTimeline.length,2);
+assert.equal(queue.items[0].eventTimeline[0].minute,24);
+assert.equal(queue.items[0].eventTimeline[0].playerName,'Test Scorer');
+assert.equal(queue.items[0].eventTimeline[1].kind,'corner');
+assert.equal(queue.items[0].eventCoverage.find(item=>item.kind==='goal').countHome,2);
+assert.equal(queue.items[0].eventTimelineSource,'ZIZOBET_CONFIRMED');
 assert.equal(queue.items[2].lineStatus,'VOID');
 assert.match(observedSql,/app_settlement_override/);
 assert.deepEqual(observedParams,[250]);
+const expanded=await manualReviewQueue({runQuery,now,limit:1800});
+assert.equal(expanded.items.length,4);
+assert.deepEqual(observedParams,[18000],'review queue scans up to ten times the requested 1,800-item result cap');
 
 // Simulate one approved selection only, in a two-line ticket. No live DB
 // or wallet is used; assert that only the selected UUID is changed.
