@@ -52,6 +52,50 @@ function firstHalfElapsed(match) {
   return /^(?:2h|ht|ft|2nd half|second half|break time|half time|halftime|ended|finished)\b/.test(phase);
 }
 
+/** A numbered-goal time offer is decided as soon as that match ordinal exists.
+ * If it has not happened, the offer becomes decided only after its quoted
+ * minute band has fully elapsed. This guard is intentionally narrow so it
+ * does not suppress other Zizobet-native markets merely because local scoring
+ * heuristics do not understand them.
+ */
+export function isDecidedLiveNumberedGoalWindow(match = {}, market = {}) {
+  const live = String(match?.service ?? match?.status ?? '').toUpperCase() === 'LIVE' || match?.live === true;
+  if (!live || Number(market?.period ?? 0) !== 0) return false;
+  const name = norm(market?.name ?? market?.market_name);
+  const matchName = name.match(/^who scores (?:the )?(?:goal (\d{1,3})|((?:\d{1,3}(?:st|nd|rd|th)?|first|second|third) goal)) in minutes? (\d{1,3})\s*[-–]\s*(\d{1,3})(?: \((\d{1,2})-minute interval\))?$/);
+  if (!matchName) return false;
+
+  const ordinalText = matchName[1] ?? matchName[2].replace(/\s+goal$/, '');
+  const spoken = {first:1,second:2,third:3};
+  const target = spoken[ordinalText] ?? Number(String(ordinalText).match(/^\d+/)?.[0]);
+  const from = Number(matchName[3]);
+  const quotedEnd = Number(matchName[4]);
+  const width = matchName[5] == null ? null : Number(matchName[5]);
+  const to = width !== null && quotedEnd - from === width ? quotedEnd - 1 : quotedEnd;
+  if (!Number.isSafeInteger(target) || target < 1 ||
+      !Number.isSafeInteger(from) || from < 0 ||
+      !Number.isSafeInteger(to) || to < from || to > 130 ||
+      width !== null && (!Number.isSafeInteger(width) || width < 1 || to - from + 1 !== width)) return false;
+
+  const score = currentScore(match);
+  if (score && score.home + score.away >= target) return true;
+
+  const minuteCandidates = [
+    match?.currentMinute,
+    match?.minute,
+    match?.live_minute,
+    match?.match_time_ms != null && Number.isFinite(Number(match.match_time_ms))
+      ? Math.floor(Number(match.match_time_ms) / 60000) : null,
+  ];
+  const minute = minuteCandidates.map(safeNumber).find(value => value !== null);
+  if (minute === undefined) return false;
+  // Do not close first-half minute 45 before the phase is confirmed complete,
+  // and do not infer the end of a 90th-minute window before the final whistle.
+  if (to === 45 && !firstHalfElapsed(match)) return false;
+  if (to === 90) return false;
+  return minute > to;
+}
+
 function elapsedTimedContract(match, market) {
   const live = String(match?.service ?? match?.status ?? '').toUpperCase() === 'LIVE' || match?.live === true;
   if (!live) return false;
