@@ -266,14 +266,6 @@ export function selectionConflict(first, second) {
 
   const sameMarketGroup = selectionMarketIdentity(first) !== null &&
     selectionMarketIdentity(first) === selectionMarketIdentity(second);
-  const firstCategory = selectionCategory(first);
-  const secondCategory = selectionCategory(second);
-  if (firstCategory === secondCategory) {
-    return {
-      code: 'SAME_MARKET_CATEGORY',
-      message: 'Lejohet vetëm një bast nga e njëjta kategori tregu për të njëjtën ndeshje.',
-    };
-  }
   if (!samePeriod) {
     return sameMarketGroup
       ? { code: 'SAME_MARKET_GROUP', message: 'Lejohet vetëm një zgjedhje nga i njëjti treg.' }
@@ -302,6 +294,17 @@ export function selectionConflict(first, second) {
 
   if (noGoalPrematchScenario(first) && noGoalPrematchScenario(second)) {
     return { code: 'NO_GOAL_PREMATCH', message: 'Nën 0.5 gola, Correct Score 0:0 dhe First Goal: No Goal janë i njëjti skenar dhe nuk mund të kombinohen.' };
+  }
+
+  // Enforce the one-selection-per-category rule after the more specific
+  // contract checks above, preserving their clearer error messages.
+  const firstCategory = selectionCategory(first);
+  const secondCategory = selectionCategory(second);
+  if (firstCategory === secondCategory) {
+    return {
+      code: 'SAME_MARKET_CATEGORY',
+      message: 'Lejohet vetëm një bast nga e njëjta kategori tregu për të njëjtën ndeshje.',
+    };
   }
   return null;
 }
