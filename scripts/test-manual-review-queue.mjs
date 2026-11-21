@@ -11,6 +11,8 @@ const base={line_id:'line-a',ticket_id:'ticket-a',match_id:123,
  line_status:'PENDING',ticket_status:'PENDING',result_id:123,
  placed_at:new Date(now-86400000).toISOString(),stake:100,odds_at_placement:2,
  username:'tester',home_score:2,away_score:1,statistics_review:null,
+ corners_home:4,corners_away:2,cards_home:1,cards_away:1,result_source:'ZIZOBET',
+ final_statistics:{shots:{home:7,away:6},shotsOnTarget:{home:3,away:2},fouls:{home:8,away:9},offsides:{home:1,away:2}},
  placement_snapshot:{isLive:true,scoreHome:1,scoreAway:0,clockMilliseconds:20*60000,
   counters:{goal:{home:1,away:0}},statistics:{home:{shots:3,shotsOnTarget:1},away:{shots:2,shotsOnTarget:0}}},
  feed_status:'FT',match_status:'ended'};
@@ -108,6 +110,10 @@ assert.match(observedSql,/o.status='PENDING'/,'an explicit pending decision keep
 assert.equal(queue.items.length,4);
 assert.deepEqual(queue.items.map(r=>r.lineId),['line-a','line-b','line-c','line-g']);
 assert.equal(queue.items[0].finalScore,'2 - 1');
+assert.equal(queue.items[0].finalCounters.corners.home,4);
+assert.equal(queue.items[0].finalCounters.cards.away,1);
+assert.equal(queue.items[0].finalCounters.statistics.shotsOnTarget.home,3);
+assert.equal(queue.items[0].finalCounters.source,'ZIZOBET');
 assert.equal(queue.items[0].placementSnapshot.scoreHome,1);
 assert.equal(queue.items[0].placementSnapshot.scoreAway,0);
 assert.equal(queue.items[0].eventTimeline.length,4);
