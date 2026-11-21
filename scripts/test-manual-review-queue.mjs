@@ -57,12 +57,16 @@ const rows=[
  {...halfTimePush,line_id:'line-f',ticket_id:'ticket-f'},
  {...unknownVoid,line_id:'line-g',ticket_id:'ticket-g'},
 ];
-let observedSql='',observedParams;
+let observedSql='',observedParams,noticeBatchCalls=0;
 const notices=new Map();
 const runQuery=async(sql,params)=>{
  if(sql.includes('insert into app_manual_review_notice')){
-  if(!notices.has(params[0]))notices.set(params[0],params[1]);
-  return {rows:[{first_seen_at:notices.get(params[0])}]};
+  noticeBatchCalls++;
+  for(const id of params[0])if(!notices.has(id))notices.set(id,params[1]);
+  return {rows:[]};
+ }
+ if(sql.includes('select line_id,first_seen_at from app_manual_review_notice')){
+  return {rows:params[0].filter(id=>notices.has(id)).map(id=>({line_id:id,first_seen_at:notices.get(id)}))};
  }
  if(sql.includes('from app_match_event_coverage c')){
   return {rows:[
@@ -83,6 +87,7 @@ const runQuery=async(sql,params)=>{
 };
 const queue=await manualReviewQueue({runQuery,now,limit:25});
 assert.equal(queue.notificationCount,4);
+assert.equal(noticeBatchCalls,1,'all first-seen notices are registered in one batch query');
 assert.equal(queue.items[0].noticeExpiresAt,new Date(now+48*3600000).toISOString());
 const justBefore=await manualReviewQueue({runQuery,now:now+48*3600000-1,limit:25});
 assert.equal(justBefore.notificationCount,4);
