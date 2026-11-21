@@ -76,7 +76,7 @@ const runQuery=async(sql,params)=>{
     team:'home',minute:24,seconds:1450,player_name:'Test Scorer',card_color:null,
     own_goal:false,phase:'2'},
    {match_id:123,coverage_kind:'corner',through_minute:90,complete:true,
-    confirmed_at:new Date(now).toISOString(),count_home:4,count_away:2,
+    confirmed_at:null,count_home:4,count_away:2,
     card_colors_verified:false,provider_event_id:'corner-31',event_kind:'corner',
     team:'away',minute:31,seconds:1870,player_name:null,card_color:null,
     own_goal:null,phase:'2'},
@@ -104,8 +104,9 @@ assert.equal(queue.items[0].eventTimeline.length,2);
 assert.equal(queue.items[0].eventTimeline[0].minute,24);
 assert.equal(queue.items[0].eventTimeline[0].playerName,'Test Scorer');
 assert.equal(queue.items[0].eventTimeline[1].kind,'corner');
+assert.equal(queue.items[0].eventTimeline[1].verified,false,'archived but unconfirmed incidents remain visible and clearly labelled');
 assert.equal(queue.items[0].eventCoverage.find(item=>item.kind==='goal').countHome,2);
-assert.equal(queue.items[0].eventTimelineSource,'ZIZOBET_CONFIRMED');
+assert.equal(queue.items[0].eventTimelineSource,'ZIZOBET_ARCHIVED');
 assert.equal(queue.items[2].lineStatus,'VOID');
 assert.match(observedSql,/app_settlement_override/);
 assert.deepEqual(observedParams,[250]);
