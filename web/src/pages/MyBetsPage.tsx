@@ -55,9 +55,9 @@ export default function MyBetsPage(){
   const statusInfo=(status:string)=>{
     switch(status){
       case 'WON':return {label:t('tickets.won'),Icon:CheckCircle2,
-        color:'text-slate-200',border:'border-slate-600'};
+        color:'text-emerald-300',border:'border-emerald-500/60',cardBorder:'border-emerald-500/50'};
       case 'LOST':return {label:t('tickets.lost'),Icon:XCircle,
-        color:'text-slate-200',border:'border-slate-600'};
+        color:'text-rose-300',border:'border-rose-500/60',cardBorder:'border-rose-500/50'};
       case 'PENDING':return {label:t('tickets.pending'),Icon:Clock3,
         color:'text-slate-200',border:'border-slate-600'};
       case 'VOID':return {label:t('tickets.void'),Icon:MinusCircle,
@@ -70,7 +70,7 @@ export default function MyBetsPage(){
   const renderTicket=(ticket:Ticket)=>{
     const state=statusInfo(ticket.status),StatusIcon=state.Icon;
     return <article key={ticket.id}
-      className="overflow-hidden rounded-lg border border-slate-700/80 bg-[#151e2b] text-slate-100 shadow-sm">
+      className={`overflow-hidden rounded-lg border ${state.cardBorder??'border-slate-700/80'} bg-[#151e2b] text-slate-100 shadow-sm`}>
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-700/70 bg-[#1b2736] px-4 py-3 sm:px-5">
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
