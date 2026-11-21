@@ -165,12 +165,12 @@ try{
  assert.equal(await judge('window-total',{from:20,to:30,choice:'exact',target:1}),'WON');
  assert.equal(await judge('window-total',{from:20,to:30,choice:'atLeast',target:2}),'LOST');
 
- await run(\`insert into app_match_event_fact
+ await run(`insert into app_match_event_fact
   (match_id,provider,provider_event_id,kind,team,minute,seconds,phase,active)
-  values($1,'zizobet','offside-1','offside','home',22,1325,'2H',true)\`,[matchId]);
- await run(\`insert into app_match_event_coverage
+  values($1,'zizobet','offside-1','offside','home',22,1325,'2H',true)`,[matchId]);
+ await run(`insert into app_match_event_coverage
   (match_id,provider,kind,through_minute,count_home,count_away,complete,observed_at,confirmed_at)
-  values($1,'zizobet','offside',91,1,0,true,$2,$2)\`,[matchId,now]);
+  values($1,'zizobet','offside',91,1,0,true,$2,$2)`,[matchId,now]);
  const offsideLine={id:'00000000-0000-4000-8000-000000000003',match_id:matchId,
   live_contract:{version:1,kind:'window-total',event:'offside',from:20,to:30,
    choice:'over',threshold:0.5,normalTimeOnly:true}};
