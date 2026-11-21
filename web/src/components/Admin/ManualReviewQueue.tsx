@@ -1,10 +1,44 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { apiClient } from '../../api/client';
 import {
   AlertTriangle, RefreshCw, Calendar, Clock, User,
-  CheckCircle2, XCircle, RotateCcw, ShieldCheck, Ticket
+  CheckCircle2, XCircle, RotateCcw, ShieldCheck, Ticket,
+  Search, Activity, History, Gauge
 } from 'lucide-react';
 
+type Pair = { home?: number | string | null; away?: number | string | null };
+type PlacementSnapshot = {
+  isLive?: boolean;
+  capturedAt?: string;
+  scoreHome?: number | string | null;
+  scoreAway?: number | string | null;
+  scoreObservedAt?: string | null;
+  clockMilliseconds?: number | null;
+  feedPhase?: string | null;
+  counters?: Record<string, Pair | null>;
+  statistics?: Record<string, Record<string, number | string | null> | null>;
+};
+type TimelineEvent = {
+  id: string;
+  kind: 'goal' | 'corner' | 'card' | 'foul' | string;
+  team: 'home' | 'away' | string;
+  minute: number;
+  seconds?: number | null;
+  playerName?: string | null;
+  cardColor?: string | null;
+  ownGoal?: boolean | null;
+  phase?: string | null;
+  verified?: boolean;
+};
+type EventCoverage = {
+  kind: string;
+  throughMinute: number;
+  complete: boolean;
+  confirmedAt: string | null;
+  countHome: number;
+  countAway: number;
+  cardColorsVerified?: boolean;
+};
 type ReviewItem = {
   lineId: string;
   ticketId: string;
@@ -25,8 +59,13 @@ type ReviewItem = {
   finalScore: string | null;
   reason: string;
   conflicts?: Record<string, unknown> | null;
+  placementSnapshot?: PlacementSnapshot | null;
+  liveContract?: Record<string, any> | null;
+  finalStatistics?: Record<string, any> | null;
+  eventTimeline?: TimelineEvent[];
+  eventCoverage?: EventCoverage[];
+  eventTimelineSource?: string;
 };
-
 type Decision = { status: string; reason: string; source: string };
 
 const labels: Record<string, string> = {
@@ -40,35 +79,250 @@ const labels: Record<string, string> = {
   MISSING_FINAL_RESULT: 'Mungon rezultati përfundimtar i konfirmuar nga burimi sportiv',
 };
 
-function formatDateTime(iso: string) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  const date = d.toLocaleDateString('sq-AL', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const time = d.toLocaleTimeString('sq-AL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  return `${date} · ${time}`;
+const fresh: Decision = { status: 'PENDING', reason: '', source: '' };
+const asNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+};
+const money = (value: unknown) => Number(value || 0).toLocaleString('sq-AL', {
+  minimumFractionDigits: 2, maximumFractionDigits: 2,
+});
+function formatDateTime(value?: string | null) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('sq-AL', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+}
+function pairText(pair?: Pair | null) {
+  const home = asNumber(pair?.home), away = asNumber(pair?.away);
+  return home === null || away === null ? null : `${home} – ${away}`;
+}
+function eventTitle(event: TimelineEvent) {
+  if (event.kind === 'goal') return event.ownGoal ? 'Autogol' : 'Gol';
+  if (event.kind === 'corner') return 'Korner';
+  if (event.kind === 'card') return event.cardColor === 'red' ? 'Kartoni i kuq'
+    : event.cardColor === 'yellow' ? 'Kartoni i verdhë' : 'Kartoni';
+  if (event.kind === 'foul') return 'Faull';
+  return event.kind;
+}
+function eventRelation(event: TimelineEvent, snapshot?: PlacementSnapshot | null) {
+  const clock = asNumber(snapshot?.clockMilliseconds);
+  if (clock === null) return null;
+  if (event.seconds != null && Number.isFinite(Number(event.seconds))) {
+    const delta = Number(event.seconds) - clock / 1000;
+    if (delta < -1) return 'Para bastit';
+    if (delta > 1) return 'Pas bastit';
+    return 'Rreth momentit të bastit';
+  }
+  const betMinute = Math.floor(clock / 60000);
+  if (event.minute < betMinute) return 'Para bastit';
+  if (event.minute > betMinute) return 'Pas bastit';
+  return 'E njëjta minutë';
+}
+function eventTime(event: TimelineEvent) {
+  return `${event.minute}'${event.seconds != null ? ` · ${Math.floor(Number(event.seconds) % 60).toString().padStart(2, '0')}s` : ''}`;
+}
+function statusText(status: string) {
+  return ({ WON: 'Fituese', LOST: 'Humbëse', VOID: 'E pavlefshme', PENDING: 'Në pritje' } as Record<string, string>)[status] ?? status;
 }
 
-const fresh: Decision = { status: 'PENDING', reason: '', source: '' };
+function PlacementEvidence({ item }: { item: ReviewItem }) {
+  const snapshot = item.placementSnapshot ?? (item.liveContract?.acceptedLiveSnapshot as PlacementSnapshot | undefined) ?? null;
+  const contract = item.liveContract as any;
+  const baseline = contract?.entryBaseline as Pair | undefined;
+  const scoreHome = asNumber(snapshot?.scoreHome) ?? asNumber(baseline?.home);
+  const scoreAway = asNumber(snapshot?.scoreAway) ?? asNumber(baseline?.away);
+  const score = scoreHome !== null && scoreAway !== null ? `${scoreHome} – ${scoreAway}`
+    : snapshot?.isLive === false ? '0 – 0' : null;
+  const minute = asNumber(snapshot?.clockMilliseconds);
+  const counters = snapshot?.counters ?? {};
+  const statistics = snapshot?.statistics ?? {};
+  const home = statistics.home ?? {};
+  const away = statistics.away ?? {};
+  const totalCards = (side: Record<string, any>) => {
+    const yellow = asNumber(side.yellow), red = asNumber(side.red);
+    return yellow === null && red === null ? null : (yellow ?? 0) + (red ?? 0);
+  };
+  const metricRows: { label: string; value: string | null }[] = [
+    { label: 'Golat', value: pairText(counters.goal) ?? (scoreHome !== null && scoreAway !== null ? score : null) },
+    { label: 'Kornerat', value: pairText(counters.corner) ?? pairText({ home: home.corners, away: away.corners }) },
+    { label: 'Kartona gjithsej', value: pairText(counters.card) ?? pairText({ home: totalCards(home), away: totalCards(away) }) },
+    { label: 'Faulle', value: pairText(counters.foul) ?? pairText({ home: home.fouls, away: away.fouls }) },
+  ];
+  const extraStats = [
+    ['Gjuajtje', 'shots'], ['Gjuajtje në kuadrat', 'shotsOnTarget'],
+    ['Pozicion', 'possession'], ['Jashtë loje', 'offsides'],
+    ['Kartona të verdhë', 'yellow'], ['Kartona të kuq', 'red'],
+  ] as const;
+  const otherRows = extraStats.map(([label, key]) => {
+    const value = pairText({ home: home[key], away: away[key] });
+    return { label, value: key === 'possession' && value ? value.replace(' – ', ' – ') + '%' : value };
+  }).filter(row => row.value !== null);
+
+  return (
+    <section className="rounded-xl border border-tertiary bg-primary/60 p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-bold text-white">
+          <Gauge size={16} className="text-sky-400" />
+          Gjendja në momentin e bastit
+        </div>
+        <span className="text-[11px] text-text-secondary">
+          {snapshot?.capturedAt ? `Snapshot: ${formatDateTime(snapshot.capturedAt)}` : 'Snapshot historik'}
+        </span>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-lg border border-tertiary bg-secondary/70 p-3">
+          <div className="text-[10px] uppercase tracking-wider text-text-secondary">Rezultati në vendosje</div>
+          <div className="mt-1 text-2xl font-black tabular-nums text-white">{score ?? 'Nuk ruhet'}</div>
+        </div>
+        <div className="rounded-lg border border-tertiary bg-secondary/70 p-3">
+          <div className="text-[10px] uppercase tracking-wider text-text-secondary">Minuta në vendosje</div>
+          <div className="mt-1 text-lg font-bold tabular-nums text-white">
+            {minute === null ? 'Nuk ruhet' : `${Math.floor(minute / 60000)}′`}
+          </div>
+          <div className="text-[11px] text-text-secondary">{snapshot?.feedPhase ?? 'Faza nuk ruhet'}</div>
+        </div>
+        <div className="rounded-lg border border-tertiary bg-secondary/70 p-3">
+          <div className="text-[10px] uppercase tracking-wider text-text-secondary">Rezultati final</div>
+          <div className="mt-1 text-lg font-bold tabular-nums text-white">{item.finalScore ?? 'Ende pa rezultat'}</div>
+        </div>
+      </div>
+      <div>
+        <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-text-secondary">Numëruesit në vendosje</div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {metricRows.map(row => (
+            <div key={row.label} className="rounded-lg border border-tertiary/80 bg-secondary/50 px-3 py-2">
+              <div className="text-[10px] text-text-secondary">{row.label}</div>
+              <div className="mt-0.5 text-sm font-bold tabular-nums text-white">{row.value ?? 'Pa të dhëna'}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {otherRows.length > 0 && (
+        <div>
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-text-secondary">Statistika shtesë në vendosje</div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {otherRows.map(row => (
+              <div key={row.label} className="flex items-center justify-between gap-2 rounded-lg border border-tertiary/80 bg-secondary/50 px-3 py-2">
+                <span className="text-[11px] text-text-secondary">{row.label}</span>
+                <span className="text-xs font-bold tabular-nums text-white">{row.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {!snapshot && (
+        <p className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
+          Për këtë biletë historike nuk është ruajtur snapshot-i i plotë në momentin e vendosjes. Vlerat që mungojnë nuk plotësohen me hamendësime.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function MatchTimeline({ item }: { item: ReviewItem }) {
+  const events = item.eventTimeline ?? [];
+  const snapshot = item.placementSnapshot ?? (item.liveContract?.acceptedLiveSnapshot as PlacementSnapshot | undefined) ?? null;
+  const coverage = item.eventCoverage ?? [];
+  const coverageLabels: Record<string, string> = { goal: 'Gola', corner: 'Kornera', card: 'Kartona', foul: 'Faulle' };
+
+  return (
+    <section className="rounded-xl border border-tertiary bg-primary/60 p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-bold text-white">
+          <History size={16} className="text-sky-400" />
+          Kronologjia e ndeshjes
+        </div>
+        <span className="text-[11px] text-text-secondary">{events.length} ngjarje të konfirmuara</span>
+      </div>
+      {coverage.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {coverage.map(entry => (
+            <span key={entry.kind} className="inline-flex items-center gap-1.5 rounded-md border border-tertiary bg-secondary/70 px-2 py-1 text-[10px] text-text-secondary">
+              <span className="font-semibold text-white">{coverageLabels[entry.kind] ?? entry.kind}</span>
+              <span>{entry.countHome}–{entry.countAway}</span>
+              <span>deri në {entry.throughMinute}′</span>
+              <span className={entry.complete ? 'text-emerald-300' : 'text-amber-300'}>{entry.complete ? 'E plotë' : 'Pjesore'}</span>
+            </span>
+          ))}
+        </div>
+      )}
+      {events.length > 0 ? (
+        <div className="relative space-y-2 before:absolute before:bottom-3 before:left-[17px] before:top-3 before:w-px before:bg-tertiary">
+          {events.map(event => {
+            const relation = eventRelation(event, snapshot);
+            const isHome = event.team === 'home';
+            return (
+              <div key={event.id} className="relative flex items-start gap-3">
+                <span className="z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-tertiary bg-secondary text-[10px] font-black tabular-nums text-white">
+                  {event.minute}′
+                </span>
+                <div className="min-w-0 flex-1 rounded-lg border border-tertiary/80 bg-secondary/50 px-3 py-2">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                    <span className="text-xs font-bold text-white">{eventTitle(event)}</span>
+                    <span className="text-[10px] text-text-secondary">{eventTime(event)}</span>
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-secondary">
+                    <span>{isHome ? 'Vendasit' : 'Miqtë'}</span>
+                    {event.playerName && <span className="font-medium text-white">{event.playerName}</span>}
+                    {event.phase && <span>· {event.phase}</span>}
+                    {relation && (
+                      <span className={relation === 'Pas bastit' ? 'font-semibold text-emerald-300' : 'text-sky-300'}>
+                        · {relation}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-3">
+          <div className="text-xs font-semibold text-amber-200">Nuk ka kronologji të konfirmuar të ruajtur për këtë ndeshje.</div>
+          <p className="mt-1 text-[11px] text-text-secondary">
+            Kjo nuk do të thotë se nuk pati ngjarje. Sistemi nuk shfaq ngjarje pa prova të ruajtura nga burimi kryesor.
+          </p>
+        </div>
+      )}
+      <p className="text-[10px] leading-relaxed text-text-secondary">
+        Kronologjia tregon gola, kornera, kartona dhe faulle të konfirmuara. Statistika si gjuajtjet dhe pozicioni ruhen si numërues në snapshot, jo si ngjarje individuale.
+      </p>
+    </section>
+  );
+}
 
 export default function ManualReviewQueue({ onlyLineId, onSaved }: { onlyLineId?: string; onSaved?: () => void } = {}) {
   const [approval, setApproval] = useState<{ item: ReviewItem; decision: Decision } | null>(null);
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [hasMore, setHasMore] = useState(false);
 
   async function load() {
+    setRefreshing(true);
     try {
-      const res = await apiClient.get('/admin/settlement-review-queue', { params: { limit: 200 } });
-      setItems(Array.isArray(res.data?.items) ? res.data.items.filter((item: ReviewItem) => !onlyLineId || item.lineId === onlyLineId) : []);
+      const res = await apiClient.get('/admin/settlement-review-queue', { params: { limit: 2000 } });
+      setItems(Array.isArray(res.data?.items)
+        ? res.data.items.filter((item: ReviewItem) => !onlyLineId || item.lineId === onlyLineId)
+        : []);
+      setHasMore(res.data?.hasMore === true);
       setError('');
     } catch (e: any) {
       setError(e.response?.data?.message ?? 'Lista e verifikimeve nuk u ngarkua.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }
 
@@ -77,6 +331,18 @@ export default function ManualReviewQueue({ onlyLineId, onSaved }: { onlyLineId?
     const id = window.setInterval(() => void load(), 15000);
     return () => window.clearInterval(id);
   }, [onlyLineId]);
+
+  const visibleItems = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return items.filter(item => {
+      if (statusFilter !== 'ALL' && item.lineStatus !== statusFilter) return false;
+      if (!term) return true;
+      return [
+        item.matchName, item.marketName, item.outcomeName, item.username,
+        item.ticketId, item.lineId, item.matchId, item.reason,
+      ].some(value => String(value ?? '').toLowerCase().includes(term));
+    });
+  }, [items, search, statusFilter]);
 
   const change = (id: string, key: keyof Decision, value: string) => setDecisions(prev => ({
     ...prev,
@@ -110,234 +376,224 @@ export default function ManualReviewQueue({ onlyLineId, onSaved }: { onlyLineId?
     }
   }
 
+  const activeNotices = items.filter(item => item.notificationActive).length;
+  const pendingCount = items.filter(item => item.lineStatus === 'PENDING').length;
+  const voidCount = items.filter(item => item.lineStatus === 'VOID').length;
+
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-3 sm:p-6">
-      {/* Header bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="mx-auto max-w-[1500px] space-y-4 p-3 sm:p-6">
+      <div className="flex flex-col gap-4 rounded-2xl border border-tertiary bg-secondary/70 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
         <div>
-          <h2 className="flex items-center gap-2 text-lg font-black text-white sm:text-xl">
-            <AlertTriangle size={20} className="text-amber-400" />
-            <span>Njoftime: Bileta për Kontroll ({items.length})</span>
-          </h2>
-          <p className="mt-1 text-xs text-text-secondary">
-            Biletat që kërkojnë konfirmim manual të rezultatit ose që kanë anomali nga API. Njoftimi skadon pas 48 orësh.
+          <div className="flex items-center gap-2 text-lg font-bold text-white sm:text-xl">
+            <ShieldCheck size={21} className="text-sky-400" />
+            Njoftime: Bileta për kontroll
+          </div>
+          <p className="mt-1 max-w-3xl text-xs leading-relaxed text-text-secondary">
+            Kontroll i rasteve që kërkojnë verifikim manual. Çdo biletë përmban snapshot-in në vendosje dhe kronologjinë e konfirmuar që ekziston në arkiv.
           </p>
         </div>
         <button
           type="button"
           onClick={() => void load()}
-          className="flex items-center gap-2 rounded-xl border border-tertiary bg-secondary px-3.5 py-2 text-xs font-bold text-white shadow hover:border-purple-400/50 hover:bg-white/5 transition-all"
+          disabled={refreshing}
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-tertiary bg-primary px-4 py-2.5 text-xs font-semibold text-white transition hover:border-sky-500/50 hover:bg-primary/80 disabled:opacity-50"
         >
-          <RefreshCw size={14} />
-          <span>Rifresko</span>
+          <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+          Rifresko listën
         </button>
       </div>
 
-      {error && <p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm font-semibold text-rose-200">{error}</p>}
-      {notice && <p role="status" className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm font-semibold text-emerald-200">{notice}</p>}
-      {loading && <p className="text-sm text-text-secondary">Duke ngarkuar biletat…</p>}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-tertiary bg-secondary/60 p-3.5">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">Raste për kontroll</div>
+          <div className="mt-1 text-2xl font-black tabular-nums text-white">{items.length.toLocaleString('sq-AL')}</div>
+        </div>
+        <div className="rounded-xl border border-tertiary bg-secondary/60 p-3.5">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">Njoftime aktive</div>
+          <div className="mt-1 text-2xl font-black tabular-nums text-amber-300">{activeNotices.toLocaleString('sq-AL')}</div>
+        </div>
+        <div className="rounded-xl border border-tertiary bg-secondary/60 p-3.5">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">Në pritje / të pavlefshme</div>
+          <div className="mt-1 text-2xl font-black tabular-nums text-white">{pendingCount} <span className="text-sm font-medium text-text-secondary">/</span> {voidCount}</div>
+        </div>
+      </div>
 
-      {!loading && !items.length && (
-        <div className="rounded-2xl border border-purple-500/20 bg-secondary/80 p-8 text-center text-text-secondary">
+      <div className="flex flex-col gap-2 rounded-xl border border-tertiary bg-secondary/60 p-3 sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+          <input
+            value={search}
+            onChange={event => setSearch(event.target.value)}
+            placeholder="Kërko ndeshje, treg, lojtar ose ID bilete…"
+            className="w-full rounded-lg border border-tertiary bg-primary py-2.5 pl-9 pr-3 text-xs text-white outline-none placeholder:text-text-secondary/70 focus:border-sky-500/60"
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={event => setStatusFilter(event.target.value)}
+          className="rounded-lg border border-tertiary bg-primary px-3 py-2.5 text-xs text-white outline-none focus:border-sky-500/60"
+        >
+          <option value="ALL">Të gjitha statuset</option>
+          <option value="PENDING">Në pritje</option>
+          <option value="VOID">Të pavlefshme</option>
+        </select>
+        <div className="px-1 text-[11px] tabular-nums text-text-secondary">{visibleItems.length} të shfaqura</div>
+      </div>
+
+      {hasMore && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
+          Lista ka arritur kufirin prej 2,000 rastesh. Mund të ketë raste të tjera që nuk shfaqen në këtë ngarkim.
+        </div>
+      )}
+      {error && <p role="alert" className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-sm font-semibold text-rose-200">{error}</p>}
+      {notice && <p role="status" className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm font-semibold text-emerald-200">{notice}</p>}
+      {loading && <p className="py-6 text-center text-sm text-text-secondary">Duke ngarkuar biletat…</p>}
+
+      {!loading && !visibleItems.length && (
+        <div className="rounded-2xl border border-tertiary bg-secondary/60 p-10 text-center">
           <ShieldCheck size={32} className="mx-auto mb-2 text-emerald-400" />
-          <h3 className="text-sm font-bold text-white">Nuk ka bileta që kërkojnë verifikim manual</h3>
-          <p className="mt-1 text-xs text-text-secondary">Të gjitha biletat janë të zgjidhura automatikisht ose të rregullta.</p>
+          <h3 className="text-sm font-bold text-white">{items.length ? 'Nuk u gjet asnjë rast për këtë kërkim' : 'Nuk ka bileta që kërkojnë verifikim manual'}</h3>
+          <p className="mt-1 text-xs text-text-secondary">{items.length ? 'Ndrysho tekstin ose filtrin e statusit.' : 'Rastet e pazgjidhura do të shfaqen këtu.'}</p>
         </div>
       )}
 
-      {/* Confirmation Modal */}
       {approval && items.some(item => item.lineId === approval.item.lineId) && (
-        <section aria-label="Miratimi i vendimit" className="rounded-2xl border border-amber-400/40 bg-amber-950/40 p-4 sm:p-5 space-y-3 backdrop-blur-md">
-          <p className="font-bold text-white">Konfirmo vendimin për këtë përzgjedhje:</p>
-          <p className="text-xs text-amber-200">
-            {approval.item.matchName} &bull; {approval.item.marketName} &bull; <strong>{approval.item.outcomeName}</strong>
+        <section aria-label="Miratimi i vendimit" className="rounded-xl border border-amber-400/40 bg-amber-950/30 p-4 sm:p-5 space-y-3">
+          <p className="font-bold text-white">Konfirmo vendimin për këtë përzgjedhje</p>
+          <p className="text-xs text-amber-100">
+            {approval.item.matchName} · {approval.item.marketName} · <strong>{approval.item.outcomeName}</strong>
           </p>
-          <p className="text-xs font-semibold text-emerald-300">
-            Statusi i Ri: {({ WON: 'Fituese', LOST: 'Humbëse', VOID: 'E pavlefshme (Anulo)', PENDING: 'Në pritje' } as Record<string, string>)[approval.decision.status]}
-          </p>
+          <p className="text-xs font-semibold text-white">Statusi i ri: {statusText(approval.decision.status)}</p>
           <div className="flex flex-wrap gap-2 pt-1">
-            <button
-              type="button"
-              disabled={busy !== null}
-              className="rounded-xl bg-accent-green px-4 py-2 text-xs font-black text-primary hover:brightness-110"
-              onClick={() => void decide(approval.item, approval.decision)}
-            >
+            <button type="button" disabled={busy !== null} className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-emerald-400 disabled:opacity-50" onClick={() => void decide(approval.item, approval.decision)}>
               Po, mirato
             </button>
-            <button
-              type="button"
-              disabled={busy !== null}
-              className="rounded-xl border border-tertiary px-4 py-2 text-xs font-bold text-text-secondary hover:text-white"
-              onClick={() => setApproval(null)}
-            >
-              Jo, kthehu
+            <button type="button" disabled={busy !== null} className="rounded-lg border border-tertiary px-4 py-2 text-xs font-semibold text-text-secondary hover:text-white" onClick={() => setApproval(null)}>
+              Kthehu
             </button>
           </div>
         </section>
       )}
 
-      {/* Structured Ticket Review Cards */}
       <div className="space-y-4">
-        {items.map(item => {
+        {visibleItems.map(item => {
           const decision = decisions[item.lineId] ?? fresh;
           const stakeNum = Number(item.stake || 0);
           const oddsNum = Number(item.odds || 0);
           const potentialNum = item.potentialPayout ? Number(item.potentialPayout) : stakeNum * oddsNum;
 
           return (
-            <section
-              key={item.lineId}
-              className="overflow-hidden rounded-2xl border border-purple-500/20 bg-gradient-to-b from-[#241239]/95 to-[#160a22]/95 shadow-xl shadow-purple-950/40 backdrop-blur-md"
-            >
-              {/* Ticket Top Bar: ID, Date & Time, User, Status */}
-              <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-purple-500/20 bg-[#2d1544]/80 px-4 py-3 sm:px-5">
+            <article key={item.lineId} className="overflow-hidden rounded-xl border border-tertiary bg-secondary/60 shadow-sm">
+              <div className="flex flex-col gap-3 border-b border-tertiary bg-primary/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="flex items-center gap-1.5 rounded-lg border border-purple-500/30 bg-[#1c0c2a] px-2.5 py-1 font-mono text-xs font-bold text-purple-200">
-                    <Ticket size={13} className="text-amber-400" />
-                    <span>Bileta #{item.ticketId.slice(0, 8).toUpperCase()}</span>
+                  <span className="inline-flex items-center gap-1.5 rounded-md border border-tertiary bg-secondary px-2.5 py-1 font-mono text-[11px] font-bold text-white">
+                    <Ticket size={13} className="text-sky-400" />
+                    #{item.ticketId.slice(0, 8).toUpperCase()}
                   </span>
-
-                  {/* DATA DHE ORA KUR ESHTE LUAJTUR */}
-                  <span className="flex items-center gap-1.5 rounded-lg border border-purple-500/30 bg-[#1c0c2a] px-2.5 py-1 text-xs font-bold text-amber-200 shadow-inner">
-                    <Calendar size={13} className="text-amber-400 shrink-0" />
-                    <Clock size={13} className="text-amber-400 shrink-0" />
-                    <span>Luajtur më: <strong>{formatDateTime(item.placedAt)}</strong></span>
+                  <span className="inline-flex items-center gap-1.5 text-[11px] text-text-secondary">
+                    <Calendar size={13} />
+                    {formatDateTime(item.placedAt)}
                   </span>
-
                   {item.username && (
-                    <span className="flex items-center gap-1 rounded-lg border border-purple-500/20 bg-purple-950/40 px-2 py-1 text-xs text-purple-200/90">
-                      <User size={13} className="text-purple-400 shrink-0" />
-                      <span>Lojtari: <strong>{item.username}</strong></span>
+                    <span className="inline-flex items-center gap-1.5 text-[11px] text-text-secondary">
+                      <User size={13} />
+                      <strong className="font-semibold text-white">{item.username}</strong>
                     </span>
                   )}
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-wider border ${
-                    item.lineStatus === 'VOID'
-                      ? 'border-rose-500/40 bg-rose-500/20 text-rose-300'
-                      : 'border-amber-500/40 bg-amber-500/20 text-amber-200'
-                  }`}>
-                    {item.lineStatus === 'VOID' ? 'E PAVLEFSHME' : 'NË PRITJE'}
-                  </span>
-                </div>
+                <span className={`w-fit rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                  item.lineStatus === 'VOID'
+                    ? 'border-rose-500/40 bg-rose-500/10 text-rose-300'
+                    : 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+                }`}>
+                  {statusText(item.lineStatus)}
+                </span>
               </div>
 
-              {/* Ticket Details Body: Match, Market & Pick, Financials */}
-              <div className="p-4 sm:p-5 space-y-4">
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                  {/* 1. NDESHJA & REZULTATI */}
-                  <div className="rounded-xl border border-purple-500/15 bg-[#1a0c28]/60 p-3.5 space-y-1.5">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-purple-300/70">Ndeshja</span>
-                    <h4 className="text-sm font-black text-white leading-snug">{item.matchName}</h4>
-                    <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-                      {item.finalScore ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 font-black text-emerald-300">
-                          Rezultati: {item.finalScore}
-                        </span>
-                      ) : (
-                        <span className="text-[11px] text-purple-300/60">Pa rezultat final nga feed-i</span>
-                      )}
-                      <span className="text-[10px] text-purple-300/50">ID: {item.matchId}</span>
+              <div className="space-y-4 p-4 sm:p-5">
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.2fr_1fr_0.8fr]">
+                  <div className="rounded-lg border border-tertiary bg-primary/50 p-3.5">
+                    <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-text-secondary">Ndeshja</div>
+                    <h3 className="text-sm font-bold leading-snug text-white">{item.matchName}</h3>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-text-secondary">
+                      <span>ID: {item.matchId}</span>
+                      <span>·</span>
+                      <span>Rezultati final: {item.finalScore ?? 'I padisponueshëm'}</span>
                     </div>
                   </div>
-
-                  {/* 2. TREGU DHE ZGJEDHJA */}
-                  <div className="rounded-xl border border-purple-500/15 bg-[#1a0c28]/60 p-3.5 space-y-1.5">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-purple-300/70">Tregu & Zgjedhja</span>
-                    <div className="text-xs text-purple-200/90 font-medium">
-                      {item.marketName} {item.marketLine}
-                    </div>
-                    <div className="flex items-center justify-between gap-2 pt-1">
-                      <span className="rounded-lg bg-purple-500/20 border border-purple-400/30 px-2.5 py-1 text-xs font-black text-white">
-                        {item.outcomeName}
-                      </span>
-                      <span className="font-mono text-sm font-black text-amber-300">
-                        @{oddsNum.toFixed(2)}
-                      </span>
+                  <div className="rounded-lg border border-tertiary bg-primary/50 p-3.5">
+                    <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-text-secondary">Tregu dhe përzgjedhja</div>
+                    <div className="text-xs font-semibold text-white">{item.marketName} {item.marketLine}</div>
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                      <span className="rounded-md border border-sky-500/25 bg-sky-500/10 px-2.5 py-1 text-xs font-bold text-sky-100">{item.outcomeName}</span>
+                      <span className="font-mono text-sm font-bold text-white">@{oddsNum.toFixed(2)}</span>
                     </div>
                   </div>
-
-                  {/* 3. FINANCAT: BASTI & FITIMI */}
-                  <div className="rounded-xl border border-purple-500/15 bg-[#1a0c28]/60 p-3.5 space-y-1.5">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-purple-300/70">Financat e Biletës</span>
-                    <div className="flex items-center justify-between text-xs text-purple-200">
-                      <span className="text-purple-300/70">Shuma e luajtur:</span>
-                      <span className="font-mono font-bold text-white">{stakeNum.toFixed(2)} Lek</span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs pt-1 border-t border-purple-500/10">
-                      <span className="text-purple-300/70">Fitimi i mundshëm:</span>
-                      <span className="font-mono font-black text-amber-300 text-sm">{potentialNum.toFixed(2)} Lek</span>
-                    </div>
+                  <div className="rounded-lg border border-tertiary bg-primary/50 p-3.5">
+                    <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-text-secondary">Financat</div>
+                    <div className="flex items-center justify-between gap-2 text-xs"><span className="text-text-secondary">Basti</span><strong className="font-mono text-white">{money(stakeNum)} Lek</strong></div>
+                    <div className="mt-2 flex items-center justify-between gap-2 border-t border-tertiary pt-2 text-xs"><span className="text-text-secondary">Fitimi i mundshëm</span><strong className="font-mono text-amber-300">{money(potentialNum)} Lek</strong></div>
                   </div>
                 </div>
 
-                {/* Arsyeja e Njoftimit / Kontrollit */}
-                <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <PlacementEvidence item={item} />
+                <MatchTimeline item={item} />
+
+                <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3.5">
                   <div className="flex items-start gap-2.5">
-                    <AlertTriangle size={18} className="text-amber-400 shrink-0 mt-0.5" />
-                    <div>
-                      <div className="text-xs font-black text-amber-200">
-                        {labels[item.reason] ?? item.reason}
-                      </div>
-                      <div className="mt-0.5 text-[11px] text-amber-300/70">
+                    <AlertTriangle size={17} className="mt-0.5 shrink-0 text-amber-400" />
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-amber-100">{labels[item.reason] ?? item.reason}</div>
+                      <div className="mt-1 text-[10px] text-text-secondary">
                         {item.notificationActive
-                          ? 'Njoftimi aktiv deri më ' + new Date(item.noticeExpiresAt).toLocaleString('sq-AL')
+                          ? 'Njoftimi aktiv deri më ' + formatDateTime(item.noticeExpiresAt)
                           : 'Njoftimi ka skaduar · Verifikimi mbetet i hapur'}
                       </div>
                       {item.conflicts && Object.keys(item.conflicts).length > 0 && (
-                        <div className="mt-1 text-[11px] font-bold text-rose-300">
-                          Statistika kontradiktore: {Object.keys(item.conflicts).join(', ')}
-                        </div>
+                        <div className="mt-1 text-[11px] font-semibold text-rose-300">Statistika kontradiktore: {Object.keys(item.conflicts).join(', ')}</div>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {/* Bottom Action Bar: Vendimi i Administratorit */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-purple-500/20">
+                <div className="flex flex-col gap-3 border-t border-tertiary pt-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-bold text-purple-200/80">Vendimi:</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        { value: 'WON', label: 'Fituese', icon: CheckCircle2, activeClass: 'border-emerald-500 bg-emerald-500/30 text-emerald-200' },
-                        { value: 'LOST', label: 'Humbëse', icon: XCircle, activeClass: 'border-rose-500 bg-rose-500/30 text-rose-200' },
-                        { value: 'VOID', label: 'E pavlefshme (Anulo)', icon: RotateCcw, activeClass: 'border-slate-400 bg-slate-500/30 text-slate-200' },
-                        { value: 'PENDING', label: 'Në pritje', icon: Clock, activeClass: 'border-amber-400 bg-amber-500/30 text-amber-200' },
-                      ].map(opt => {
-                        const isSelected = decision.status === opt.value;
-                        const Icon = opt.icon;
-                        return (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => change(item.lineId, 'status', opt.value)}
-                            className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition-all ${
-                              isSelected
-                                ? opt.activeClass + ' shadow-md'
-                                : 'border-purple-500/20 bg-[#1e0e31] text-purple-200/70 hover:bg-[#2c1545] hover:text-white'
-                            }`}
-                          >
-                            <Icon size={13} />
-                            <span>{opt.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <span className="mr-1 text-xs font-semibold text-text-secondary">Vendimi:</span>
+                    {[
+                      { value: 'WON', label: 'Fituese', icon: CheckCircle2, activeClass: 'border-emerald-500 bg-emerald-500/15 text-emerald-200' },
+                      { value: 'LOST', label: 'Humbëse', icon: XCircle, activeClass: 'border-rose-500 bg-rose-500/15 text-rose-200' },
+                      { value: 'VOID', label: 'Anulo', icon: RotateCcw, activeClass: 'border-slate-400 bg-slate-500/15 text-slate-200' },
+                      { value: 'PENDING', label: 'Në pritje', icon: Clock, activeClass: 'border-amber-400 bg-amber-500/15 text-amber-100' },
+                    ].map(option => {
+                      const selected = decision.status === option.value;
+                      const Icon = option.icon;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => change(item.lineId, 'status', option.value)}
+                          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[11px] font-semibold transition ${
+                            selected ? option.activeClass : 'border-tertiary bg-primary/60 text-text-secondary hover:bg-primary hover:text-white'
+                          }`}
+                        >
+                          <Icon size={13} />
+                          {option.label}
+                        </button>
+                      );
+                    })}
                   </div>
-
                   <button
                     type="button"
                     disabled={busy !== null}
                     onClick={() => onlyLineId ? setApproval({ item, decision: { ...decision } }) : void decide(item, decision)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 px-5 py-2 text-xs font-black text-black shadow-lg shadow-amber-950/50 hover:brightness-110 active:scale-95 disabled:opacity-40 transition-all ml-auto"
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-100 px-4 py-2.5 text-xs font-bold text-slate-950 transition hover:bg-white disabled:opacity-40 lg:ml-auto"
                   >
                     <ShieldCheck size={14} />
-                    <span>{busy === item.lineId ? 'Duke ruajtur…' : 'Ruaj Vendimin'}</span>
+                    {busy === item.lineId ? 'Duke ruajtur…' : 'Ruaj vendimin'}
                   </button>
                 </div>
               </div>
-            </section>
+            </article>
           );
         })}
       </div>
