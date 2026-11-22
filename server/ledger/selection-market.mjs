@@ -314,8 +314,7 @@ export function selectionConflict(first, second) {
   }
   // Corners are intentionally cross-combinable with every other market
   // category. Their own duplicate-market and same-total safeguards above remain.
-  if (firstCategory === secondCategory &&
-      firstCategory !== 'corners') {
+  if (firstCategory === secondCategory) {
     return {
       code: 'SAME_MARKET_CATEGORY',
       message: 'Lejohet vetëm një bast nga e njëjta kategori tregu për të njëjtën ndeshje.',
