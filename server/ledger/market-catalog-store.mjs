@@ -20,6 +20,15 @@ export async function seedNativeMarketCatalog({database=pool}={}){
  `)).rows.filter(r=>isFootballMarketName(r.native_market_name)&&
    !isExcludedOfferMarket({name:r.native_market_name,key:'zizobet:'+String(r.scope).toLowerCase()+':'+r.native_market_id}));
 
+ // Capture old unscoped/other-sport names before deleting their untrusted
+ // definitions, so their generic family rows can be removed too.
+ const staleDefinitions=(await database.query(`
+   select native_market_name from app_provider_market_definition
+    where provider_id='ZIZOBET' and scope='LIVE' and sport_id is distinct from 1
+ `)).rows;
+ const staleFamilyKeys=[...new Set(staleDefinitions
+   .map(r=>marketFamily({name:r.native_market_name})?.key).filter(Boolean))];
+
  // Old deployments archived the unscoped global LIVE dictionary. Those rows
  // have no reliable sport identity and must not leak into the football admin.
  await database.query(`delete from app_provider_market_definition
@@ -31,12 +40,11 @@ export async function seedNativeMarketCatalog({database=pool}={}){
    key:'zizobet:'+String(r.scope).toLowerCase()+':'+r.native_market_id,
    name:'['+r.scope+'] '+r.native_market_name
  }));
- const allowedKeys=new Set(rows.map(r=>r.key));
+ const allowedNativeKeys=rows.map(r=>r.key);
  const families=new Map();
  for(const r of definitions){
   const family=marketFamily({name:r.native_market_name});
   if(!family)continue;
-  allowedKeys.add(family.key);
   families.set(family.key,{key:family.key,name:family.name});
  }
  const catalogSeed=[...rows,...families.values()];
@@ -44,9 +52,14 @@ export async function seedNativeMarketCatalog({database=pool}={}){
    select key,name from jsonb_to_recordset($1::jsonb) as x(key text,name text)
    on conflict(key) do nothing`,[JSON.stringify(catalogSeed)]);
 
- // Rebuild the visible/rankable list from football-scoped provider definitions.
- // Keep existing enabled flags and sort positions for keys that remain valid.
- await database.query('delete from app_market_catalog where not (key=any($1::text[]))',[[...allowedKeys]]);
+ // Remove unverified native-scope rows and the generic family rows that came
+ // from those old non-football definitions. Keep other observed football
+ // family keys so dynamic native offers retain their saved order.
+ await database.query(`delete from app_market_catalog
+   where (key like 'zizobet:live:%' or key like 'zizobet:prematch:%')
+     and not (key=any($1::text[]))`,[allowedNativeKeys]);
+ if(staleFamilyKeys.length)
+  await database.query('delete from app_market_catalog where key=any($1::text[])',[staleFamilyKeys]);
  const snapshot=await database.query('select key,name,enabled,sort_order from app_market_catalog');
  setCatalogRows(snapshot.rows);
  return refreshMarketCatalog({database});
