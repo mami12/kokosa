@@ -186,9 +186,12 @@ function isCornerSelection(selection) {
     selection?.marketKey, selection?.market_key, selection?.extId, selection?.ext_id,
     selection?.outcomeId, selection?.marketId, selection?.market_id
   ].filter(Boolean).join(' '));
-  return type === 'corners' || type === 'corner' ||
-    /\b(?:corners?|corner kicks?|kendore|goditje kendore)\b/.test(name) ||
-    /(?:^|\s)(?:g|zz)?corners?(?:\s|$)/.test(native);
+  // Provider market types/keys are inconsistent: some use values such as
+  // "team_with_most_corners" or "corner_result", while others expose only
+  // a translated title. Detect the statistic across every source field.
+  const cornerEvidence = /corner|kendore|kendet|goditje kendore/;
+  return cornerEvidence.test(name) || cornerEvidence.test(type) ||
+    cornerEvidence.test(native);
 }
 
 function selectionCategory(selection) {
