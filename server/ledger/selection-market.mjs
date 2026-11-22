@@ -176,6 +176,18 @@ function selectionMetric(selection) {
 }
 
 /** Match the sportsbook's visible category taxonomy using untouched provider names. */
+function isCornerSelection(selection) {
+  const name = normalizedSelectionText(selectionMarketName(selection));
+  const type = normalizedSelectionText(selection?.marketType ?? selection?.market_type);
+  const native = normalizedSelectionText([
+    selection?.marketKey, selection?.market_key, selection?.extId, selection?.ext_id,
+    selection?.outcomeId, selection?.marketId, selection?.market_id
+  ].filter(Boolean).join(' '));
+  return type === 'corners' || type === 'corner' ||
+    /\b(?:corners?|corner kicks?|kendore|goditje kendore)\b/.test(name) ||
+    /(?:^|\s)(?:g|zz)?corners?(?:\s|$)/.test(native);
+}
+
 function selectionCategory(selection) {
   const name = normalizedSelectionText(selectionMarketName(selection));
   const type = normalizedSelectionText(selection?.marketType ?? selection?.market_type);
@@ -326,8 +338,11 @@ export function selectionConflict(first, second) {
 
   const firstMetric = selectionMetric(first);
   const secondMetric = selectionMetric(second);
+  const firstIsCorners = isCornerSelection(first);
+  const secondIsCorners = isCornerSelection(second);
   if (samePeriod && firstMetric && firstMetric === secondMetric &&
-      isOverUnderChoice(first) && isOverUnderChoice(second)) {
+      isOverUnderChoice(first) && isOverUnderChoice(second) &&
+      !(firstIsCorners !== secondIsCorners)) {
     return { code: 'SAME_TOTAL_FAMILY', message: 'Lejohet vetëm një kuotë Over/Under për të njëjtën statistikë dhe pjesë të ndeshjes.' };
   }
 
@@ -345,7 +360,11 @@ export function selectionConflict(first, second) {
   const secondCategory = selectionCategory(second);
   // Different market categories can be combined on the same fixture.
   // The specific Full Time Result/Goals + simple Goals exclusion is handled above.
-  if (firstCategory === secondCategory) {
+  // Corners are an independent category and must combine with Result,
+  // Goals, Cards, and other market families on the same fixture. Only two
+  // Corners selections conflict with each other.
+  if (firstCategory === secondCategory &&
+      !(firstIsCorners !== secondIsCorners)) {
     return {
       code: 'SAME_MARKET_CATEGORY',
       message: 'Lejohet vetëm një bast nga e njëjta kategori tregu për të njëjtën ndeshje.',
