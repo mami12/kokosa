@@ -68,6 +68,9 @@ export function buildMarkets(oddsRows,{includeRemoved=false}={}) {
       markets.set(key, {
         key: o.market_key,
         name,
+        // Preserve Zizobet's untouched offer title for client-side betslip
+        // compatibility checks. The display title can be generic (Over/Under).
+        nativeMarketName: o.native_market_name ?? o.nativeMarketName ?? null,
         line: o.line,
         column,
         period: Number(o.period ?? 0),

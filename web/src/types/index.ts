@@ -95,6 +95,8 @@ export interface Market {
   matchId: string;
   marketType: string;
   name: string;
+  /** Untouched Zizobet offer title; display names may be generic Over/Under. */
+  nativeMarketName?: string | null;
   specifier?: string;
   status: 'ACTIVE' | 'SUSPENDED' | 'SETTLED';
   sortOrder: number;
@@ -141,6 +143,8 @@ export interface BetSelection {
   /** The provider's untouched outcome code, used only to disambiguate combined labels. */
   outcomeCode?: string;
   marketName: string;
+  /** Untouched provider title used to recognize the actual market family. */
+  nativeMarketName?: string | null;
   marketType?: string;
   marketLine?: string;
   matchName: string;
