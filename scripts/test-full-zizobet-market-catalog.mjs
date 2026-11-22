@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
 import {marketIsEnabled,nativeMarketPolicyKeys} from '../server/market-catalog.mjs';
 import {refreshMarketCatalog,seedNativeMarketCatalog,assertMarketEnabled} from '../server/ledger/market-catalog-store.mjs';
+import {persistProviderMarketDefinitions} from '../server/ledger/provider-offer-archive.mjs';
 import {LEDGER_SQL} from '../server/ledger/schema.mjs';
 import {hasFinalSettlementRule} from '../server/ledger/market-settlement-preflight.mjs';
 import {gradeLine} from '../server/ledger/settler.mjs';
@@ -78,22 +79,38 @@ for(const market of ['Total Corners','Home Team Total Corners']){
   market+' decimal total must use its exact quoted threshold');
 }
 try{
- await db.exec(`create table app_provider_market_definition(
-    provider_id text not null,scope text not null,native_market_id text not null,
-    native_market_name text not null,definition jsonb not null,
-    primary key(provider_id,scope,native_market_id));`);
  await refreshMarketCatalog({initialize:true,database});
+ const archived=await persistProviderMarketDefinitions([
+  {provider:'ZIZOBET',sportId:1,scope:'LIVE',id:800,name:'Total Corners',definition:{ID:800,Name:'Total Corners'}},
+  {provider:'ZIZOBET',sportId:1,scope:'PREMATCH',id:448,name:'Match result',definition:{ID:448,Name:'Match result'}},
+  {provider:'ZIZOBET',sportId:1,scope:'PREMATCH',id:800,name:'Total Corners',definition:{ID:800,Name:'Total Corners'}},
+  {provider:'ZIZOBET',sportId:1,scope:'LIVE',id:27073,name:'1X2 (XUP)',definition:{ID:27073,Name:'1X2 (XUP)'}},
+  // Generic labels are not enough to identify a sport. These must be rejected
+  // because the global LIVE dictionary did not establish football provenance.
+  {provider:'ZIZOBET',sportId:2,scope:'LIVE',id:991,name:'Winner',definition:{ID:991,Name:'Winner'}},
+  {provider:'ZIZOBET',sportId:3,scope:'LIVE',id:992,name:'Set Winner',definition:{ID:992,Name:'Set Winner'}},
+  {provider:'ZIZOBET',scope:'LIVE',id:993,name:'Total Points',definition:{ID:993,Name:'Total Points'}}
+ ],{execute:database.query});
+ assert.equal(archived.seen,4,'only explicit Zizobet football (sport 1) definitions are persisted');
+ // Simulate rows written by the old unscoped global dictionary.
  await db.query(`insert into app_provider_market_definition
-   (provider_id,scope,native_market_id,native_market_name,definition)
-   values ('ZIZOBET','LIVE','800','Total Corners','{}'::jsonb),
-          ('ZIZOBET','PREMATCH','448','Match result','{}'::jsonb),
-          ('ZIZOBET','PREMATCH','800','Total Corners','{}'::jsonb),
-          ('ZIZOBET','LIVE','27073','1X2 (XUP)','{}'::jsonb)`);
+  (provider_id,sport_id,scope,native_market_id,native_market_name,definition)
+  values ('ZIZOBET',null,'LIVE','999','Set Winner','{}'::jsonb)`);
+ await db.query(`insert into app_market_catalog(key,name) values
+  ('zizobet:live:999','[LIVE] Set Winner'),('legacy-set-winner','Set Winner'),
+  ('legacy-points','Total Points'),('legacy-basketball-winner','Winner')`);
  const list=await seedNativeMarketCatalog({database});
  const keys=['zizobet:live:800','zizobet:prematch:448','zizobet:prematch:800'];
  for(const key of keys)assert.ok(list.find(row=>row.key===key),'Dictionary market missing: '+key);
  assert.equal(list.some(row=>row.key==='zizobet:live:27073'),false,
   'the native early-payout ID must not re-enter the admin market catalog');
+ assert.equal(list.some(row=>row.key==='zizobet:live:991'||row.key==='zizobet:live:992'),false,
+  'live market IDs from other sports cannot enter the admin catalogue');
+ assert.equal(list.some(row=>/set winner|total points/i.test(row.name)),false,
+  'stale non-football rows from the old global dictionary are removed');
+ const unscoped=(await db.query(`select native_market_id from app_provider_market_definition
+   where provider_id='ZIZOBET' and scope='LIVE' and sport_id is null`)).rows;
+ assert.equal(unscoped.length,0,'legacy unscoped live definitions are removed');
  const quoted={market_key:'zz800@e30',market_name:'Total Corners'};
  const live={service:'LIVE'},prematch={service:'PREMATCH'};
  assert.deepEqual(nativeMarketPolicyKeys(quoted,live),['zizobet:live:800']);
