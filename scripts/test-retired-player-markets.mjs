@@ -32,14 +32,14 @@ const retired=[
  'Player - red cards',
  'Player - yellow cards',
  'Total yellow cards','Total red cards','Away team to be carded',
- 'Team fouls','Total Fouls','Asian Handicap','Total Tackles','Total Saves','Total Throw-ins','Anytime Goalscorer',
+ 'Team fouls','Total Fouls','Asian Handicap','Total Tackles','Total Saves','Total Throw-ins',
+ 'Total Shots','Total Shots on Goal','Total Shots on Target','Shots on Goal','Shots on Target','Anytime Goalscorer',
 ];
 const kept=[
  'Total corners','1st half - Total corners','Race to 7 corners',
  'Corner in first 5 min. (00:00 - 04:59)',
  '1st half - Home team total corners',
- 'Total shots on goal',
-  'Double chance & 1st half both teams score',
+   'Double chance & 1st half both teams score',
  '1st / 2nd half both teams to score',
  'Halftime/Fulltime & exact goals',
  'Halftime/Fulltime correct score',

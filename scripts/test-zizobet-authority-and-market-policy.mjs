@@ -186,7 +186,7 @@ for(const market of [
  'Asian Handicap'
 ])assert.equal(isRetiredPlayerOfferMarket({market_name:market}),true,market);
 for(const market of ['Home team to score','Away team to win','Manchester United to win',
- 'Total Goals','Total Shots On Target','Full Time Result','Total Corners'])
+ 'Total Goals','Full Time Result','Total Corners'])
  assert.equal(isRetiredPlayerOfferMarket({market_name:market}),false,market+' must not be misclassified');
 
 

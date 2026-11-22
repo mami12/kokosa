@@ -105,7 +105,7 @@ const changed=toggleMarketSelection(distinct,{...distinct[0],outcomeId:'100|1x2|
 assert.equal(buildBetslipColumns(changed).columns.length,1);
 assert.deepEqual(changed.map(v=>v.outcomeId),['100|1x2||X','100|btts||Yes','101|1x2||2']);
 
-// Normal users may combine independent markets from the same fixture.
+// Normal users may combine one Corners selection with one non-Corners selection from the same fixture.
 const matchResult=pick('200|g1x2||1',{matchId:'200',marketId:'200|g1x2|',marketName:'Match Result',marketType:'1x2'});
 const doubleChance=pick('200|gdc||1X',{matchId:'200',marketId:'200|gdc|',marketName:'Double Chance'});
 const drawNoBet=pick('200|gdnb||1',{matchId:'200',marketId:'200|gdnb|',marketName:'Draw No Bet'});
@@ -238,40 +238,53 @@ assert.equal(selectionConflict(actualOddsButtonCorner, actualSecondCorner)?.code
   'Two generic Over/Under corner offers from gCorners are recognized as the same category');
 assert.equal(selectionConflict(actualOddsButtonCorner, matchTotal), null,
   'Corners remain compatible with Goals despite generic Over/Under labels');
-assert.equal(selectionConflict(matchResult,firstHalfTotal),null,
-  'Full-time result and first-half goals may be combined');
-assert.equal(selectionConflict(matchResult,sameGameCombo),null,
-  'Full-time result and Bet Builder may be combined');
-assert.equal(selectionConflict(firstHalfTotal,sameGameCombo),null,
-  'First-half goals and Bet Builder may be combined');
+assert.equal(selectionConflict(actualOddsButtonCorner, matchResult), null,
+  'A corner selection combines with 1X2 on the same match');
+assert.throws(()=>assertCompatibleSelections([matchResult, actualOddsButtonCorner, matchTotal]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS',
+  'A corner cannot be used to permit a second non-corner selection from the same match');
+assert.deepEqual(toggleCompatibleSelection([matchResult, actualOddsButtonCorner], matchTotal),
+  [matchResult, actualOddsButtonCorner],
+  'The client blocks adding a second non-corner selection after Result + Corners');
+assert.equal(selectionConflict(matchResult,firstHalfTotal)?.code,'CORNER_REQUIRED',
+  'Non-corner markets cannot combine on the same fixture');
+assert.equal(selectionConflict(matchResult,sameGameCombo)?.code,'CORNER_REQUIRED',
+  'Bet Builder cannot combine with another non-corner market on the same fixture');
+assert.equal(selectionConflict(firstHalfTotal,sameGameCombo)?.code,'CORNER_REQUIRED',
+  'Two non-corner markets remain incompatible on the same fixture');
 assert.equal(selectionConflict(matchResult,{...sameGameCombo,matchId:'201',marketId:'201|BB|template-a'}),null,
   'Main Market and Combos remain compatible when they belong to different fixtures');
-assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,firstHalfTotal]));
-assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,sameGameCombo]));
-assert.doesNotThrow(()=>assertCompatibleSelections([firstHalfTotal,sameGameCombo]));
+assert.throws(()=>assertCompatibleSelections([matchResult,firstHalfTotal]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS');
+assert.throws(()=>assertCompatibleSelections([matchResult,sameGameCombo]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS');
+assert.throws(()=>assertCompatibleSelections([firstHalfTotal,sameGameCombo]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS');
 assert.throws(()=>assertCompatibleSelections([goalOver,goalUnderAlt]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS');
-assert.equal(selectionConflict(matchResult,matchTotal),null,
-  'Full-time result and simple total goals may be combined');
+assert.equal(selectionConflict(matchResult,matchTotal)?.code,'CORNER_REQUIRED',
+  'Result and Goals cannot combine without a corner market');
 assert.equal(selectionConflict(fullTimeResultGoals,goalOver)?.code,'RESULT_GOALS_TOTAL_CONFLICT',
   'Full Time Result/Goals cannot be combined with simple Total Goals');
 assert.equal(selectionConflict(goalOver,fullTimeResultGoals)?.code,'RESULT_GOALS_TOTAL_CONFLICT',
   'The Full Time Result/Goals exclusion applies in either selection order');
-assert.equal(selectionConflict(fullTimeResultGoals,cards),null,
-  'Full Time Result/Goals can combine with Cards');
-assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,matchTotal]),
-  'Backend accepts Full Time Result + simple Goals');
-assert.doesNotThrow(()=>assertCompatibleSelections([goalOver,cards]),
-  'Backend accepts Goals + Cards');
+assert.equal(selectionConflict(fullTimeResultGoals,cards)?.code,'CORNER_REQUIRED',
+  'Two non-corner markets cannot combine, even when categories differ');
+assert.throws(()=>assertCompatibleSelections([matchResult,matchTotal]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS',
+  'Backend rejects Result + Goals without Corners');
+assert.throws(()=>assertCompatibleSelections([goalOver,cards]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS',
+  'Backend rejects Goals + Cards without Corners');
 assert.throws(()=>assertCompatibleSelections([fullTimeResultGoals,goalOver]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS'&&error.conflictCode==='RESULT_GOALS_TOTAL_CONFLICT',
   'Backend rejects only the Full Time Result/Goals + simple Goals pair');
 assert.deepEqual(toggleCompatibleSelection([fullTimeResultGoals],goalOver),[fullTimeResultGoals],
   'Player betslip refuses Full Time Result/Goals + simple Goals');
-assert.equal(selectionConflict(goalOver,cards),null,
-  'Goals and cards may be combined without Corners');
-assert.equal(selectionConflict(sameGameCombo,goalOver),null,
-  'Bet Builder and goals may be combined');
+assert.equal(selectionConflict(goalOver,cards)?.code,'CORNER_REQUIRED',
+  'Goals and Cards cannot combine without Corners');
+assert.equal(selectionConflict(sameGameCombo,goalOver)?.code,'CORNER_REQUIRED',
+  'Bet Builder and Goals cannot combine without Corners');
 assert.equal(selectionConflict(sameGameCombo,corners),null,
   'Bet Builder can combine with Corners');
 assert.equal(selectionConflict(firstHalfTotal,corners),null,
@@ -321,11 +334,11 @@ assert.throws(()=>assertCompatibleSelections([resolvedUnder,resolvedFirstGoal]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS');
 
 const bttsNo=pick('200|gBtts||No',{matchId:'200',marketId:'200|gBtts|',marketName:'Both Teams To Score',outcomeName:'No',matchSnapshot:prematch});
-assert.equal(selectionConflict(underHalf,bttsNo),null,
-  'BTTS No is not treated as the same contract as no goal');
+assert.equal(selectionConflict(underHalf,bttsNo)?.code,'CORNER_REQUIRED',
+  'Distinct non-corner markets still cannot combine on the same fixture');
 const liveNoFirstGoal={...noFirstGoal,matchSnapshot:{status:'LIVE'}};
-assert.equal(selectionConflict(underHalf,liveNoFirstGoal),null,
-  'A live no-next-goal quote is not mistaken for a prematch 0:0 contract');
+assert.equal(selectionConflict(underHalf,liveNoFirstGoal)?.code,'CORNER_REQUIRED',
+  'Two non-corner selections remain blocked even when their scenarios differ');
 
 assert.equal(selectionConflict(matchResult,otherFixture),null);
 assert.deepEqual(toggleCompatibleSelection([matchResult],matchResult),[],

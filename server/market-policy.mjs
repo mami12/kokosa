@@ -33,7 +33,7 @@ const hasPlayerParameter=market=>{
 const isCorner=title=>/\b(?:corners?|kendore|korne)\b/i.test(title);
 const PLAYER_WORDS=/\b(?:player|players|goalscorer|goal scorer|top scorer|scorer|assist|assists|goalkeeper|goal keeper|lojtar\w*|shenues\w*|asist\w*)\b|\{pl\}/i;
 const NAMED_PLAYER=/^[\p{L}][\p{L}'-]{1,35},\s*[\p{L}][\p{L}'-]{1,35}/u;
-const UNSUPPORTED_STATS=/\b(?:fouls?|faull\w*|cards?|karton\w*|carded|booked|bookings?|sent\s+off|tackles?|nderhyrje\w*|throw[ -]?ins?|rivenie\w*|saves?|pritje\w*)\b/i;
+const UNSUPPORTED_STATS=/\b(?:fouls?|faull\w*|shots?|cards?|karton\w*|carded|booked|bookings?|sent\s+off|tackles?|nderhyrje\w*|throw[ -]?ins?|rivenie\w*|saves?|pritje\w*)\b/i;
 export function isPlayerOfferMarket(market){
  if(!market)return false;
  const builder=market?.builder_legs??market?.builderLegs??
