@@ -188,6 +188,15 @@ for (const other of [matchResult, matchTotal, cards, firstHalfTotal, sameGameCom
 }
 assert.notEqual(selectionConflict(actualOddsButtonCorner, cornersUnder), null,
   'A second corner market in the same fixture remains blocked');
+const actualSecondCorner = pick('200|gCorners|5.5|Under', {
+  matchId:'200', marketId:'another-local-market-id',
+  marketName:'Over/Under', marketType:'over_under',
+  marketLine:'5.5', outcomeName:'Under 5.5'
+});
+assert.equal(selectionConflict(actualOddsButtonCorner, actualSecondCorner)?.code, 'SAME_MARKET_CATEGORY',
+  'Two generic Over/Under corner offers from gCorners are recognized as the same category');
+assert.equal(selectionConflict(actualOddsButtonCorner, matchTotal), null,
+  'Corners remain compatible with Goals despite generic Over/Under labels');
 assert.equal(selectionConflict(matchResult,firstHalfTotal),null,
   'Full-time result and first-half goals may be combined');
 assert.equal(selectionConflict(matchResult,sameGameCombo),null,
