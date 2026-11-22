@@ -61,12 +61,25 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   void Promise.resolve().then(()=>onMarketDefinitions(definitions))
    .catch(e=>console.warn('[zizobet] football market catalog archive:',e.message));
  };
+ const quoteMarketName=quote=>{
+  const nested=quote?.market&&typeof quote.market==='object'?quote.market:{};
+  const value=quote?.marketName??quote?.market_name??quote?.marketTitle??quote?.market_title??
+   quote?.mn??nested.Name??nested.name??nested.nm;
+  return typeof value==='string'?String(value).trim():'';
+ };
  const rememberFootballLiveMarkets=quotes=>{
   let changed=false;
   for(const quote of quotes??[]){
    const id=Number(quote?.mid??quote?.marketId??quote?.market_id);
    if(!Number.isSafeInteger(id)||id<=0)continue;
-   const definition=meta.liveMarkets.get(id);
+   let definition=meta.liveMarkets.get(id);
+   // A football quote can carry its own title even when the shared dictionary
+   // omitted this market ID. Hydrate the per-match definition from that native
+   // title so the offer can be normalized and archived instead of discarded.
+   if(!definition){
+    const name=quoteMarketName(quote);
+    if(name){definition={ID:id,Name:name};meta.liveMarkets.set(id,definition);}
+   }
    if(!definition)continue;
    const previous=footballLiveMarkets.get(id);
    if(!previous||JSON.stringify(previous)!==JSON.stringify(definition)){
@@ -75,7 +88,29 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   }
   return changed;
  };
- const mainQuotes=(quotes,live)=>(quotes??[]).filter(q=>{const id=Number(q.mid),def=(live?meta.liveMarkets:meta.preMarkets).get(id);const name=(live&&id===602)||(!live&&id===448)?'Full Time Result':(live&&id===603)||(!live&&id===537)?'Total Goals':def?.Name??def?.name??def?.nm??'';return isBoardOddsRow({market_name:name,period:/\b(?:half|period)\b/i.test(name)?1:0});});
+ const mainQuotes=(quotes,live)=>(quotes??[]).filter(q=>{
+  const id=Number(q.mid??q.marketId??q.market_id),def=(live?meta.liveMarkets:meta.preMarkets).get(id);
+  const name=(live&&id===602)||(!live&&id===448)?'Full Time Result':
+   (live&&id===603)||(!live&&id===537)?'Total Goals':
+   def?.Name??def?.name??def?.nm??quoteMarketName(q);
+  return isBoardOddsRow({market_name:name,period:/\b(?:half|period)\b/i.test(name)?1:0});
+ });
+ const normalizeQuotes=(row,list,live,open,{full=false}={})=>{
+  const diagnostics={};
+  const normalized=oddsOf(row,list,meta,live,open,diagnostics);
+  if(full&&['missingMarketId','missingMarketDefinition','missingMarketName','missingOutcomeLabel','missingOutcomeId'].some(key=>diagnostics[key])){
+   console.warn('[zizobet] full market snapshot contains quotes without enough native metadata',{
+    matchId:row.match_id,service:live?'LIVE':'PREMATCH',rawQuotes:diagnostics.rawQuotes??0,
+    normalizedRows:diagnostics.normalizedRows??0,
+    missingMarketId:diagnostics.missingMarketId??0,
+    missingMarketDefinition:diagnostics.missingMarketDefinition??0,
+    missingMarketName:diagnostics.missingMarketName??0,
+    missingOutcomeLabel:diagnostics.missingOutcomeLabel??0,
+    missingOutcomeId:diagnostics.missingOutcomeId??0
+   });
+  }
+  return normalized;
+ };
  async function publish(row,game,rows,{complete=false,startedAt=++revision}={}){
   if(startedAt<(versions.get(row.match_id)??0))return;versions.set(row.match_id,startedAt);
   const entry=games.get(Number(row.raw?.nativeId));
@@ -261,10 +296,10 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
      void collectEventEvidence(row,{...data,Match:game},{
        observedAt:sampledAt,factsPersisted:archiveFactsPersisted
      }).catch(()=>{});
-    await queue(async()=>{const published=await publish(row,game,historyOnly?[]:oddsOf(row,full?data.gmk:mainQuotes(data.gmk,true),meta,true,infoOf(row,game,meta).hasOpenOdds!==false&&row.status!=='ended'),{complete:historyOnly?false:full,startedAt});if(startedAt>=(versions.get(row.match_id)??0)){const promoted=!entry.live;entry.live=true;entry.row=published??row;entry.raw=game;entry.verifiedAt=now();transitions.delete(Number(id));delete entry.transitionAt;if(full&&!historyOnly&&Array.isArray(data.gmk))fullObserved.set(Number(id),now());if(promoted){const ids=liveIds();state.live=ids.length;mqtt?.setLiveIds(ids);await onCycle?.(state);}}});
+    await queue(async()=>{const published=await publish(row,game,historyOnly?[]:normalizeQuotes(row,full?data.gmk:mainQuotes(data.gmk,true),true,infoOf(row,game,meta).hasOpenOdds!==false&&row.status!=='ended',{full}),{complete:historyOnly?false:full,startedAt});if(startedAt>=(versions.get(row.match_id)??0)){const promoted=!entry.live;entry.live=true;entry.row=published??row;entry.raw=game;entry.verifiedAt=now();transitions.delete(Number(id));delete entry.transitionAt;if(full&&!historyOnly&&Array.isArray(data.gmk))fullObserved.set(Number(id),now());if(promoted){const ids=liveIds();state.live=ids.length;mqtt?.setLiveIds(ids);await onCycle?.(state);}}});
    }else{const result=await request(META+'prematch/getprematchgamefull/319/'+Number(id));const g=decode(result?.game);if(Number(g?.id)!==Number(id))throw Error('Zizobet prematch identity mismatch');
     const quotes=[];for(const[mid,list]of Object.entries(g.ev??{}))for(const[id,q]of Object.entries(list??{}))quotes.push({...q,id,mid});const disabled=new Set((Array.isArray(result.disableMarkets)?result.disableMarkets:[]).map(Number));
-    await queue(async()=>{const current=games.get(Number(id));if(current?.live||transitions.has(Number(id)))return;await publish(current?.row??entry.row,g,oddsOf(current?.row??entry.row,(full?quotes:mainQuotes(quotes,false)).filter(q=>!disabled.has(Number(q.mid))),meta,false,infoOf(current?.row??entry.row,g,meta).hasOpenOdds!==false),{complete:full,startedAt});if(full)fullObserved.set(Number(id),now());});
+    await queue(async()=>{const current=games.get(Number(id));if(current?.live||transitions.has(Number(id)))return;await publish(current?.row??entry.row,g,normalizeQuotes(current?.row??entry.row,(full?quotes:mainQuotes(quotes,false)).filter(q=>!disabled.has(Number(q.mid??q.marketId??q.market_id))),false,infoOf(current?.row??entry.row,g,meta).hasOpenOdds!==false,{full}),{complete:full,startedAt});if(full)fullObserved.set(Number(id),now());});
    }
   })().finally(()=>inflight.delete(Number(id)));inflight.set(Number(id),task);return task;
  }
