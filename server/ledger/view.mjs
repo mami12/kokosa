@@ -183,6 +183,8 @@ export function toClientMatch(m) {
       extId: String(mk.key),
       marketType: MARKET_TYPE_BY_COLUMN[mk.column] ?? 'OTHER',
       name: mk.name ?? mk.column ?? 'Market',
+      // Preserve the provider's untouched offer title for client betslip rules.
+      nativeMarketName: mk.nativeMarketName ?? null,
       specifier: line === '' ? undefined : String(line),
       line: String(line),
       status: mk.suspended || matchSuspended || marketOverride?.suspended ? 'SUSPENDED' : 'ACTIVE',
