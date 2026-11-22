@@ -134,6 +134,9 @@ export interface BetSelection {
   outcomeId: string;
   matchId: string;
   marketId: string;
+  /** Original provider market key (e.g. gCorners), required for category rules. */
+  extId?: string;
+  marketKey?: string;
   outcomeName: string;
   /** The provider's untouched outcome code, used only to disambiguate combined labels. */
   outcomeCode?: string;
