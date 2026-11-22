@@ -178,7 +178,8 @@ function selectionCategory(selection) {
   const marketKey = normalizedSelectionText(selection?.marketKey ?? selection?.market_key ?? '');
   const marketId = normalizedSelectionText(selection?.marketId ?? selection?.market_id ?? '');
   const categoryText = [name, marketKey, marketId].join(' ');
-  if (/\b(?:bet builder|same game combo|combo)\b/.test(name)) return 'mixed';
+  if (/\b(?:bet builder|same game combo|combo)\b/.test(name)) return 'builder';
+  if (/\bfull\s*time\s*result\s+goals\b|\bfulltime\s+result\s+goals\b/.test(name)) return 'result_goals';
   // Zizobet can label corner totals as generic Over/Under markets. Inspect
   // native market identifiers as well as the visible title before classifying.
   if (type === 'corners' || /\b(?:g|zz)?corners?\b|\bcorner kicks?\b/.test(categoryText)) return 'corners';
@@ -207,6 +208,20 @@ function isResultFamily(selection) {
       /\b(?:correct score|result btts|result and btts|result plus btts)\b/.test(name)) return false;
   return /\b(?:1x2|match result|full time result|match winner|winner|double chance|draw no bet|moneyline)\b/.test(name) ||
     normalizedSelectionText(selection?.marketType ?? selection?.market_type) === '1x2';
+}
+
+function isFullTimeResultGoalsMarket(selection) {
+  const name = normalizedSelectionText(selectionMarketName(selection));
+  return /\bfull\s*time\s*result\s+goals\b|\bfulltime\s+result\s+goals\b/.test(name);
+}
+
+function isSimpleGoalsTotal(selection) {
+  const name = normalizedSelectionText(selectionMarketName(selection));
+  return !isFullTimeResultGoalsMarket(selection) &&
+    selectionMetric(selection) === 'goals' &&
+    isOverUnderChoice(selection) &&
+    selectionCategory(selection) === 'goals' &&
+    !/\b(?:1st|first|2nd|second)\s+half\b/.test(name);
 }
 
 function isCorrectScoreFamily(selection) {
@@ -275,6 +290,14 @@ export function selectionConflict(first, second) {
     return { code: 'SAME_MARKET_GROUP', message: 'Lejohet vetëm një zgjedhje nga i njëjti treg.' };
   }
 
+  if ((isFullTimeResultGoalsMarket(first) && isSimpleGoalsTotal(second)) ||
+      (isFullTimeResultGoalsMarket(second) && isSimpleGoalsTotal(first))) {
+    return {
+      code: 'RESULT_GOALS_TOTAL_CONFLICT',
+      message: 'Full Time Result/Goals nuk mund të kombinohet me tregun e thjeshtë Goals për të njëjtën ndeshje.',
+    };
+  }
+
   if ((isResultFamily(first) && isResultFamily(second)) ||
       (isCorrectScoreFamily(first) && isCorrectScoreFamily(second))) {
     return { code: 'RESULT_FAMILY', message: 'Rezultati, Double Chance, DNB dhe Correct Score nuk mund të kombinohen për të njëjtën ndeshje.' };
@@ -303,30 +326,12 @@ export function selectionConflict(first, second) {
   // contract checks above, preserving their clearer error messages.
   const firstCategory = selectionCategory(first);
   const secondCategory = selectionCategory(second);
-  const restrictedCoreCategories = new Set(['main', 'htft', 'mixed']);
-  if (firstCategory !== secondCategory &&
-      restrictedCoreCategories.has(firstCategory) &&
-      restrictedCoreCategories.has(secondCategory)) {
-    return {
-      code: 'MAIN_PERIOD_COMBO',
-      message: 'Main Market, Periods dhe Combos nuk mund të kombinohen me njëri-tjetrin në të njëjtën ndeshje.',
-    };
-  }
-  // Corners are intentionally cross-combinable with every other market
-  // category. Their own duplicate-market and same-total safeguards above remain.
+  // Different market categories can be combined on the same fixture.
+  // The specific Full Time Result/Goals + simple Goals exclusion is handled above.
   if (firstCategory === secondCategory) {
     return {
       code: 'SAME_MARKET_CATEGORY',
       message: 'Lejohet vetëm një bast nga e njëjta kategori tregu për të njëjtën ndeshje.',
-    };
-  }
-  // Same-fixture combinations are restricted to Corners paired with one
-  // other market. Goals, results, periods, cards, builders and other
-  // non-corner markets cannot be combined with one another.
-  if (firstCategory !== 'corners' && secondCategory !== 'corners') {
-    return {
-      code: 'ONLY_CORNERS_COMBINABLE',
-      message: 'Në të njëjtën ndeshje mund të kombinosh vetëm Kornerat me një treg tjetër. Tregjet e tjera nuk kombinohen me njëri-tjetrin.',
     };
   }
   return null;
