@@ -95,10 +95,12 @@ try{
  // Simulate rows written by the old unscoped global dictionary.
  await db.query(`insert into app_provider_market_definition
   (provider_id,sport_id,scope,native_market_id,native_market_name,definition)
-  values ('ZIZOBET',null,'LIVE','999','Set Winner','{}'::jsonb)`);
+  values ('ZIZOBET',null,'LIVE','999','Set Winner','{}'::jsonb),
+         ('ZIZOBET',2,'LIVE','991','Winner','{}'::jsonb),
+         ('ZIZOBET',3,'LIVE','992','Total Points','{}'::jsonb)`);
  await db.query(`insert into app_market_catalog(key,name) values
-  ('zizobet:live:999','[LIVE] Set Winner'),('legacy-set-winner','Set Winner'),
-  ('legacy-points','Total Points'),('legacy-basketball-winner','Winner')`);
+  ('zizobet:live:999','[LIVE] Set Winner'),('set winner','Set Winner'),
+  ('total points','Total Points'),('winner','Winner')`);
  const list=await seedNativeMarketCatalog({database});
  const keys=['zizobet:live:800','zizobet:prematch:448','zizobet:prematch:800'];
  for(const key of keys)assert.ok(list.find(row=>row.key===key),'Dictionary market missing: '+key);
