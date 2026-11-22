@@ -105,7 +105,7 @@ const changed=toggleMarketSelection(distinct,{...distinct[0],outcomeId:'100|1x2|
 assert.equal(buildBetslipColumns(changed).columns.length,1);
 assert.deepEqual(changed.map(v=>v.outcomeId),['100|1x2||X','100|btts||Yes','101|1x2||2']);
 
-// Normal users may combine independent markets from the same fixture.
+// Normal users may combine one Corners selection with one non-Corners selection from the same fixture.
 const matchResult=pick('200|g1x2||1',{matchId:'200',marketId:'200|g1x2|',marketName:'Match Result',marketType:'1x2'});
 const doubleChance=pick('200|gdc||1X',{matchId:'200',marketId:'200|gdc|',marketName:'Double Chance'});
 const drawNoBet=pick('200|gdnb||1',{matchId:'200',marketId:'200|gdnb|',marketName:'Draw No Bet'});
