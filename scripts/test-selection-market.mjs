@@ -208,6 +208,24 @@ const genericallyNamedCorners = pick('200|zzCorners@total|2.5|Over', {
 });
 assert.equal(selectionConflict(matchResult,genericallyNamedCorners),null,
   'Native corner market key identifies a generic Over/Under title as Corners');
+// The canonical server resolver keeps the generic display title in
+// marketName and the actual Zizobet title in nativeMarketName. Native title
+// evidence must win even when the display title is generic.
+const resolvedZizobetCorner = pick('200|zz901@total|5.5|Over', {
+  matchId:'200', marketKey:'zz901@total', marketId:'200|zz901@total|5.5',
+  marketName:'Over/Under', marketType:'over_under',
+  nativeMarketName:'Total Corners Over/Under', nativeMarketId:'901'
+});
+const resolvedNonCornerSameGroup = pick('200|zz901@total|5.5|Yes', {
+  matchId:'200', marketKey:'zz901@total', marketId:'200|zz901@total|5.5',
+  marketName:'Correct Score', marketType:'other'
+});
+assert.equal(selectionConflict(resolvedZizobetCorner, resolvedNonCornerSameGroup), null,
+  'Resolved native Corners title is recognized despite generic display marketName');
+assert.equal(selectionConflict(resolvedNonCornerSameGroup, resolvedZizobetCorner), null,
+  'Resolved native Corners title works in either selection order');
+assert.doesNotThrow(()=>assertDistinctSelectionMarkets([resolvedZizobetCorner, resolvedNonCornerSameGroup]),
+  'Native Corners title bypasses duplicate market identity guard');
 // This mirrors the exact object built by OddsButton: marketKey/extId are not
 // sent to the betslip, so category detection must read the native key in outcomeId.
 const actualOddsButtonCorner = pick('200|gCorners|2.5|Over', {
