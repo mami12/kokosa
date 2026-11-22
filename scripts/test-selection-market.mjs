@@ -214,10 +214,23 @@ assert.equal(selectionConflict(firstHalfTotal,corners),null,
 assert.equal(selectionConflict(matchTotal,corners),null,
   'Full-time goals can combine with Corners');
 const firstHalfGoals={...goalUnderAlt,outcomeId:'200|gGoals1h|1.5|Under',marketId:'200|gGoals1h|1.5',marketName:'1st Half Total Goals',marketLine:'1.5',period:1};
-assert.equal(selectionConflict(goalOver,firstHalfGoals),null,
-  'Full-time Goals and first-half Goals may be combined because they are different periods');
-assert.doesNotThrow(()=>assertCompatibleSelections([goalOver,firstHalfGoals]),
-  'Backend accepts Goals totals from different match periods');
+assert.equal(selectionConflict(goalOver,firstHalfGoals)?.code,'SAME_MARKET_CATEGORY',
+  'Full-time Goals and first-half Goals cannot be combined');
+assert.throws(()=>assertCompatibleSelections([goalOver,firstHalfGoals]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS',
+  'Backend rejects full-time Goals + first-half Goals');
+const secondHalfGoals={...goalUnderAlt,outcomeId:'200|gGoals2h|1.5|Under',marketId:'200|gGoals2h|1.5',marketName:'2nd Half Total Goals',marketLine:'1.5',period:2};
+assert.equal(selectionConflict(goalOver,secondHalfGoals)?.code,'SAME_MARKET_CATEGORY',
+  'Full-time Goals and second-half Goals cannot be combined');
+const homeTeamGoals=pick('200|gHomeGoals|1.5|Over',{matchId:'200',marketId:'200|gHomeGoals|1.5',marketKey:'gHomeGoals',marketName:'Home Team Total Goals',marketType:'over_under',marketLine:'1.5',outcomeName:'Over 1.5'});
+const awayTeamGoals=pick('200|gAwayGoals|1.5|Over',{matchId:'200',marketId:'200|gAwayGoals|1.5',marketKey:'gAwayGoals',marketName:'Away Team Total Goals',marketType:'over_under',marketLine:'1.5',outcomeName:'Over 1.5'});
+assert.equal(selectionConflict(homeTeamGoals,awayTeamGoals)?.code,'SAME_MARKET_CATEGORY',
+  'Home Team Goals and Away Team Goals cannot be combined');
+assert.equal(selectionConflict(goalOver,homeTeamGoals)?.code,'SAME_MARKET_CATEGORY',
+  'Simple Total Goals and Home Team Goals cannot be combined');
+assert.throws(()=>assertCompatibleSelections([homeTeamGoals,awayTeamGoals]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS',
+  'Backend rejects Home Team Goals + Away Team Goals');
 
 const correctScore=pick('200|gCorrectScore||0:0',{matchId:'200',marketId:'200|gCorrectScore|',marketName:'Correct Score',outcomeName:'0:0'});
 assert.equal(selectionConflict(matchResult,correctScore)?.code,'RESULT_CORRELATION',
