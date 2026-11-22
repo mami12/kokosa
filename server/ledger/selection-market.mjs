@@ -156,6 +156,9 @@ const selectionPeriodScope = selection => {
 function selectionMetric(selection) {
   const name = normalizedSelectionText(selectionMarketName(selection));
   const type = normalizedSelectionText(selection?.marketType ?? selection?.market_type);
+  const marketKey = normalizedSelectionText(selection?.marketKey ?? selection?.market_key ?? '');
+  const marketId = normalizedSelectionText(selection?.marketId ?? selection?.market_id ?? '');
+  const marketText = [name, marketKey, marketId].join(' ');
   if (/\b(?:bet builder|same game combo|combo)\b/.test(name)) return null;
   if (/\b(?:corners?|corner kicks?)\b/.test(name) || type === 'corners' || type === 'corner') return 'corners';
   if (/\b(?:cards?|bookings?|yellow card|red card|disciplin)\b/.test(name) ||
@@ -167,6 +170,7 @@ function selectionMetric(selection) {
   if (/\b(?:throw ins?|throw ins)\b/.test(name) || type === 'throw_ins') return 'throw_ins';
   if (/\b(?:saves?|goalkeeper saves?)\b/.test(name) || type === 'saves') return 'saves';
   if (/\b(?:goals?|goal total)\b/.test(name) ||
+      /(?:^|\s)(?:g|zz)?(?:home|away|total)?goals?(?:1h|2h|p1|p2)?(?:\s|$)/.test(marketText) ||
       ['goals','goal','total_goals'].includes(type)) return 'goals';
   return null;
 }
@@ -186,6 +190,10 @@ function selectionCategory(selection) {
   if (type === 'cards' || /\bcards?\b|\bbookings?\b|yellow card|red card|disciplin/.test(categoryText)) return 'other';
   if (/\bplayers?\b|goalscorer|scorer|to be booked|player shots?/.test(categoryText)) return 'other';
   if (/\b(?:result|winner|1x2)\b.*\b(?:total|goals|btts|both teams)\b|\b(?:total|goals|btts)\b.*\b(?:both teams|btts)\b/.test(name)) return 'mixed';
+  // All Goals markets share one fixture-level category, including full-time,
+  // first/second-half, and home/away team goal totals. Period labels do not
+  // make these separate combinable categories.
+  if (selectionMetric(selection) === 'goals') return 'goals';
   if (/halftime\s*\/?\s*fulltime|half\s*time\s*\/\s*full\s*time|ht\s*\/\s*ft|\b(?:1st|2nd|first|second)\s+half\b|\bperiod\b/.test(name) ||
       Number(selection?.period ?? selection?.providerPeriod ?? 0) === 1 ||
       Number(selection?.period ?? selection?.providerPeriod ?? 0) === 2) return 'htft';
