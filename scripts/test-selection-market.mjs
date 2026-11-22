@@ -213,6 +213,22 @@ for (const status of ['LIVE','PREMATCH']) {
  assert.equal(selectionConflict(extIdCorner, actualOddsButtonCorner)?.code, 'SAME_MARKET_CATEGORY',
   `A second Corners selection remains blocked for ${status}`);
 }
+// Corners must remain combinable with all distinct market categories
+// for both live and prematch selections, even when the visible label is generic.
+for (const status of ['LIVE','PREMATCH']) {
+ const resultPick = {...matchResult, matchSnapshot:{status}};
+ const cornerPick = pick(`200|local-corner-${status}|10.5|Over`, {
+  matchId:'200', marketId:`local-corner-${status}`, extId:'gCorners',
+  marketKey:'gCorners', marketName:'Over/Under', marketType:'over_under',
+  marketLine:'10.5', outcomeName:'Over 10.5', matchSnapshot:{status}
+ });
+ assert.equal(selectionConflict(resultPick, cornerPick), null,
+  `Result + Corners are compatible in ${status}`);
+ assert.equal(selectionConflict(cornerPick, matchTotal), null,
+  `Corners + Goals are compatible in ${status}`);
+ assert.equal(selectionConflict(cornerPick, cards), null,
+  `Corners + Cards are compatible in ${status}`);
+}
 const actualSecondCorner = pick('200|gCorners|5.5|Under', {
   matchId:'200', marketId:'another-local-market-id',
   marketName:'Over/Under', marketType:'over_under',
