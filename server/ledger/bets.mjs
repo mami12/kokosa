@@ -1021,11 +1021,13 @@ export async function placeBet({ user, stake, selections = [], ticketType = null
   }
 
   const type = ticketTypeForSelectionCount(ticketType, selections.length);
-  // Admins retain their existing provider-market rule. Other users may combine
-  // independent markets from the same fixture, but not correlated selections.
-  // The same rule runs again on canonical rows returned by the server-side resolver.
-  const assertSlipRule = user?.role === 'ADMIN' ? assertDistinctSelectionMarkets : assertCompatibleSelections;
-  assertSlipRule(selections);
+  // Admins retain their existing provider-market rule on the submitted
+  // selections. For normal users, outcomeId-only client payloads do not carry
+  // authoritative provider market names, so compatibility MUST be checked
+  // only after resolve() returns the canonical Zizobet offer metadata.
+  const isAdmin = user?.role === 'ADMIN';
+  const assertSlipRule = isAdmin ? assertDistinctSelectionMarkets : assertCompatibleSelections;
+  if (isAdmin) assertSlipRule(selections);
   // Independent odds checks can be awaited together instead of serially.
   const lines = (await Promise.all(selections.map(resolve))).map(line => ({ ...line, price: frozenSelectionPrice(line.price) }));
 
@@ -1162,7 +1164,8 @@ return async function placeSystemColumns({ user, totalStake, stake, selections, 
   // A system is ONE logical wager, not a loophole to purchase two options
   // of the same offered market in separate financial columns. The old
   // alternative-column structure remains readable/settleable for past bets.
-  if(!allowHistoricalSystemAlternatives)assertDistinctSelectionMarkets(picks);
+  // Defer this check until picks have been resolved: raw outcome IDs do not
+  // carry native market titles, so a Corners offer may look like an opaque ID.
   const grouped = buildSystemColumns(picks, { matchIdOf: selection => {
     const builder = parseBuilderId(selection?.outcomeId);
     const parsed = builder ?? parseOutcomeId(selection?.outcomeId);
@@ -1213,8 +1216,10 @@ return async function placeSystemColumns({ user, totalStake, stake, selections, 
   })));
   // Raw outcome IDs are not authoritative. Validate every pick using market
   // names, periods and contract metadata from the resolved provider offers.
-  if(!allowHistoricalSystemAlternatives)
+  if(!allowHistoricalSystemAlternatives) {
+    assertDistinctSelectionMarkets([...linesById.values()]);
     assertCompatibleSelections([...linesById.values()]);
+  }
   const resolved = grouped.map(column => column.map(pick => linesById.get(String(pick.outcomeId))));
   resolved.forEach(assertDistinctSelectionMarkets);
   const priced = resolved.map((lines, i) => ({
