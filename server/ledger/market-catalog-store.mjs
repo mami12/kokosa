@@ -8,19 +8,47 @@ let flight,saving=0;
  * so every quoted offer can later be enabled/disabled by that native identity.
  */
 export async function seedNativeMarketCatalog({database=pool}={}){
- const rows=(await database.query(`
-   select 'zizobet:'||lower(scope)||':'||native_market_id as key,
-          '['||scope||'] '||native_market_name as name
+ // PREMATCH rows are stamped sport_id=1 because their endpoint explicitly
+ // requested football. LIVE rows are stamped only after a Sport=1 fixture
+ // actually quotes the native market ID.
+ const definitions=(await database.query(`
+   select scope,native_market_id,native_market_name
      from app_provider_market_definition
-    where provider_id='ZIZOBET' and scope in ('LIVE','PREMATCH')
+    where provider_id='ZIZOBET' and sport_id=1
+      and scope in ('LIVE','PREMATCH')
       and native_market_name is not null and trim(native_market_name)<>''
- `)).rows.filter(r=>isFootballMarketName(r.name)&&!isExcludedOfferMarket({name:r.name,key:r.key}));
+ `)).rows.filter(r=>isFootballMarketName(r.native_market_name)&&
+   !isExcludedOfferMarket({name:r.native_market_name,key:'zizobet:'+String(r.scope).toLowerCase()+':'+r.native_market_id}));
 
- if(rows.length){
-   await database.query(`insert into app_market_catalog(key,name)
-     select key,name from jsonb_to_recordset($1::jsonb) as x(key text,name text)
-     on conflict(key) do nothing`,[JSON.stringify(rows)]);
+ // Old deployments archived the unscoped global LIVE dictionary. Those rows
+ // have no reliable sport identity and must not leak into the football admin.
+ await database.query(`delete from app_provider_market_definition
+   where provider_id='ZIZOBET' and scope='LIVE' and sport_id is distinct from 1`);
+
+ if(!definitions.length)return refreshMarketCatalog({database});
+
+ const rows=definitions.map(r=>({
+   key:'zizobet:'+String(r.scope).toLowerCase()+':'+r.native_market_id,
+   name:'['+r.scope+'] '+r.native_market_name
+ }));
+ const allowedKeys=new Set(rows.map(r=>r.key));
+ const families=new Map();
+ for(const r of definitions){
+  const family=marketFamily({name:r.native_market_name});
+  if(!family)continue;
+  allowedKeys.add(family.key);
+  families.set(family.key,{key:family.key,name:family.name});
  }
+ const catalogSeed=[...rows,...families.values()];
+ await database.query(`insert into app_market_catalog(key,name)
+   select key,name from jsonb_to_recordset($1::jsonb) as x(key text,name text)
+   on conflict(key) do nothing`,[JSON.stringify(catalogSeed)]);
+
+ // Rebuild the visible/rankable list from football-scoped provider definitions.
+ // Keep existing enabled flags and sort positions for keys that remain valid.
+ await database.query('delete from app_market_catalog where not (key=any($1::text[]))',[[...allowedKeys]]);
+ const snapshot=await database.query('select key,name,enabled,sort_order from app_market_catalog');
+ setCatalogRows(snapshot.rows);
  return refreshMarketCatalog({database});
 }
 const invalid=(message,status=400)=>Object.assign(new Error(message),{status});
