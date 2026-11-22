@@ -133,8 +133,19 @@ const goalUnderAlt=pick('200|gGoals|3.5|Under',{matchId:'200',marketId:'200|gGoa
 assert.equal(selectionConflict(goalOver,goalUnderAlt)?.code,'SAME_TOTAL_FAMILY',
   'Alternate lines in the same total family are incompatible');
 const cornersUnder=pick('200|gCorners|4.5|Under',{matchId:'200',marketId:'200|gCorners|4.5',marketName:'Total Corners',marketType:'over_under',marketLine:'4.5',outcomeName:'Under 4.5'});
-assert.equal(selectionConflict(corners,cornersUnder)?.code,'SAME_TOTAL_FAMILY',
-  'Only one total-corners Over/Under quote is allowed per period');
+assert.equal(selectionConflict(corners,cornersUnder),null,
+  'Different Corners lines in the same market group can be combined');
+const raceCornersAgain=pick('200|gRaceCorners||10',{matchId:'200',marketId:'200|gRaceCorners|',marketName:'Race to 10 Corners',outcomeName:'First to 10'});
+assert.equal(selectionConflict(corners,raceCorners),null,
+  'Total Corners can combine with Race to X Corners');
+assert.equal(selectionConflict(corners,raceCornersAgain),null,
+  'Every Corners market can combine with every other Corners market');
+assert.doesNotThrow(()=>assertCompatibleSelections([corners,cornersUnder,raceCorners,raceCornersAgain]),
+  'Backend accepts multiple Corners selections from one match');
+assert.doesNotThrow(()=>assertDistinctSelectionMarkets([corners,cornersUnder]),
+  'Structural duplicate-market guard also exempts Corners selections');
+assert.deepEqual(toggleCompatibleSelection([corners],cornersUnder),[corners,cornersUnder],
+  'Client betslip accepts a second Corners market');
 const cardsUnder=pick('200|gCards|5.5|Under',{matchId:'200',marketId:'200|gCards|5.5',marketName:'Total Cards',marketType:'over_under',marketLine:'5.5',outcomeName:'Under 5.5'});
 assert.equal(selectionConflict(cards,cardsUnder)?.code,'SAME_TOTAL_FAMILY',
   'Only one total-cards Over/Under quote is allowed per period');
