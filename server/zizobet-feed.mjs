@@ -64,7 +64,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
  const quoteMarketName=quote=>{
   const nested=quote?.market&&typeof quote.market==='object'?quote.market:{};
   const value=quote?.marketName??quote?.market_name??quote?.marketTitle??quote?.market_title??
-   quote?.mn??nested.Name??nested.name??nested.nm;
+   quote?.mn??nested.Name??nested.name??nested.nm??(typeof quote?.market==='string'?quote.market:null);
   return typeof value==='string'?String(value).trim():'';
  };
  const rememberFootballLiveMarkets=quotes=>{
