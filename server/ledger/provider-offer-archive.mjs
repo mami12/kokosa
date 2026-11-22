@@ -29,12 +29,15 @@ export const PROVIDER_OFFER_ARCHIVE_SQL = [
  ' period integer not null, recorded_at timestamptz not null default now());',
  'create index if not exists app_provider_offer_change_match_idx on app_provider_offer_change(match_id,recorded_at desc);',
  'create table if not exists app_provider_market_definition (',
- ' provider_id text not null, scope text not null, native_market_id text not null,',
+ ' provider_id text not null, sport_id integer, scope text not null, native_market_id text not null,',
  ' native_market_name text not null, definition jsonb not null,',
  ' first_seen_at timestamptz not null default now(),',
  ' last_changed_at timestamptz not null default now(),',
  ' primary key(provider_id,scope,native_market_id));',
- 'create index if not exists app_provider_market_definition_name_idx on app_provider_market_definition(provider_id,scope);'
+ 'alter table app_provider_market_definition add column if not exists sport_id integer;',
+ // The old prematch dictionary endpoint was explicitly scoped to Zizobet football (sport 1).
+ "update app_provider_market_definition set sport_id=1 where provider_id='ZIZOBET' and scope='PREMATCH' and sport_id is null;",
+ 'create index if not exists app_provider_market_definition_name_idx on app_provider_market_definition(provider_id,scope,sport_id);'
 ].join('\n');
 
 const decodeNativeParameters=key=>{
@@ -134,26 +137,29 @@ export async function persistProviderMarketDefinitions(rows,{execute,chunkSize=2
  for(const source of rows??[]){
   const definition=source.definition??source.raw??{};
   const provider_id=safeText(source.provider??'ZIZOBET');
+  const sport_id=Number(source.sportId??source.sport_id);
   const scope=safeText(source.scope);
   const native_market_id=safeText(source.id??definition.ID??definition.it);
   const native_market_name=safeText(source.name??definition.Name??definition.nm);
-  if(!provider_id||!['LIVE','PREMATCH'].includes(scope)||
+  // Only dictionaries explicitly tied to Zizobet football (sport 1) may
+  // enter the admin market catalogue. The live global dictionary is unscoped.
+  if(!provider_id||sport_id!==1||!['LIVE','PREMATCH'].includes(scope)||
      !native_market_id||!native_market_name)continue;
-  const normalized={provider_id,scope,native_market_id,native_market_name,
+  const normalized={provider_id,sport_id,scope,native_market_id,native_market_name,
    definition:jsonValue(definition)??{}};
   definitions.set([provider_id,scope,native_market_id].join('|'),normalized);
  }
  const records=[...definitions.values()],step=Math.max(1,Math.min(500,Number(chunkSize)||250));
  let stored=0;
  const sql='insert into app_provider_market_definition as t '+
-  '(provider_id,scope,native_market_id,native_market_name,definition) '+
-  'select x.provider_id,x.scope,x.native_market_id,x.native_market_name,x.definition '+
+  '(provider_id,sport_id,scope,native_market_id,native_market_name,definition) '+
+  'select x.provider_id,x.sport_id,x.scope,x.native_market_id,x.native_market_name,x.definition '+
   'from jsonb_to_recordset($1::jsonb) as x('+
-  'provider_id text,scope text,native_market_id text,native_market_name text,definition jsonb) '+
+  'provider_id text,sport_id integer,scope text,native_market_id text,native_market_name text,definition jsonb) '+
   'on conflict(provider_id,scope,native_market_id) do update set '+
-  'native_market_name=excluded.native_market_name,definition=excluded.definition,last_changed_at=now() '+
-  'where (t.native_market_name,t.definition) is distinct from '+
-  '(excluded.native_market_name,excluded.definition) returning native_market_id';
+  'sport_id=excluded.sport_id,native_market_name=excluded.native_market_name,definition=excluded.definition,last_changed_at=now() '+
+  'where (t.sport_id,t.native_market_name,t.definition) is distinct from '+
+  '(excluded.sport_id,excluded.native_market_name,excluded.definition) returning native_market_id';
  for(let i=0;i<records.length;i+=step){
   const result=await execute(sql,[JSON.stringify(records.slice(i,i+step))]);
   stored+=result.rowCount??0;
