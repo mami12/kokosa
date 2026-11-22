@@ -223,7 +223,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
     if(!Array.isArray(data.gmk))historyOnly=true;if(Number(data.Match.GameID)!==Number(id))throw Error('Zizobet live identity mismatch');for(const m of data.mk??[])meta.liveMarkets.set(Number(m.ID),m);
     // A full quote grid belongs to this already-verified football fixture.
     // Intersect it with the global dictionary before admitting IDs to admin.
-    if(!historyOnly&&rememberFootballLiveMarkets(data.gmk))archiveMarketDefinitions();
+    if(Array.isArray(data.gmk)&&rememberFootballLiveMarkets(data.gmk))archiveMarketDefinitions();
     if(entry.row.status==='ended'&&Number(data.Match.EventStatus)!==40)return;
     const game={...entry.raw,...data.Match,...(Array.isArray(data.TimeLines)?{TimeLines:data.TimeLines}:{})},row={...entry.row,service:'LIVE',status:entry.row.status==='ended'||Number(game.EventStatus)===40?'ended':'live'};
     // One upstream response has one observation time, even when it feeds
