@@ -309,7 +309,7 @@ export function selectionConflict(first, second) {
 
   const firstMetric = selectionMetric(first);
   const secondMetric = selectionMetric(second);
-  if (firstMetric && firstMetric === secondMetric &&
+  if (samePeriod && firstMetric && firstMetric === secondMetric &&
       isOverUnderChoice(first) && isOverUnderChoice(second)) {
     return { code: 'SAME_TOTAL_FAMILY', message: 'Lejohet vetëm një kuotë Over/Under për të njëjtën statistikë dhe pjesë të ndeshjes.' };
   }
