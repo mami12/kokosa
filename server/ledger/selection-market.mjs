@@ -321,6 +321,15 @@ export function selectionConflict(first, second) {
       message: 'Lejohet vetëm një bast nga e njëjta kategori tregu për të njëjtën ndeshje.',
     };
   }
+  // Same-fixture combinations are restricted to Corners paired with one
+  // other market. Goals, results, periods, cards, builders and other
+  // non-corner markets cannot be combined with one another.
+  if (firstCategory !== 'corners' && secondCategory !== 'corners') {
+    return {
+      code: 'ONLY_CORNERS_COMBINABLE',
+      message: 'Në të njëjtën ndeshje mund të kombinosh vetëm Kornerat me një treg tjetër. Tregjet e tjera nuk kombinohen me njëri-tjetrin.',
+    };
+  }
   return null;
 }
 
