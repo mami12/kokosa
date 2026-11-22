@@ -30,6 +30,15 @@ const labelledPosition=oddsOf({match_id:63},[
 assert.equal(labelledPosition.length,1,'quote-native outcome labels must recover missing position definitions');
 assert.equal(labelledPosition[0].outcomeName,'Under');
 
+const liveQuote=oddsOf({match_id:66},[
+ {mid:911,id:15,market_title:'Total Corners',outcome_name:'Under',v:1.93,h:7.5}
+],emptyMeta(),true,true);
+assert.equal(liveQuote.length,1,'LIVE quotes must use native labels when their dictionary entry is missing');
+assert.equal(liveQuote[0].marketName,'Total Corners');
+assert.equal(liveQuote[0].outcomeName,'Under');
+assert.equal(liveQuote[0].price,1.93);
+assert.equal(liveQuote[0].line,'7.5');
+
 const unlabelled=oddsOf({match_id:64},[
  {mid:909,id:13,pos:1,coef:1.9}
 ],emptyMeta(),false,true);
