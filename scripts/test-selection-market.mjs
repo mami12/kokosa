@@ -194,6 +194,15 @@ assert.equal(selectionConflict(goalOver,fullTimeResultGoals)?.code,'RESULT_GOALS
   'The Full Time Result/Goals exclusion applies in either selection order');
 assert.equal(selectionConflict(fullTimeResultGoals,cards),null,
   'Full Time Result/Goals can combine with Cards');
+assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,matchTotal]),
+  'Backend accepts Full Time Result + simple Goals');
+assert.doesNotThrow(()=>assertCompatibleSelections([goalOver,cards]),
+  'Backend accepts Goals + Cards');
+assert.throws(()=>assertCompatibleSelections([fullTimeResultGoals,goalOver]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS'&&error.conflictCode==='RESULT_GOALS_TOTAL_CONFLICT',
+  'Backend rejects only the Full Time Result/Goals + simple Goals pair');
+assert.deepEqual(toggleCompatibleSelection([fullTimeResultGoals],goalOver),[fullTimeResultGoals],
+  'Player betslip refuses Full Time Result/Goals + simple Goals');
 assert.equal(selectionConflict(goalOver,cards),null,
   'Goals and cards may be combined without Corners');
 assert.equal(selectionConflict(sameGameCombo,goalOver),null,
