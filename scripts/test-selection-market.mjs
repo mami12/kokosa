@@ -198,6 +198,21 @@ assert.equal(selectionConflict(matchResult, albanianCornerTitle), null,
 const albanianSecondCorner = {...albanianCornerTitle, outcomeId:'200|local-corner-market|11.5|Under', marketLine:'11.5', outcomeName:'Poshtë'};
 assert.equal(selectionConflict(albanianCornerTitle, albanianSecondCorner)?.code, 'SAME_MARKET_CATEGORY',
   'Two Albanian corner offers remain in the same Corners category');
+// Zizobet sometimes gives the offer a local outcome ID, so OddsButton
+// must carry extId/marketKey into the selection. This applies identically
+// to live and prematch fixtures.
+for (const status of ['LIVE','PREMATCH']) {
+ const extIdCorner = pick(`200|local-outcome-${status}|10.5|Over`, {
+  matchId:'200', marketId:'local-corner-${status}', extId:'gCorners',
+  marketKey:'gCorners', marketName:'Over/Under', marketType:'over_under',
+  marketLine:'10.5', outcomeName:'Over 10.5',
+  matchSnapshot:{status}
+ });
+ assert.equal(selectionConflict(matchResult, extIdCorner), null,
+  `Result + Corners must combine for ${status}`);
+ assert.equal(selectionConflict(extIdCorner, actualOddsButtonCorner)?.code, 'SAME_MARKET_CATEGORY',
+  `A second Corners selection remains blocked for ${status}`);
+}
 const actualSecondCorner = pick('200|gCorners|5.5|Under', {
   matchId:'200', marketId:'another-local-market-id',
   marketName:'Over/Under', marketType:'over_under',
