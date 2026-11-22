@@ -181,17 +181,27 @@ function selectionMetric(selection) {
 
 /** Match the sportsbook's visible category taxonomy using untouched provider names. */
 function isCornerSelection(selection) {
-  const name = normalizedSelectionText(selectionMarketName(selection));
-  const type = normalizedSelectionText(selection?.marketType ?? selection?.market_type);
+  // Do not use nullish precedence here. The normalized display title can be
+  // generic ("Over/Under") while Zizobet's native title still identifies the
+  // actual offer as a Corners market.
+  const names = normalizedSelectionText([
+    selection?.marketName, selection?.market_name,
+    selection?.nativeMarketName, selection?.native_market_name,
+    selection?.name, selection?.title
+  ].filter(Boolean).join(' '));
+  const types = normalizedSelectionText([
+    selection?.marketType, selection?.market_type,
+    selection?.nativeMarketType, selection?.native_market_type
+  ].filter(Boolean).join(' '));
   const native = normalizedSelectionText([
     selection?.marketKey, selection?.market_key, selection?.extId, selection?.ext_id,
+    selection?.nativeMarketId, selection?.native_market_id,
     selection?.outcomeId, selection?.marketId, selection?.market_id
   ].filter(Boolean).join(' '));
-  // Provider market types/keys are inconsistent: some use values such as
-  // "team_with_most_corners" or "corner_result", while others expose only
-  // a translated title. Detect the statistic across every source field.
+  // Provider keys, native titles, and translated display titles are all
+  // independent evidence. Any one of them is sufficient to identify Corners.
   const cornerEvidence = /corner|kendore|kendet|goditje kendore/;
-  return cornerEvidence.test(name) || cornerEvidence.test(type) ||
+  return cornerEvidence.test(names) || cornerEvidence.test(types) ||
     cornerEvidence.test(native);
 }
 
