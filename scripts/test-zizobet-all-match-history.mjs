@@ -182,6 +182,8 @@ try{
   assert.equal(detailReads,2,'A header score/stat change immediately fetches a fresh TimeLines detail');
   assert.deepEqual(publishedInfos.at(-1).events.map(e=>e.type),['goal','corner']);
   assert.deepEqual(publishedInfos.at(-1).events.map(e=>e.minute),[36,37]);
+  await liveFeed.tick();
+  assert.equal(detailReads,2,'Unchanged score and incident counters do not cause another detail request');
  }finally{liveFeed.stop();await liveFeed.drain();}
 }
 
