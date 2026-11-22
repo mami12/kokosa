@@ -179,7 +179,16 @@ function selectionMetric(selection) {
 function selectionCategory(selection) {
   const name = normalizedSelectionText(selectionMarketName(selection));
   const type = normalizedSelectionText(selection?.marketType ?? selection?.market_type);
-  const marketKey = normalizedSelectionText(selection?.marketKey ?? selection?.market_key ?? '');
+  // OddsButton sends outcomeId and marketId, not marketKey/extId. Zizobet's
+  // native key (for example gCorners) is embedded in the pipe-delimited ID.
+  // Extract it explicitly; normalizing the whole ID can otherwise leave a
+  // generic "Over/Under" corner offer classified as Goals/Other.
+  const outcomeParts = String(selection?.outcomeId ?? '').split('|');
+  const marketParts = String(selection?.marketId ?? selection?.market_id ?? '').split('|');
+  const embeddedMarketKey = outcomeParts.length >= 2 ? outcomeParts[1] :
+    marketParts.length >= 2 ? marketParts[1] : '';
+  const marketKey = normalizedSelectionText(selection?.marketKey ?? selection?.market_key ??
+    selection?.extId ?? selection?.ext_id ?? embeddedMarketKey);
   const marketId = normalizedSelectionText(selection?.marketId ?? selection?.market_id ?? '');
   const categoryText = [name, marketKey, marketId].join(' ');
   if (/\b(?:bet builder|same game combo|combo)\b/.test(name)) return 'builder';
