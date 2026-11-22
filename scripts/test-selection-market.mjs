@@ -226,6 +226,8 @@ assert.equal(selectionConflict(resolvedNonCornerSameGroup, resolvedZizobetCorner
   'Resolved native Corners title works in either selection order');
 assert.doesNotThrow(()=>assertDistinctSelectionMarkets([resolvedZizobetCorner, resolvedNonCornerSameGroup]),
   'Native Corners title bypasses duplicate market identity guard');
+assert.doesNotThrow(()=>assertCompatibleSelections([resolvedZizobetCorner, resolvedNonCornerSameGroup]),
+  'Canonical resolved Corners offer bypasses all compatibility checks');
 // This mirrors the exact object built by OddsButton: marketKey/extId are not
 // sent to the betslip, so category detection must read the native key in outcomeId.
 const actualOddsButtonCorner = pick('200|gCorners|2.5|Over', {
