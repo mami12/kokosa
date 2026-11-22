@@ -110,6 +110,7 @@ const matchResult=pick('200|g1x2||1',{matchId:'200',marketId:'200|g1x2|',marketN
 const doubleChance=pick('200|gdc||1X',{matchId:'200',marketId:'200|gdc|',marketName:'Double Chance'});
 const drawNoBet=pick('200|gdnb||1',{matchId:'200',marketId:'200|gdnb|',marketName:'Draw No Bet'});
 const matchTotal=pick('200|g6379|2.5|Over',{matchId:'200',marketId:'200|g6379|2.5',marketName:'Total Goals',marketType:'over_under',marketLine:'2.5',outcomeName:'Over 2.5'});
+const fullTimeResultGoals=pick('200|gFTResultGoals||HomeOver',{matchId:'200',marketId:'200|gFTResultGoals|',marketName:'Full Time Result/Goals',marketType:'result_goals',outcomeName:'Home & Over 1.5'});
 const corners=pick('200|gCorners|2.5|Over',{matchId:'200',marketId:'200|gCorners|2.5',marketName:'Total Corners',marketType:'over_under',marketLine:'2.5',outcomeName:'Over 2.5'});
 const cards=pick('200|gCards|4.5|Over',{matchId:'200',marketId:'200|gCards|4.5',marketName:'Total Cards',marketType:'over_under',marketLine:'4.5',outcomeName:'Over 4.5'});
 const otherFixture=pick('201|g1x2||1',{matchId:'201',marketId:'201|g1x2|',marketName:'Match Result'});
@@ -172,28 +173,31 @@ assert.equal(selectionConflict(matchResult,genericallyNamedCorners),null,
   'Native corner market key identifies a generic Over/Under title as Corners');
 const firstHalfTotal=pick('200|gGoals1h|1.5|Over',{matchId:'200',marketId:'200|gGoals1h|1.5',marketName:'1st Half Total Goals',marketType:'over_under',marketLine:'1.5',outcomeName:'Over 1.5',period:1});
 const sameGameCombo=pick('200|BB|template-a',{matchId:'200',marketId:'200|BB|template-a',marketName:'Bet Builder'});
-assert.equal(selectionConflict(matchResult,firstHalfTotal)?.code,'MAIN_PERIOD_COMBO',
-  'Main Market cannot combine with a Periods selection in the same fixture');
-assert.equal(selectionConflict(matchResult,sameGameCombo)?.code,'MAIN_PERIOD_COMBO',
-  'Main Market cannot combine with a Combo in the same fixture');
-assert.equal(selectionConflict(firstHalfTotal,sameGameCombo)?.code,'MAIN_PERIOD_COMBO',
-  'Periods cannot combine with Combos in the same fixture');
+assert.equal(selectionConflict(matchResult,firstHalfTotal),null,
+  'Full-time result and first-half goals may be combined');
+assert.equal(selectionConflict(matchResult,sameGameCombo),null,
+  'Full-time result and Bet Builder may be combined');
+assert.equal(selectionConflict(firstHalfTotal,sameGameCombo),null,
+  'First-half goals and Bet Builder may be combined');
 assert.equal(selectionConflict(matchResult,{...sameGameCombo,matchId:'201',marketId:'201|BB|template-a'}),null,
   'Main Market and Combos remain compatible when they belong to different fixtures');
-assert.throws(()=>assertCompatibleSelections([matchResult,firstHalfTotal]),
-  error=>error.code==='INCOMPATIBLE_SELECTIONS'&&error.conflictCode==='MAIN_PERIOD_COMBO');
-assert.throws(()=>assertCompatibleSelections([matchResult,sameGameCombo]),
-  error=>error.code==='INCOMPATIBLE_SELECTIONS'&&error.conflictCode==='MAIN_PERIOD_COMBO');
-assert.throws(()=>assertCompatibleSelections([firstHalfTotal,sameGameCombo]),
-  error=>error.code==='INCOMPATIBLE_SELECTIONS'&&error.conflictCode==='MAIN_PERIOD_COMBO');
+assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,firstHalfTotal]));
+assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,sameGameCombo]));
+assert.doesNotThrow(()=>assertCompatibleSelections([firstHalfTotal,sameGameCombo]));
 assert.throws(()=>assertCompatibleSelections([goalOver,goalUnderAlt]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS');
-assert.equal(selectionConflict(matchResult,matchTotal)?.code,'ONLY_CORNERS_COMBINABLE',
-  'Full-time result and total goals cannot combine');
-assert.equal(selectionConflict(goalOver,cards)?.code,'ONLY_CORNERS_COMBINABLE',
-  'Goals and cards cannot combine without Corners');
-assert.equal(selectionConflict(sameGameCombo,goalOver)?.code,'ONLY_CORNERS_COMBINABLE',
-  'Bet Builder cannot combine with goals');
+assert.equal(selectionConflict(matchResult,matchTotal),null,
+  'Full-time result and simple total goals may be combined');
+assert.equal(selectionConflict(fullTimeResultGoals,goalOver)?.code,'RESULT_GOALS_TOTAL_CONFLICT',
+  'Full Time Result/Goals cannot be combined with simple Total Goals');
+assert.equal(selectionConflict(goalOver,fullTimeResultGoals)?.code,'RESULT_GOALS_TOTAL_CONFLICT',
+  'The Full Time Result/Goals exclusion applies in either selection order');
+assert.equal(selectionConflict(fullTimeResultGoals,cards),null,
+  'Full Time Result/Goals can combine with Cards');
+assert.equal(selectionConflict(goalOver,cards),null,
+  'Goals and cards may be combined without Corners');
+assert.equal(selectionConflict(sameGameCombo,goalOver),null,
+  'Bet Builder and goals may be combined');
 assert.equal(selectionConflict(sameGameCombo,corners),null,
   'Bet Builder can combine with Corners');
 assert.equal(selectionConflict(firstHalfTotal,corners),null,
@@ -201,8 +205,8 @@ assert.equal(selectionConflict(firstHalfTotal,corners),null,
 assert.equal(selectionConflict(matchTotal,corners),null,
   'Full-time goals can combine with Corners');
 const firstHalfGoals={...goalUnderAlt,outcomeId:'200|gGoals1h|1.5|Under',marketId:'200|gGoals1h|1.5',marketName:'1st Half Total Goals',marketLine:'1.5',period:1};
-assert.equal(selectionConflict(goalOver,firstHalfGoals)?.code,'ONLY_CORNERS_COMBINABLE',
-  'Full-time and first-half goal totals cannot combine without Corners');
+assert.equal(selectionConflict(goalOver,firstHalfGoals)?.code,'SAME_MARKET_CATEGORY',
+  'Only one Goals-category selection is allowed per fixture');
 
 const correctScore=pick('200|gCorrectScore||0:0',{matchId:'200',marketId:'200|gCorrectScore|',marketName:'Correct Score',outcomeName:'0:0'});
 assert.equal(selectionConflict(matchResult,correctScore)?.code,'RESULT_CORRELATION',
