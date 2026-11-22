@@ -18,7 +18,8 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   if(Array.isArray(info.periodsScore))
    signal.periodScores=info.periodsScore.map(value=>[value.t1,value.t2]);
   for(const side of ['home','away']){
-   for(const field of ['corners','yellow','red','fouls','offsides','shots','shotsOnTarget']){
+   // These are the incident types exposed in the provider TimeLines.
+   for(const field of ['corners','yellow','red','fouls']){
     const value=info.stats?.[side]?.[field];
     if(Number.isSafeInteger(value))signal['stats:'+side+':'+field]=value;
    }
@@ -32,7 +33,9 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
    if(previous[key]!==JSON.stringify(value)){changed=true;break;}
   const next={...(previous??{})};
   for(const [key,value] of Object.entries(incoming))next[key]=JSON.stringify(value);
+  headerEventSignals.delete(id);
   headerEventSignals.set(id,next);
+  if(headerEventSignals.size>3000)headerEventSignals.delete(headerEventSignals.keys().next().value);
   if(previous&&changed){
    eventRefreshIds.add(id);
    // Make a failed/immediate refresh eligible for the short retry path.
