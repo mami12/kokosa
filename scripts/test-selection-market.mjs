@@ -214,8 +214,10 @@ assert.equal(selectionConflict(firstHalfTotal,corners),null,
 assert.equal(selectionConflict(matchTotal,corners),null,
   'Full-time goals can combine with Corners');
 const firstHalfGoals={...goalUnderAlt,outcomeId:'200|gGoals1h|1.5|Under',marketId:'200|gGoals1h|1.5',marketName:'1st Half Total Goals',marketLine:'1.5',period:1};
-assert.equal(selectionConflict(goalOver,firstHalfGoals)?.code,'SAME_MARKET_CATEGORY',
-  'Only one Goals-category selection is allowed per fixture');
+assert.equal(selectionConflict(goalOver,firstHalfGoals),null,
+  'Full-time Goals and first-half Goals may be combined because they are different periods');
+assert.doesNotThrow(()=>assertCompatibleSelections([goalOver,firstHalfGoals]),
+  'Backend accepts Goals totals from different match periods');
 
 const correctScore=pick('200|gCorrectScore||0:0',{matchId:'200',marketId:'200|gCorrectScore|',marketName:'Correct Score',outcomeName:'0:0'});
 assert.equal(selectionConflict(matchResult,correctScore)?.code,'RESULT_CORRELATION',
