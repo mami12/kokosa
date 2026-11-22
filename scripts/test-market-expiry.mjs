@@ -207,6 +207,11 @@ const native=(name,options=['1','2'])=>({
  outcomes:options.map(label=>outcome(label))
 });
 open(match(1,0),native('Next Goal'));
+// A native Zizobet offer is displayed even when our local grader does not
+// implement its settlement contract; explicit operator exclusions still win.
+open(match(0,0),native('Scoring Type',['Header','Foot']));
+closed(match(0,0),native('Total Shots On Target',['Over','Under']));
+closed(match(0,0),native('Total Cards',['Over','Under']));
 open(match(1,0),native('Next Goal 2nd'));
 closed(match(2,0),native('Next Goal 2nd'));
 open(match(0,0),native('Who scores first'));
