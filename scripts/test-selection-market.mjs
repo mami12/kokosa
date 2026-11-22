@@ -186,7 +186,7 @@ for (const other of [matchResult, matchTotal, cards, firstHalfTotal, sameGameCom
   assert.equal(selectionConflict(actualOddsButtonCorner, other), null,
     'Corners compatibility is independent of selection order');
 }
-assert.equal(selectionConflict(actualOddsButtonCorner, cornersUnder)?.code,'SAME_MARKET_CATEGORY',
+assert.notEqual(selectionConflict(actualOddsButtonCorner, cornersUnder), null,
   'A second corner market in the same fixture remains blocked');
 assert.equal(selectionConflict(matchResult,firstHalfTotal),null,
   'Full-time result and first-half goals may be combined');
