@@ -136,8 +136,11 @@ export function marketGroupKey(market: Market): string {
 export function marketCategoryOf(market: Market): MarketCategory {
   const name = normalized(market.name);
   const type = normalized(market.marketType);
+  const nativeKey = normalized(market.extId);
   if (isComboMarket(market)) return 'mixed';
-  if (type === 'corners' || /\bcorners?\b|\bcorner kicks?\b/.test(name)) return 'corners';
+  // Zizobet's gCorners/zzCorners native key is authoritative when the
+  // visible market title is generic Over/Under (including localized titles).
+  if (type === 'corners' || /\bcorners?\b|\bcorner kicks?\b/.test(name) || /(?:^|\s)(?:g|zz)?corners?(?:\s|$)/.test(nativeKey)) return 'corners';
   if (type === 'cards' || /\bcards?\b|\bbookings?\b|yellow card|red card|disciplin/.test(name)) return 'other';
   if (/\bplayers?\b|goalscorer|scorer|to be booked|player shots?/.test(name)) return 'other';
   if (/\b(?:result|winner|1x2)\b.*\b(?:total|goals|btts|both teams)\b|\b(?:total|goals|btts)\b.*\b(?:both teams|btts)\b/.test(name)) return 'mixed';
