@@ -8,6 +8,7 @@ import {providerTimeline,inheritEventPlayers} from './live-event-timeline.mjs';
 export {isZizoId};
 export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDefinitions=()=>{},onFixtureDiscovered=()=>{},selectRows=r=>r,getWatchedIds=()=>[],request=get,connectMqtt=startMqtt,autoStart=true,now=()=>Date.now(),transitionGraceMs=120000,retentionMs=21600000,historyEnabled=autoStart,archiveHistory=archiveZizobetMatchHistory}={}){
  const meta={teams:new Map(),regions:new Map(),champs:new Map(),liveMarkets:new Map(),preMarkets:new Map(),positions:new Map(),statuses:new Map()};
+ const footballLiveMarkets=new Map();
  const state={provider:'ZIZOBET',transport:'MQTT cache invalidations + HTTP snapshots',running:false,cycles:0,syncedAt:null,lastError:null,received:0,kept:0,paused:false,pauses:0,resumes:0};
  const games=new Map(),quotes=new Map(),focused=new Map(),focusAttemptAt=new Map(),inflight=new Map(),dirty=new Set(),versions=new Map(),fullObserved=new Map(),watchedSnapshotAt=new Map(),transitions=new Map(),historyPollAt=new Map(),historyFinalized=new Set(),historyFtAttempts=new Map(),headerEventSignals=new Map(),eventRefreshIds=new Set();let stopped=false,work=Promise.resolve(),mqtt,catalogAt=0,revision=0;
  const queue=fn=>{const p=work.then(()=>stopped||state.paused?undefined:fn());work=p.catch(e=>{state.lastError=e.message;});return p;};
@@ -41,6 +42,38 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
    // Make a failed/immediate refresh eligible for the short retry path.
    historyPollAt.set(id,0);
   }
+ };
+ const archiveMarketDefinitions=()=>{
+  // Prematch definitions come from getprematchmarketsbysport(...,1), an
+  // explicitly football-scoped dictionary. Live definitions are admitted
+  // only after their native IDs are actually quoted by a Sport=1 fixture.
+  const definitions=[
+   ...[...footballLiveMarkets].map(([id,definition])=>({
+    provider:'ZIZOBET',sportId:1,scope:'LIVE',id,
+    name:definition.Name??definition.name??definition.nm,definition
+   })),
+   ...[...meta.preMarkets].map(([id,definition])=>({
+    provider:'ZIZOBET',sportId:1,scope:'PREMATCH',id,
+    name:definition.Name??definition.name??definition.nm,definition
+   }))
+  ].filter(def=>def.name&&!isRetiredPlayerOfferMarket({name:def.name}));
+  if(!definitions.length)return;
+  void Promise.resolve().then(()=>onMarketDefinitions(definitions))
+   .catch(e=>console.warn('[zizobet] football market catalog archive:',e.message));
+ };
+ const rememberFootballLiveMarkets=quotes=>{
+  let changed=false;
+  for(const quote of quotes??[]){
+   const id=Number(quote?.mid??quote?.marketId??quote?.market_id);
+   if(!Number.isSafeInteger(id)||id<=0)continue;
+   const definition=meta.liveMarkets.get(id);
+   if(!definition)continue;
+   const previous=footballLiveMarkets.get(id);
+   if(!previous||JSON.stringify(previous)!==JSON.stringify(definition)){
+    footballLiveMarkets.set(id,definition);changed=true;
+   }
+  }
+  return changed;
  };
  const mainQuotes=(quotes,live)=>(quotes??[]).filter(q=>{const id=Number(q.mid),def=(live?meta.liveMarkets:meta.preMarkets).get(id);const name=(live&&id===602)||(!live&&id===448)?'Full Time Result':(live&&id===603)||(!live&&id===537)?'Total Goals':def?.Name??def?.name??def?.nm??'';return isBoardOddsRow({market_name:name,period:/\b(?:half|period)\b/i.test(name)?1:0});});
  async function publish(row,game,rows,{complete=false,startedAt=++revision}={}){
@@ -86,27 +119,20 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   const definitions=Array.isArray(pre)?pre[0]:pre?.['1'];if(!definitions||Object.keys(definitions).length<10)throw Error('Full Zizobet market dictionary unavailable');
   for(const[id,m]of Object.entries(definitions))meta.preMarkets.set(Number(id),m);
   catalogAt=now();
-  // These dictionaries are ALREADY fetched for odds parsing. Persist their
-  // native titles and rule metadata without any additional HTTP API calls.
-  const archivalDefinitions=[
-   ...[...meta.liveMarkets].map(([id,definition])=>({
-    provider:'ZIZOBET',scope:'LIVE',id,name:definition.Name??definition.nm,
-    definition
-   })),
-   ...[...meta.preMarkets].map(([id,definition])=>({
-    provider:'ZIZOBET',scope:'PREMATCH',id,
-    name:definition.Name??definition.name,definition
-   }))
-  ].filter(def=>!isRetiredPlayerOfferMarket({name:def.name}));
-  void Promise.resolve().then(()=>onMarketDefinitions(archivalDefinitions))
-   .catch(e=>console.warn('[zizobet] native market catalog archive:',e.message));
+  // The unscoped LIVE dictionary above is only for parsing quote titles.
+  // Never archive all of it: it contains market IDs from other sports.
+  archiveMarketDefinitions();
  }
  async function liveList(){
   if(stopped||state.paused)return;
   const startedAt=++revision,data=await request(CACHE+'live/headerformobilenew/en');if(!Array.isArray(data?.Games))throw Error('Invalid Zizobet live header');
   if(stopped||state.paused)return;
   for(const t of data.Teams??[])meta.teams.set(Number(t.ID),t);for(const r of data.Regions??[])meta.regions.set(Number(r.ID),r);for(const c of data.Championats??[])meta.champs.set(Number(c.ID),c);for(const m of data.mk??[])meta.liveMarkets.set(Number(m.ID),m);
-  const rows=[];await queue(async()=>{for(const g of data.Games){if(Number(g.Sport)!==1)continue;const r=rowOf(g,meta,true);if(!r)continue;const id=Number(g.ID),previous=games.get(id);r.status=Number(g.MatchStatusID)===40?'ended':'live';rows.push(r);
+  let footballDefinitionsChanged=false;
+  const rows=[];await queue(async()=>{for(const g of data.Games){if(Number(g.Sport)!==1)continue;const r=rowOf(g,meta,true);if(!r)continue;
+   // Header quote IDs are tied to this fixture's Sport=1 identity.
+   if(rememberFootballLiveMarkets(g.hprs))footballDefinitionsChanged=true;
+   const id=Number(g.ID),previous=games.get(id);r.status=Number(g.MatchStatusID)===40?'ended':'live';rows.push(r);
    // A delayed catalogue cannot roll back a newer detail or resurrect FT.
    if(previous?.live&&(previous.row.status==='ended'||startedAt<(versions.get(r.match_id)??0)))continue;
    if(Array.isArray(previous?.row?.raw?.eventTimeline))r.raw={...r.raw,eventTimeline:previous.row.raw.eventTimeline};
@@ -132,6 +158,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
    state.live=liveIds().length;await onCycle?.(state);
   });
   mqtt?.setLiveIds(liveIds());
+  if(footballDefinitionsChanged)archiveMarketDefinitions();
   // Full live snapshots carry verified corners/cards and the event timeline.
     const liveRefreshMs=Math.max(30000,Number(process.env.ZIZO_LIVE_REFRESH_MS)||60000);
     for(const r of rows)if(focused.get(Number(r.raw.nativeId))>now()&&now()-(fullObserved.get(Number(r.raw.nativeId))??0)>=liveRefreshMs)dirty.add('live/gamenew/'+r.raw.nativeId);
@@ -194,6 +221,9 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
     // Ended/suspended fixtures may have no market grid yet still provide goals,
     // corners and cards. Record that history without touching existing odds.
     if(!Array.isArray(data.gmk))historyOnly=true;if(Number(data.Match.GameID)!==Number(id))throw Error('Zizobet live identity mismatch');for(const m of data.mk??[])meta.liveMarkets.set(Number(m.ID),m);
+    // A full quote grid belongs to this already-verified football fixture.
+    // Intersect it with the global dictionary before admitting IDs to admin.
+    if(!historyOnly&&rememberFootballLiveMarkets(data.gmk))archiveMarketDefinitions();
     if(entry.row.status==='ended'&&Number(data.Match.EventStatus)!==40)return;
     const game={...entry.raw,...data.Match,...(Array.isArray(data.TimeLines)?{TimeLines:data.TimeLines}:{})},row={...entry.row,service:'LIVE',status:entry.row.status==='ended'||Number(game.EventStatus)===40?'ended':'live'};
     // One upstream response has one observation time, even when it feeds
