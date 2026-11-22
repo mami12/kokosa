@@ -227,13 +227,14 @@ export function oddsOf(row,quotes,meta,live,open=true,diagnostics){
  const quoteMarketName=q=>{
   const nested=q.market&&typeof q.market==='object'?q.market:{};
   const value=q.marketName??q.market_name??q.marketTitle??q.market_title??
-   q.mn??nested.Name??nested.name??nested.nm;
+   q.mn??nested.Name??nested.name??nested.nm??(typeof q.market==='string'?q.market:null);
   return typeof value==='string'?text(value):'';
  };
  const quotePosition=q=>{
   const nested=q.position&&typeof q.position==='object'?q.position:{};
   const value=q.pn??q.pname??q.positionName??q.position_name??
-   q.outcomeName??q.outcome_name??q.label??nested.Name??nested.name??nested.nm;
+   q.outcomeName??q.outcome_name??q.label??nested.Name??nested.name??nested.nm??
+   (typeof q.position==='string'?q.position:null)??(typeof q.outcome==='string'?q.outcome:null);
   return typeof value==='string'?text(value):'';
  };
  const widths=new Map();
@@ -264,7 +265,7 @@ export function oddsOf(row,quotes,meta,live,open=true,diagnostics){
   // Preserve every numbered native parameter. Zizobet can add p4/p5/etc. to
   // market templates; dropping them aliases distinct offers to one market key.
   const params=Object.fromEntries(Object.entries(q).filter(([k,v])=>v!=null&&
-    (/^p\d+$/i.test(k)||/^(?:pl|comp|seq)$/i.test(k))));
+    (/^p\d+$/i.test(k)||/^(?:pl|comp|seq)$/i.test(k))).sort(([a],[b])=>a.localeCompare(b)));
   const key='zz'+id+'@'+Buffer.from(JSON.stringify(params)).toString('base64url'),
    line=q.h!=null?String(q.h):q.total!=null?String(q.total):q.line!=null?String(q.line):'';
   // Some dictionary snapshots omit a position entry even though the quote
