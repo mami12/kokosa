@@ -252,7 +252,7 @@ export function oddsOf(row,quotes,meta,live,open=true,diagnostics){
   // Some provider snapshots omit an entry from the dictionary even though
   // the quote itself includes its untouched market title. Preserve that
   // native offer rather than silently losing it before delivery.
-  const rawName=text(dictionary?.Name??dictionary?.name??dictionary?.nm)||quoteMarketName(q);
+  const rawName=[dictionary?.Name,dictionary?.name,dictionary?.nm,quoteMarketName(q)].map(text).find(Boolean)??'';
   const def=dictionary??(rawName?{ID:id,Name:rawName}:null);
   if(!def){note('missingMarketDefinition');continue;}
   if(!rawName){note('missingMarketName');continue;}
@@ -273,7 +273,7 @@ export function oddsOf(row,quotes,meta,live,open=true,diagnostics){
   // own label; do not silently drop a valid provider selection.
   const positionId=q.pos??q.positionId??q.position_id??q.pid;
   const dictionaryPosition=def.pos?.find(p=>Number(p.id)===Number(positionId))?.nm;
-  const position=dictionaryPosition??meta.positions.get(String(q.pid??q.pos??q.positionId??q.position_id))??quotePosition(q);
+  const position=text(dictionaryPosition)||text(meta.positions.get(String(q.pid??q.pos??q.positionId??q.position_id)))||quotePosition(q);
   if(position==null||String(position).trim()===''){note('missingOutcomeLabel');continue;}
   const nativeOutcomeId=q.id??q.oid??q.outcomeId??q.outcome_id??q.selectionId??q.selection_id;
   if(nativeOutcomeId==null||String(nativeOutcomeId).trim()===''){note('missingOutcomeId');continue;}
