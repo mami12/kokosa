@@ -171,6 +171,21 @@ const genericallyNamedCorners = pick('200|zzCorners@total|2.5|Over', {
 });
 assert.equal(selectionConflict(matchResult,genericallyNamedCorners),null,
   'Native corner market key identifies a generic Over/Under title as Corners');
+// This mirrors the exact object built by OddsButton: marketKey/extId are not
+// sent to the betslip, so category detection must read the native key in outcomeId.
+const actualOddsButtonCorner = pick('200|gCorners|2.5|Over', {
+  matchId:'200', marketId:'local-market-id',
+  marketName:'Over/Under', marketType:'over_under',
+  marketLine:'2.5', outcomeName:'Over 2.5'
+});
+for (const other of [matchResult, matchTotal, cards, firstHalfTotal, sameGameCombo]) {
+  assert.equal(selectionConflict(other, actualOddsButtonCorner), null,
+    'A native gCorners selection from the real OddsButton payload combines with every market family');
+  assert.equal(selectionConflict(actualOddsButtonCorner, other), null,
+    'Corners compatibility is independent of selection order');
+}
+assert.equal(selectionConflict(actualOddsButtonCorner, cornersUnder)?.code,'SAME_MARKET_CATEGORY',
+  'A second corner market in the same fixture remains blocked');
 const firstHalfTotal=pick('200|gGoals1h|1.5|Over',{matchId:'200',marketId:'200|gGoals1h|1.5',marketName:'1st Half Total Goals',marketType:'over_under',marketLine:'1.5',outcomeName:'Over 1.5',period:1});
 const sameGameCombo=pick('200|BB|template-a',{matchId:'200',marketId:'200|BB|template-a',marketName:'Bet Builder'});
 assert.equal(selectionConflict(matchResult,firstHalfTotal),null,
