@@ -41,6 +41,11 @@ export const isMarketOfferSupported = (market: MarketLike,match?:MatchLike): boo
   if(isExcludedOfferMarket(market)||!marketIsEnabled(market,match))return false;
   if(marketDiagnosticAll())return true;
   if(isYbetsNativeOffer(market,match))return true;
+  // Zizobet owns the live offer lifecycle and removes expired quotes upstream.
+  // Once an active native offer passes the operator's explicit exclusions and
+  // admin catalogue policy, local settlement-capability heuristics must not
+  // hide it from the full provider market list.
+  if(isZizobetNativeOffer(market,match))return true;
   const title=String(market.name??'').trim();
   if(/^(?:1st|first)\s+half\s*[-–:.]\s*first\s+corner$/i.test(title)){
     // Expose only an offer whose EVERY position can be frozen by the server.
