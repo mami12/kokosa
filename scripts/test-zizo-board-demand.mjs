@@ -27,20 +27,39 @@ try{
 
 // Returning to the board must not freeze a previously opened live fixture.
 {
- let at=200000,price=2,fullReads=0;const changes=[],infos=[];
+ let at=200000,price=2,fullReads=0;const changes=[],infos=[],archivedDefinitions=[];
  const liveGame=()=>({ID:21,Sport:1,Team1:1,Team2:2,Region:1,Champ:1,MatchStatusID:10,Score:'1:0',MatchTime:25,StartTime:'2026-11-05T12:00:00Z',hprs:[{id:1,mid:602,pid:1,pn:'1',v:price}]});
  const request=async url=>{
   if(url.includes('getheader/teams'))return [{ID:1,Name:'Home',Sport:1},{ID:2,Name:'Away',Sport:1}];
-  if(url.includes('getlivemarkets'))return {MarketNames:[{it:602,nm:'Match result'},{it:800,nm:'Total Corners'}]};
+  // This global names dictionary includes sports outside football. Only the
+  // two IDs actually quoted by the Sport=1 match may be archived for admin.
+  if(url.includes('getlivemarkets'))return {MarketNames:[
+   {it:602,nm:'Match result'},{it:800,nm:'Total Corners'},
+   {it:999,nm:'Set Winner'},{it:1000,nm:'Total Points'}
+  ]};
   if(url.includes('getprematchmarketsbysport'))return [defs];
   if(url.includes('headerformobilenew'))return {Games:[liveGame()],Regions:[{ID:1,Name:'England'}],Championats:[{ID:1,Name:'Premier League'}]};
   if(url.includes('sport/getheader/en'))return {EN:{Sports:{1:{Regions:{}}}}};
-  if(url.includes('live/gamenew/21')){fullReads++;return {Match:{...liveGame(),GameID:21,EventStatus:10,LiveBetStatus:true},gmk:[...liveGame().hprs,{id:4,mid:800,pid:4,pn:'Over',v:2,h:4.5}]};}
+  if(url.includes('live/gamenew/21')){fullReads++;return {
+   Match:{...liveGame(),GameID:21,EventStatus:10,LiveBetStatus:true},
+   mk:[{ID:602,Name:'Match result'},{ID:800,Name:'Total Corners'},
+       {ID:999,Name:'Set Winner'},{ID:1000,Name:'Total Points'}],
+   gmk:[...liveGame().hprs,{id:4,mid:800,pid:4,pn:'Over',v:2,h:4.5}]
+  };}
   throw Error('Unexpected live test request');
  };
- const liveFeed=startZizoFeed({autoStart:false,request,now:()=>at,connectMqtt:()=>({stop(){},pause(){},resume(){},setLiveIds(){}}),onMatch(){},onInfo:r=>infos.push(r),onOdds:r=>changes.push(...r)});
+ const liveFeed=startZizoFeed({autoStart:false,request,now:()=>at,connectMqtt:()=>({stop(){},pause(){},resume(){},setLiveIds(){}}),onMatch(){},onInfo:r=>infos.push(r),onOdds:r=>changes.push(...r),onMarketDefinitions:rows=>archivedDefinitions.push(...rows)});
  try{
   await liveFeed.tick();assert.equal(fullReads,0);assert.equal(liveFeed.fullMarketsReady(OFFSET+21),false,'Live header is only a board offer');await liveFeed.focus(OFFSET+21);assert.equal(liveFeed.fullMarketsReady(OFFSET+21),true,'Selected live match records full-market completion');assert.equal(fullReads,1);assert.ok(changes.some(r=>r.marketName==='Total Corners'));
+  await Promise.resolve();
+  assert.ok(archivedDefinitions.some(d=>d.scope==='LIVE'&&d.id===602&&d.sportId===1),
+   'The football match header market is tagged with sport_id 1');
+  assert.ok(archivedDefinitions.some(d=>d.scope==='LIVE'&&d.id===800&&d.sportId===1),
+   'The football detail market is tagged with sport_id 1');
+  assert.equal(archivedDefinitions.some(d=>d.id===999||d.id===1000),false,
+   'Unquoted Set Winner and Total Points IDs from the global dictionary never enter the football admin catalogue');
+  assert.ok(archivedDefinitions.filter(d=>d.scope==='PREMATCH').every(d=>d.sportId===1),
+   'The prematch market dictionary is explicitly tagged as football');
   at+=301000;price=3;const count=changes.length;await liveFeed.tick();
   assert.equal(fullReads,1,'closed detail does not keep fetching all live markets');
   assert.equal(changes.at(-1).price,3,'lightweight main prices keep updating after focus expires');
