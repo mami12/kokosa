@@ -88,6 +88,19 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   }
   return changed;
  };
+ const rememberFootballPrematchMarkets=quotes=>{
+  let changed=false;
+  for(const quote of quotes??[]){
+   const id=Number(quote?.mid??quote?.marketId??quote?.market_id);
+   if(!Number.isSafeInteger(id)||id<=0||meta.preMarkets.has(id))continue;
+   const name=quoteMarketName(quote);
+   if(!name)continue;
+   meta.preMarkets.set(id,{ID:id,Name:name});
+   changed=true;
+  }
+  if(changed)archiveMarketDefinitions();
+  return changed;
+ };
  const mainQuotes=(quotes,live)=>(quotes??[]).filter(q=>{
   const id=Number(q.mid??q.marketId??q.market_id),def=(live?meta.liveMarkets:meta.preMarkets).get(id);
   const name=(live&&id===602)||(!live&&id===448)?'Full Time Result':
@@ -298,7 +311,9 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
      }).catch(()=>{});
     await queue(async()=>{const published=await publish(row,game,historyOnly?[]:normalizeQuotes(row,full?data.gmk:mainQuotes(data.gmk,true),true,infoOf(row,game,meta).hasOpenOdds!==false&&row.status!=='ended',{full}),{complete:historyOnly?false:full,startedAt});if(startedAt>=(versions.get(row.match_id)??0)){const promoted=!entry.live;entry.live=true;entry.row=published??row;entry.raw=game;entry.verifiedAt=now();transitions.delete(Number(id));delete entry.transitionAt;if(full&&!historyOnly&&Array.isArray(data.gmk))fullObserved.set(Number(id),now());if(promoted){const ids=liveIds();state.live=ids.length;mqtt?.setLiveIds(ids);await onCycle?.(state);}}});
    }else{const result=await request(META+'prematch/getprematchgamefull/319/'+Number(id));const g=decode(result?.game);if(Number(g?.id)!==Number(id))throw Error('Zizobet prematch identity mismatch');
-    const quotes=[];for(const[mid,list]of Object.entries(g.ev??{}))for(const[id,q]of Object.entries(list??{}))quotes.push({...q,id,mid});const disabled=new Set((Array.isArray(result.disableMarkets)?result.disableMarkets:[]).map(Number));
+    const quotes=[];for(const[mid,list]of Object.entries(g.ev??{}))for(const[id,q]of Object.entries(list??{}))quotes.push({...q,id,mid});
+    rememberFootballPrematchMarkets(quotes);
+    const disabled=new Set((Array.isArray(result.disableMarkets)?result.disableMarkets:[]).map(Number));
     await queue(async()=>{const current=games.get(Number(id));if(current?.live||transitions.has(Number(id)))return;await publish(current?.row??entry.row,g,normalizeQuotes(current?.row??entry.row,(full?quotes:mainQuotes(quotes,false)).filter(q=>!disabled.has(Number(q.mid??q.marketId??q.market_id))),false,infoOf(current?.row??entry.row,g,meta).hasOpenOdds!==false,{full}),{complete:full,startedAt});if(full)fullObserved.set(Number(id),now());});
    }
   })().finally(()=>inflight.delete(Number(id)));inflight.set(Number(id),task);return task;
