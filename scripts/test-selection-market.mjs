@@ -185,6 +185,22 @@ assert.equal(selectionConflict(matchResult,corners),null,
   'Corners must combine with full-time result markets');
 assert.equal(selectionConflict(corners,matchResult),null,
   'Corners must combine with full-time result markets in either selection order');
+// A Corners pick must bypass every same-match conflict check, even if the
+// provider reuses a market identity or the other pick belongs to a restricted family.
+const cornerWithSharedIdentity = pick('200|gCorners|2.5|Over', {
+  matchId:'200', marketId:'200|shared-market|2.5',
+  marketKey:'gCorners', marketName:'Total Corners', marketType:'over_under'
+});
+const nonCornerWithSharedIdentity = pick('200|shared-market|2.5|Yes', {
+  matchId:'200', marketId:'200|shared-market|2.5',
+  marketName:'Correct Score', marketType:'other'
+});
+assert.equal(selectionConflict(cornerWithSharedIdentity, nonCornerWithSharedIdentity), null,
+  'Corners exemption runs before same-market-group and restricted-family checks');
+assert.equal(selectionConflict(nonCornerWithSharedIdentity, cornerWithSharedIdentity), null,
+  'Corners exemption works in either selection order');
+assert.doesNotThrow(()=>assertDistinctSelectionMarkets([cornerWithSharedIdentity, nonCornerWithSharedIdentity]),
+  'Structural duplicate-market guard cannot block a Corners + other-market combination');
 const genericallyNamedCorners = pick('200|zzCorners@total|2.5|Over', {
   matchId:'200', marketId:'200|zzCorners@total|2.5',
   marketKey:'gCorners', marketName:'Over/Under',
