@@ -261,6 +261,38 @@ assert.equal(selectionConflict(actualOddsButtonCorner, matchTotal), null,
   'Corners remain compatible with Goals despite generic Over/Under labels');
 assert.equal(selectionConflict(actualOddsButtonCorner, matchResult), null,
   'A corner selection combines with 1X2 on the same match');
+// Every provider Corners market family is stackable, not only Total Corners.
+// Cover translated labels, team-most-corners, handicaps, team totals, race-to,
+// first-corner, and period/interval variants with generic Over/Under labels.
+const allCornerMarketTypes = [
+  {marketName:'Skuadra me me shume goditje kendore', marketType:'other'},
+  {marketName:'Over/Under', marketType:'team_with_most_corners'},
+  {marketName:'Over/Under', marketType:'corner_handicap'},
+  {marketName:'Home Team Total', marketType:'home_team_corners'},
+  {marketName:'Race to 5', marketType:'race_to_corners'},
+  {marketName:'First Corner', marketType:'first_corner'},
+  {marketName:'2nd Half Total', marketType:'corners_2h'},
+  {marketName:'Over/Under', extId:'gMostCorners'},
+  {marketName:'Over/Under', marketKey:'gCornerHandicap'},
+];
+const allCornerSelections = allCornerMarketTypes.map((fields,index)=>pick(
+  `200|corner-family-${index}|1|Home`,
+  {matchId:'200',marketId:`local-corner-family-${index}`,outcomeName:'Home',...fields}
+));
+for (const cornerPick of allCornerSelections) {
+  assert.equal(selectionConflict(matchResult,cornerPick),null,
+    'Every Corners market family combines with 1X2');
+  assert.equal(selectionConflict(cornerPick,matchTotal),null,
+    'Every Corners market family combines with Goals');
+}
+assert.equal(findSelectionConflict(allCornerSelections),null,
+  'All distinct Corners market families can coexist on one fixture');
+assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,...allCornerSelections]),
+  'Backend accepts all Corners market families together with non-Corners markets');
+assert.deepEqual(toggleCompatibleSelection([matchResult,...allCornerSelections.slice(0,-1)],allCornerSelections.at(-1)),
+  [matchResult,...allCornerSelections],
+  'Client accepts all Corners market families together on the same fixture');
+
 // Corners acceptance is independent of line magnitude, including zero and
 // unusually large provider lines, for both client and backend validation.
 for (const line of ['0','0.5','7.5','1000.5','1000000.5']) {
