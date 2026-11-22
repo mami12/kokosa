@@ -110,6 +110,10 @@ for(const name of [
 ])assert.equal(isExcludedOfferMarket({market_name:name}),true,name+' must be excluded');
 assert.equal(isExcludedOfferMarket({market_name:'Total Goals'}),false);
 assert.equal(isExcludedOfferMarket({market_name:'Total Corners'}),false);
+assert.equal(isExcludedOfferMarket({market_name:'Corners and Total Cards'}),true,
+ 'a combined corners/cards offer must not bypass the explicit card exclusion');
+assert.equal(isExcludedOfferMarket({market_name:'Corners and Total Shots'}),true,
+ 'a combined corners/shots offer must not bypass the explicit shots exclusion');
 assert.equal(isExcludedOfferMarket({market_name:'Full Time Result'}),false);
 assert.equal(isExcludedOfferMarket({market_name:'Early Payout'}),true,
  'early payout is excluded at publication and must also be rejected at native placement');
