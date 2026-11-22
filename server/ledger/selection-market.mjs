@@ -354,22 +354,27 @@ export function selectionConflict(first, second) {
     return { code: 'NO_GOAL_PREMATCH', message: 'Nën 0.5 gola, Correct Score 0:0 dhe First Goal: No Goal janë i njëjti skenar dhe nuk mund të kombinohen.' };
   }
 
-  // Enforce the one-selection-per-category rule after the more specific
-  // contract checks above, preserving their clearer error messages.
-  const firstCategory = selectionCategory(first);
-  const secondCategory = selectionCategory(second);
-  // Different market categories can be combined on the same fixture.
-  // The specific Full Time Result/Goals + simple Goals exclusion is handled above.
-  // Corners are an independent category and must combine with Result,
-  // Goals, Cards, and other market families on the same fixture. Only two
-  // Corners selections conflict with each other.
-  if (firstCategory === secondCategory &&
-      !(firstIsCorners !== secondIsCorners)) {
+  // Same-match combinations are allowed only as one Corners selection
+  // plus one non-Corners selection. The earlier checks above preserve more
+  // specific duplicate/correlation errors. A second non-Corners selection
+  // is never allowed, even when it belongs to a different market category.
+  if (firstIsCorners && secondIsCorners) {
     return {
       code: 'SAME_MARKET_CATEGORY',
-      message: 'Lejohet vetëm një bast nga e njëjta kategori tregu për të njëjtën ndeshje.',
+      message: 'Lejohet vetëm një treg këndesh për të njëjtën ndeshje.',
     };
   }
+  if (!firstIsCorners && !secondIsCorners) {
+    const firstCategory = selectionCategory(first);
+    const secondCategory = selectionCategory(second);
+    return {
+      code: firstCategory === secondCategory ? 'SAME_MARKET_CATEGORY' : 'CORNER_REQUIRED',
+      message: firstCategory === secondCategory
+        ? 'Lejohet vetëm një bast nga e njëjta kategori tregu për të njëjtën ndeshje.'
+        : 'Për të kombinuar dy zgjedhje nga e njëjta ndeshje, njëra duhet të jetë treg këndesh.',
+    };
+  }
+  // Exactly one corner selection plus one other distinct market is valid.
   return null;
 }
 
