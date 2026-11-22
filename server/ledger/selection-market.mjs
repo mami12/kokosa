@@ -160,7 +160,7 @@ function selectionMetric(selection) {
   const marketId = normalizedSelectionText(selection?.marketId ?? selection?.market_id ?? '');
   const marketText = [name, marketKey, marketId].join(' ');
   if (/\b(?:bet builder|same game combo|combo)\b/.test(name)) return null;
-  if (/\b(?:corners?|corner kicks?)\b/.test(name) || type === 'corners' || type === 'corner') return 'corners';
+  if (/\b(?:corners?|corner kicks?|kendore|goditje kendore)\b/.test(name) || type === 'corners' || type === 'corner') return 'corners';
   if (/\b(?:cards?|bookings?|yellow card|red card|disciplin)\b/.test(name) ||
       type === 'cards' || type === 'card') return 'cards';
   if (/\b(?:shots? on target|on target shots?)\b/.test(name) || type === 'shots_on_target') return 'shots_on_target';
@@ -195,7 +195,7 @@ function selectionCategory(selection) {
   if (/\bfull\s*time\s*result\s+goals\b|\bfulltime\s+result\s+goals\b/.test(name)) return 'result_goals';
   // Zizobet can label corner totals as generic Over/Under markets. Inspect
   // native market identifiers as well as the visible title before classifying.
-  if (type === 'corners' || /(?:^|\s)(?:g|zz)?corners?(?:\s|$)|\bcorner kicks?\b/.test(categoryText)) return 'corners';
+  if (type === 'corners' || /(?:^|\s)(?:g|zz)?corners?(?:\s|$)|\bcorner kicks?\b|\bkendore\b|\bgoditje kendore\b/.test(categoryText)) return 'corners';
   if (type === 'cards' || /\bcards?\b|\bbookings?\b|yellow card|red card|disciplin/.test(categoryText)) return 'other';
   if (/\bplayers?\b|goalscorer|scorer|to be booked|player shots?/.test(categoryText)) return 'other';
   if (/\b(?:result|winner|1x2)\b.*\b(?:total|goals|btts|both teams)\b|\b(?:total|goals|btts)\b.*\b(?:both teams|btts)\b/.test(name)) return 'mixed';
