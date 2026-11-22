@@ -113,11 +113,13 @@ const matchTotal=pick('200|g6379|2.5|Over',{matchId:'200',marketId:'200|g6379|2.
 const corners=pick('200|gCorners|2.5|Over',{matchId:'200',marketId:'200|gCorners|2.5',marketName:'Total Corners',marketType:'over_under',marketLine:'2.5',outcomeName:'Over 2.5'});
 const cards=pick('200|gCards|4.5|Over',{matchId:'200',marketId:'200|gCards|4.5',marketName:'Total Cards',marketType:'over_under',marketLine:'4.5',outcomeName:'Over 4.5'});
 const otherFixture=pick('201|g1x2||1',{matchId:'201',marketId:'201|g1x2|',marketName:'Match Result'});
-assert.deepEqual(toggleCompatibleSelection([matchResult,otherFixture],matchTotal),[matchResult,otherFixture,matchTotal],
-  'Goals totals can combine with the result market from the same fixture');
+assert.deepEqual(toggleCompatibleSelection([matchResult,otherFixture],matchTotal),[matchResult,otherFixture],
+  'Goals totals cannot combine with the result market from the same fixture');
 assert.deepEqual(toggleCompatibleSelection([matchResult,otherFixture],corners),[matchResult,otherFixture,corners],
   'Corners can combine with result markets');
-assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,matchTotal,corners,cards,otherFixture]));
+assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,corners,otherFixture]));
+assert.doesNotThrow(()=>assertCompatibleSelections([matchTotal,corners,otherFixture]));
+assert.doesNotThrow(()=>assertCompatibleSelections([cards,corners,otherFixture]));
 assert.equal(selectionConflict(matchResult,doubleChance)?.code,'RESULT_FAMILY');
 assert.equal(selectionConflict(matchResult,drawNoBet)?.code,'RESULT_FAMILY');
 assert.equal(toggleCompatibleSelection([matchResult],doubleChance).length,1,
@@ -186,9 +188,21 @@ assert.throws(()=>assertCompatibleSelections([firstHalfTotal,sameGameCombo]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS'&&error.conflictCode==='MAIN_PERIOD_COMBO');
 assert.throws(()=>assertCompatibleSelections([goalOver,goalUnderAlt]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS');
+assert.equal(selectionConflict(matchResult,matchTotal)?.code,'ONLY_CORNERS_COMBINABLE',
+  'Full-time result and total goals cannot combine');
+assert.equal(selectionConflict(goalOver,cards)?.code,'ONLY_CORNERS_COMBINABLE',
+  'Goals and cards cannot combine without Corners');
+assert.equal(selectionConflict(sameGameCombo,goalOver)?.code,'ONLY_CORNERS_COMBINABLE',
+  'Bet Builder cannot combine with goals');
+assert.equal(selectionConflict(sameGameCombo,corners),null,
+  'Bet Builder can combine with Corners');
+assert.equal(selectionConflict(firstHalfTotal,corners),null,
+  'First-half goals can combine with Corners');
+assert.equal(selectionConflict(matchTotal,corners),null,
+  'Full-time goals can combine with Corners');
 const firstHalfGoals={...goalUnderAlt,outcomeId:'200|gGoals1h|1.5|Under',marketId:'200|gGoals1h|1.5',marketName:'1st Half Total Goals',marketLine:'1.5',period:1};
-assert.doesNotThrow(()=>assertCompatibleSelections([goalOver,firstHalfGoals]),
-  'Full-time and first-half totals have independent scopes');
+assert.equal(selectionConflict(goalOver,firstHalfGoals)?.code,'ONLY_CORNERS_COMBINABLE',
+  'Full-time and first-half goal totals cannot combine without Corners');
 
 const correctScore=pick('200|gCorrectScore||0:0',{matchId:'200',marketId:'200|gCorrectScore|',marketName:'Correct Score',outcomeName:'0:0'});
 assert.equal(selectionConflict(matchResult,correctScore)?.code,'RESULT_CORRELATION',
