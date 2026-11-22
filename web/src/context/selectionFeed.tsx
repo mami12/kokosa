@@ -13,7 +13,7 @@ export function createSelectionStore(){
     subscribe(fn:()=>void){listeners.add(fn);return()=>{listeners.delete(fn);};},
     publish(nextValues:BetSelection[]){
       const nextSignature=JSON.stringify(nextValues.map(s=>[
-        s.outcomeId,s.matchId,s.marketId,s.marketName,s.marketType,s.marketLine,
+        s.outcomeId,s.matchId,s.marketId,s.extId,s.marketKey,s.marketName,s.marketType,s.marketLine,
         s.outcomeName,s.outcomeCode,s.period,s.matchSnapshot?.status
       ]));
       if(nextSignature===signature)return;
