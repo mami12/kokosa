@@ -245,7 +245,9 @@ export function oddsOf(row,quotes,meta,live,open=true,diagnostics){
  }
  if(diagnostics)diagnostics.rawQuotes=(quotes??[]).length;
  for(const q of quotes??[]){
-  const id=marketIdOfQuote(q),dictionary=(live?meta.liveMarkets:meta.preMarkets).get(id);
+  const id=marketIdOfQuote(q);
+  if(!Number.isSafeInteger(id)||id<=0){note('missingMarketId');continue;}
+  const dictionary=(live?meta.liveMarkets:meta.preMarkets).get(id);
   // Some provider snapshots omit an entry from the dictionary even though
   // the quote itself includes its untouched market title. Preserve that
   // native offer rather than silently losing it before delivery.
@@ -288,12 +290,13 @@ export function oddsOf(row,quotes,meta,live,open=true,diagnostics){
   const fullTotal=(live&&id===603)||(!live&&id===537);
   const label=resolveMarketTitle(position,q,{competitors})??String(position);
   const canonical=/^(?:1|x|2|1x|12|x2)$/i.test(label)?label.toUpperCase():/^(?:over|o)$/i.test(label)?'Over':/^(?:under|u)$/i.test(label)?'Under':/^(?:yes|no)$/i.test(label)?label[0].toUpperCase()+label.slice(1).toLowerCase():null;
-  const rawPrice=live?(q.v??q.coef??q.price??q.odds):(q.coef??q.v??q.price??q.odds);
+  const priceCandidates=live?[q.v,q.coef,q.price,q.odds]:[q.coef,q.v,q.price,q.odds];
+  const rawPrice=priceCandidates.find(value=>value!=null&&String(value).trim()!=='');
   const price=Number(rawPrice),suspended=!open||flagFalse(q.visible)||flagTrue(q.lock)||resolvedQuote(q.res)||!Number.isFinite(price)||price<=1;
   // Preserve the untouched public API name/selection and quote parameters
   // for the durable PostgreSQL archive. Browser labels are a separate layer.
-  const nativeFields=new Set(['mid','id','pid','pos','pn','h','pl','comp','seq',
-   'v','coef','visible','lock','res']);
+  // Keep the complete raw quote so the provider's original fields survive
+  // storage, ticket freezing, and later contract-rule work.
   const nativeQuote=Object.fromEntries(Object.entries(q).filter(([,v])=>v!==undefined));
   rows.push({matchId:row.match_id,marketKey:key,marketName:name,line,outcomeKey:'z'+String(nativeOutcomeId),
    outcomeName:label,price:Number.isFinite(price)&&price>1?price:null,suspended,
