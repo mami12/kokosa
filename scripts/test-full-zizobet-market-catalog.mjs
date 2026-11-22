@@ -90,7 +90,7 @@ try{
   {provider:'ZIZOBET',sportId:2,scope:'LIVE',id:991,name:'Winner',definition:{ID:991,Name:'Winner'}},
   {provider:'ZIZOBET',sportId:3,scope:'LIVE',id:992,name:'Set Winner',definition:{ID:992,Name:'Set Winner'}},
   {provider:'ZIZOBET',scope:'LIVE',id:993,name:'Total Points',definition:{ID:993,Name:'Total Points'}}
- ],{execute:database.query});
+ ],{execute:(...args)=>database.query(...args)});
  assert.equal(archived.seen,4,'only explicit Zizobet football (sport 1) definitions are persisted');
  // Simulate rows written by the old unscoped global dictionary.
  await db.query(`insert into app_provider_market_definition
