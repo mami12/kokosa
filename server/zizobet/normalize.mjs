@@ -220,29 +220,63 @@ export function infoOf(row,game,meta){
  if(Object.keys(stats.home).length||Object.keys(stats.away).length)info.stats=stats;
  return info;
 }
-export function oddsOf(row,quotes,meta,live,open=true){
+export function oddsOf(row,quotes,meta,live,open=true,diagnostics){
  const rows=[];
- const widths=new Map();for(const q of quotes??[]){const p=text(meta.positions?.get(String(q.pid))??q.pn).match(/^min\s+(\d+)-(\d+)$/i);if(!p)continue;const width=Number(p[2])-Number(p[1])+1;if(width<=0)continue;const counts=widths.get(Number(q.mid))??new Map();counts.set(width,(counts.get(width)??0)+1);widths.set(Number(q.mid),counts);}
- for(const q of quotes??[]){const id=Number(q.mid),def=(live?meta.liveMarkets:meta.preMarkets).get(id);if(!def)continue;
-  const rawName=def.Name??def.name??def.nm;if(!rawName)continue;
+ const note=key=>{if(diagnostics)diagnostics[key]=(diagnostics[key]??0)+1;};
+ const marketIdOfQuote=q=>Number(q.mid??q.marketId??q.market_id);
+ const quoteMarketName=q=>{
+  const nested=q.market&&typeof q.market==='object'?q.market:{};
+  const value=q.marketName??q.market_name??q.marketTitle??q.market_title??
+   q.mn??nested.Name??nested.name??nested.nm??(typeof q.market==='string'?q.market:null);
+  return typeof value==='string'?text(value):'';
+ };
+ const quotePosition=q=>{
+  const nested=q.position&&typeof q.position==='object'?q.position:{};
+  const value=q.pn??q.pname??q.positionName??q.position_name??
+   q.outcomeName??q.outcome_name??q.label??nested.Name??nested.name??nested.nm??
+   (typeof q.position==='string'?q.position:null)??(typeof q.outcome==='string'?q.outcome:null);
+  return typeof value==='string'?text(value):'';
+ };
+ const widths=new Map();
+ for(const q of quotes??[]){
+  const id=marketIdOfQuote(q),position=meta.positions?.get(String(q.pid??q.pos))??q.pn??q.pname??q.positionName;
+  const p=text(position).match(/^min\s+(\d+)-(\d+)$/i);if(!p)continue;
+  const width=Number(p[2])-Number(p[1])+1;if(width<=0)continue;
+  const counts=widths.get(id)??new Map();counts.set(width,(counts.get(width)??0)+1);widths.set(id,counts);
+ }
+ if(diagnostics)diagnostics.rawQuotes=(quotes??[]).length;
+ for(const q of quotes??[]){
+  const id=marketIdOfQuote(q);
+  if(!Number.isSafeInteger(id)||id<=0){note('missingMarketId');continue;}
+  const dictionary=(live?meta.liveMarkets:meta.preMarkets).get(id);
+  // Some provider snapshots omit an entry from the dictionary even though
+  // the quote itself includes its untouched market title. Preserve that
+  // native offer rather than silently losing it before delivery.
+  const rawName=[dictionary?.Name,dictionary?.name,dictionary?.nm,quoteMarketName(q)].map(text).find(Boolean)??'';
+  const def=dictionary??(rawName?{ID:id,Name:rawName}:null);
+  if(!def){note('missingMarketDefinition');continue;}
+  if(!rawName){note('missingMarketName');continue;}
   // Apply the same explicit exclusion policy before key generation and again
   // after native parameters have expanded the provider's title.
-  if(isExcludedOfferMarket({name:rawName,nativeMarketId:String(id)}))continue;
+  if(isExcludedOfferMarket({name:rawName,nativeMarketId:String(id)})){note('excluded');continue;}
   // Keep every quoted total line, including quarter thresholds (0.25/0.75).
   // Unsupported split-settlement contracts are held for review after placement;
   // they must not disappear from the native Zizobet offer at ingestion.
   // Preserve every numbered native parameter. Zizobet can add p4/p5/etc. to
   // market templates; dropping them aliases distinct offers to one market key.
   const params=Object.fromEntries(Object.entries(q).filter(([k,v])=>v!=null&&
-    (/^p\d+$/i.test(k)||/^(?:pl|comp|seq)$/i.test(k))));
-  const key='zz'+id+'@'+Buffer.from(JSON.stringify(params)).toString('base64url'),line=q.h!=null?String(q.h):'';
+    (/^p\d+$/i.test(k)||/^(?:pl|comp|seq)$/i.test(k))).sort(([a],[b])=>a.localeCompare(b)));
+  const key='zz'+id+'@'+Buffer.from(JSON.stringify(params)).toString('base64url'),
+   line=q.h!=null?String(q.h):q.total!=null?String(q.total):q.line!=null?String(q.line):'';
   // Some dictionary snapshots omit a position entry even though the quote
   // itself carries its native label. Prefer the dictionary, then the quote's
   // own label; do not silently drop a valid provider selection.
-  const position=live
-   ?(meta.positions.get(String(q.pid))??q.pn??q.pname)
-   :(def.pos?.find(p=>Number(p.id)===Number(q.pos))?.nm??meta.positions.get(String(q.pid))??q.pn??q.pname);
-  if(position==null||String(position).trim()==='')continue;
+  const positionId=q.pos??q.positionId??q.position_id??q.pid;
+  const dictionaryPosition=def.pos?.find(p=>Number(p.id)===Number(positionId))?.nm;
+  const position=text(dictionaryPosition)||text(meta.positions.get(String(q.pid??q.pos??q.positionId??q.position_id)))||quotePosition(q);
+  if(position==null||String(position).trim()===''){note('missingOutcomeLabel');continue;}
+  const nativeOutcomeId=q.id??q.oid??q.outcomeId??q.outcome_id??q.selectionId??q.selection_id;
+  if(nativeOutcomeId==null||String(nativeOutcomeId).trim()===''){note('missingOutcomeId');continue;}
   const measuredWidth=[...(widths.get(id)??[])].sort((a,b)=>b[1]-a[1]||a[0]-b[0])[0]?.[0];
   // Keep the exact provider title if a dynamic placeholder cannot be expanded.
   // Its native parameters are still frozen and the ticket is held for review
@@ -257,16 +291,17 @@ export function oddsOf(row,quotes,meta,live,open=true){
   const fullTotal=(live&&id===603)||(!live&&id===537);
   const label=resolveMarketTitle(position,q,{competitors})??String(position);
   const canonical=/^(?:1|x|2|1x|12|x2)$/i.test(label)?label.toUpperCase():/^(?:over|o)$/i.test(label)?'Over':/^(?:under|u)$/i.test(label)?'Under':/^(?:yes|no)$/i.test(label)?label[0].toUpperCase()+label.slice(1).toLowerCase():null;
-  const price=Number(live?q.v:q.coef),suspended=!open||flagFalse(q.visible)||flagTrue(q.lock)||resolvedQuote(q.res)||!Number.isFinite(price)||price<=1;
+  const priceCandidates=live?[q.v,q.coef,q.price,q.odds]:[q.coef,q.v,q.price,q.odds];
+  const rawPrice=priceCandidates.find(value=>value!=null&&String(value).trim()!=='');
+  const price=Number(rawPrice),suspended=!open||flagFalse(q.visible)||flagTrue(q.lock)||resolvedQuote(q.res)||!Number.isFinite(price)||price<=1;
   // Preserve the untouched public API name/selection and quote parameters
   // for the durable PostgreSQL archive. Browser labels are a separate layer.
-  const nativeFields=new Set(['mid','id','pid','pos','pn','h','pl','comp','seq',
-   'v','coef','visible','lock','res']);
-  const nativeQuote=Object.fromEntries(Object.entries(q).filter(([k,v])=>
-   v!==undefined&&(/^p\d+$/i.test(k)||nativeFields.has(k.toLowerCase()))));
-  rows.push({matchId:row.match_id,marketKey:key,marketName:name,line,outcomeKey:'z'+String(q.id),
+  // Keep the complete raw quote so the provider's original fields survive
+  // storage, ticket freezing, and later contract-rule work.
+  const nativeQuote=Object.fromEntries(Object.entries(q).filter(([,v])=>v!==undefined));
+  rows.push({matchId:row.match_id,marketKey:key,marketName:name,line,outcomeKey:'z'+String(nativeOutcomeId),
    outcomeName:label,price:Number.isFinite(price)&&price>1?price:null,suspended,
-   providerId:'ZIZOBET',nativeMarketId:String(id),nativeOutcomeId:String(q.id),
+   providerId:'ZIZOBET',nativeMarketId:String(id),nativeOutcomeId:String(nativeOutcomeId),
    nativeMarketName:String(rawName),nativeOutcomeName:String(position),
    nativeParameters:params,nativeQuote,isBase:fullResult||fullTotal,
    column:fullResult?'result':fullTotal?'total':'other',order:Number(def.N??def.n??0),
@@ -274,6 +309,7 @@ export function oddsOf(row,quotes,meta,live,open=true){
   // Canonical result/total keys are needed by existing builder and settlement rules.
   if(canonical)rows.at(-1).outcomeKey=canonical;
  }
+ if(diagnostics)diagnostics.normalizedRows=rows.length;
  return dedupeMarketRows(rows);
 }
 

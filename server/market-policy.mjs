@@ -30,7 +30,6 @@ const hasPlayerParameter=market=>{
   return !!JSON.parse(new TextDecoder().decode(bytes))?.pl;
  }catch{return false;}
 };
-const isCorner=title=>/\b(?:corners?|kendore|korne)\b/i.test(title);
 const PLAYER_WORDS=/\b(?:player|players|goalscorer|goal scorer|top scorer|scorer|assist|assists|goalkeeper|goal keeper|lojtar\w*|shenues\w*|asist\w*)\b|\{pl\}/i;
 const NAMED_PLAYER=/^[\p{L}][\p{L}'-]{1,35},\s*[\p{L}][\p{L}'-]{1,35}/u;
 const UNSUPPORTED_STATS=/\b(?:fouls?|faull\w*|shots?|cards?|karton\w*|carded|booked|bookings?|sent\s+off|tackles?|nderhyrje\w*|throw[ -]?ins?|rivenie\w*|saves?|pritje\w*)\b/i;
@@ -48,7 +47,7 @@ export function isRetiredPlayerOfferMarket(market){
   market?.column??market?.board_column??'');
  const unsupportedType=/^(?:cards?|karton\w*|fouls?|faull\w*|players?|lojtar\w*|player props?|tackles?|throw[ -]?ins?|saves?|handicap|handikap\w*)$/.test(type);
  return unsupportedType||isPlayerOfferMarket(market)||
-  titlesOf(market).some(title=>(!isCorner(title)&&UNSUPPORTED_STATS.test(title))||NAMED_PLAYER.test(title))||isHandicapOfferMarket(market);
+  titlesOf(market).some(title=>UNSUPPORTED_STATS.test(title)||NAMED_PLAYER.test(title))||isHandicapOfferMarket(market);
 }
 export const isHandicapOfferMarket=market=>
  titlesOf(market).some(title=>/\b(?:asian\s+)?handicap\b|\bhandikap\w*\b|\bfora\b/i.test(title));

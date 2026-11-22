@@ -179,6 +179,32 @@ assert.equal(incompleteDictionaryQuote.length,1,
 assert.equal(incompleteDictionaryQuote[0].marketName,'Total [total]',
  'an unresolved native template remains visible under its exact provider title');
 assert.equal(incompleteDictionaryQuote[0].outcomeName,'Over');
+
+// A native LIVE quote can carry its own market/outcome labels even when the
+// shared market dictionary omitted that ID. It must survive normalization.
+const missingLiveDefinitionReport={};
+const missingLiveDefinition=oddsOf({match_id:561},[
+ {marketId:906,id:44,positionName:'Over',marketName:'Total Goals',price:1.88}
+],{positions:new Map(),liveMarkets:new Map(),preMarkets:new Map()},true,true,missingLiveDefinitionReport);
+assert.equal(missingLiveDefinition.length,1,
+ 'a quote with native market and outcome labels must survive a missing LIVE dictionary entry');
+assert.equal(missingLiveDefinition[0].nativeMarketId,'906');
+assert.equal(missingLiveDefinition[0].nativeOutcomeId,'44');
+assert.equal(missingLiveDefinition[0].marketName,'Total Goals');
+assert.equal(missingLiveDefinition[0].outcomeName,'Over');
+assert.equal(missingLiveDefinition[0].price,1.88,
+ 'native quote price fallback must preserve the provider price');
+assert.equal(missingLiveDefinitionReport.rawQuotes,1);
+assert.equal(missingLiveDefinitionReport.normalizedRows,1);
+assert.equal(missingLiveDefinitionReport.missingMarketDefinition,undefined);
+
+// Explicit exclusions still win even when a quote supplies its own title and
+// no dictionary entry exists.
+const missingDefinitionExcluded=oddsOf({match_id:562},[
+ {mid:907,id:45,pn:'Over',marketName:'Total Cards',v:1.9}
+],{positions:new Map(),liveMarkets:new Map(),preMarkets:new Map()},true,true,{});
+assert.equal(missingDefinitionExcluded.length,0,
+ 'missing dictionary metadata must not bypass the operator card exclusion');
 const nmDictionaryQuote=oddsOf({match_id:58},[
  {mid:903,id:6,pos:1,pn:'Over',coef:1.95}
 ],{positions:new Map(),liveMarkets:new Map(),
@@ -195,6 +221,34 @@ assert.equal(p4Quote.nativeParameters.p4,42,
  'numbered native parameters beyond p1-p3 must be preserved');
 assert.equal(p4Quote.nativeQuote.p4,42,
  'the complete native quote snapshot must retain p4');
+const quoteOnlyNative=oddsOf({match_id:61},[
+ {market_id:906,outcome_id:10,market_name:'Total Corners',position_name:'Over',
+  total:8.5,odds:1.91,visible:1,lock:0,res:'0',p4:77}
+],{positions:new Map(),liveMarkets:new Map(),preMarkets:new Map()},false,true);
+assert.equal(quoteOnlyNative.length,1,
+ 'a football quote with its own native market/outcome labels survives a missing dictionary entry');
+assert.equal(quoteOnlyNative[0].nativeMarketId,'906');
+assert.equal(quoteOnlyNative[0].nativeOutcomeId,'10');
+assert.equal(quoteOnlyNative[0].marketName,'Total Corners');
+assert.equal(quoteOnlyNative[0].outcomeName,'Over');
+assert.equal(quoteOnlyNative[0].line,'8.5');
+assert.equal(quoteOnlyNative[0].price,1.91);
+assert.equal(quoteOnlyNative[0].nativeQuote.p4,77,
+ 'all provider quote fields remain available for downstream audit and settlement');
+const nestedQuoteOnly=oddsOf({match_id:62},[
+ {marketId:907,selectionId:11,market:{nm:'Both Teams To Score'},
+  position:{nm:'Yes'},price:2.05}
+],{positions:new Map(),liveMarkets:new Map(),preMarkets:new Map()},false,true);
+assert.equal(nestedQuoteOnly.length,1,
+ 'nested native quote title and outcome metadata are accepted without the dictionary');
+assert.equal(nestedQuoteOnly[0].marketName,'Both Teams To Score');
+assert.equal(nestedQuoteOnly[0].outcomeName,'Yes');
+assert.equal(nestedQuoteOnly[0].price,2.05);
+const missingNativeLabels=oddsOf({match_id:63},[
+ {mid:908,id:12,pos:1,coef:1.9}
+],{positions:new Map(),liveMarkets:new Map(),preMarkets:new Map()},false,true);
+assert.equal(missingNativeLabels.length,0,
+ 'quotes without any market title or outcome label are not guessed');
 const excludedNativeRows=oddsOf({match_id:60},[
  {mid:27073,id:8,pos:1,coef:1.9},
  {mid:905,id:9,pos:1,coef:1.9}
