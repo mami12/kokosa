@@ -245,6 +245,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   const wanted=new Set(ids);
   await queue(async()=>{for(const game of list){const id=Number(game.id),entry=games.get(id);if(!wanted.has(id)||!entry||entry.live)continue;
    const quotes=[];for(const[mid,values]of Object.entries(game.ev??{}))for(const[key,value]of Object.entries(values??{}))quotes.push({...value,id:key,mid});
+   rememberFootballPrematchMarkets(quotes);
    await publish(entry.row,game,oddsOf(entry.row,mainQuotes(quotes,false),meta,false,infoOf(entry.row,game,meta).hasOpenOdds!==false),{complete:'board',startedAt});
   }});
  }
