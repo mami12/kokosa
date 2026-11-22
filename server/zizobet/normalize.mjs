@@ -251,7 +251,7 @@ export function oddsOf(row,quotes,meta,live,open=true,diagnostics){
   // Some provider snapshots omit an entry from the dictionary even though
   // the quote itself includes its untouched market title. Preserve that
   // native offer rather than silently losing it before delivery.
-  const rawName=dictionary?.Name??dictionary?.name??dictionary?.nm??quoteMarketName(q);
+  const rawName=text(dictionary?.Name??dictionary?.name??dictionary?.nm)||quoteMarketName(q);
   const def=dictionary??(rawName?{ID:id,Name:rawName}:null);
   if(!def){note('missingMarketDefinition');continue;}
   if(!rawName){note('missingMarketName');continue;}
