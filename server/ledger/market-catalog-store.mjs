@@ -34,7 +34,14 @@ export async function seedNativeMarketCatalog({database=pool}={}){
  await database.query(`delete from app_provider_market_definition
    where provider_id='ZIZOBET' and scope='LIVE' and sport_id is distinct from 1`);
 
- if(!definitions.length)return refreshMarketCatalog({database});
+ if(!definitions.length){
+  await database.query("delete from app_market_catalog where key like 'zizobet:live:%'");
+  if(staleFamilyKeys.length)
+   await database.query('delete from app_market_catalog where key=any($1::text[])',[staleFamilyKeys]);
+  const snapshot=await database.query('select key,name,enabled,sort_order from app_market_catalog');
+  setCatalogRows(snapshot.rows);
+  return refreshMarketCatalog({database});
+ }
 
  const rows=definitions.map(r=>({
    key:'zizobet:'+String(r.scope).toLowerCase()+':'+r.native_market_id,
