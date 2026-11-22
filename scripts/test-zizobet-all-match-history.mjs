@@ -134,4 +134,55 @@ try{
  await feed.tick();
  assert.equal(archiveCalls.length,10,'Scheduled background history continues after 60 seconds');
 }finally{feed.stop();await feed.drain();}
+
+{
+ // A goal/corner change in the fast live header must bypass the 60-second
+ // background-history interval and fetch the full TimeLines snapshot now.
+ let at=Date.parse('2026-11-12T13:00:00Z');
+ let score='0:0',homeCorners=0,events=[];
+ let detailReads=0;
+ const publishedInfos=[];
+ const liveHeader=()=>({
+  ID:31,Sport:1,Team1:1,Team2:2,Region:1,Champ:1,
+  MatchStatusID:10,Score:score,MatchTime:35,StartTime:'2026-11-12T12:25:00Z',
+  CornersTeam1:homeCorners,CornersTeam2:0,
+  YellowCardsTeam1:0,YellowCardsTeam2:0,RedCardsTeam1:0,RedCardsTeam2:0
+ });
+ const request=async url=>{
+  if(url.includes('getheader/teams'))return teams;
+  if(url.includes('getlivemarkets'))return {StatusNames:[{it:'1_10',nm:'1st half'}],PositionNames:[],MarketNames:[]};
+  if(url.includes('getprematchmarketsbysport'))return [Object.fromEntries(Array.from({length:11},(_,i)=>[i+1,{ID:i+1,Name:'Result'}]))];
+  if(url.includes('headerformobilenew'))return {Games:[liveHeader()],Teams:teams,Regions:regions,Championats:champs};
+  if(url.includes('sport/getheader/en'))return {EN:{Sports:{1:{Regions:{}}}}};
+  if(url.includes('live/gamenew/31')){
+   detailReads++;
+   return {Match:{...liveHeader(),GameID:31,EventStatus:10},TimeLines:events,gmk:[]};
+  }
+  throw Error('Unexpected event-trigger request '+url);
+ };
+ const liveFeed=startZizoFeed({
+  autoStart:false,historyEnabled:true,now:()=>at,request,
+  archiveHistory:async()=>({stored:true,confirmedKinds:[]}),
+  connectMqtt:()=>({setLiveIds(){},stop(){},pause(){},resume(){}}),
+  onMatch(){},onInfo:info=>publishedInfos.push(info),onOdds(){}
+ });
+ try{
+  await liveFeed.tick();
+  assert.equal(detailReads,1,'Initial background history snapshot is fetched');
+  assert.deepEqual(publishedInfos.at(-1).events,[]);
+  // The header already knows the new score and corner count. The incident list
+  // arrives in the following full detail request without waiting a minute.
+  score='1:0';homeCorners=1;
+  events=[
+   {id:'goal-31',type:'score_change',gt:36,team:1,player_name:'Scorer'},
+   {id:'corner-31',type:'corner_kick',gt:37,team:1}
+  ];
+  at+=15000;
+  await liveFeed.tick();
+  assert.equal(detailReads,2,'A header score/stat change immediately fetches a fresh TimeLines detail');
+  assert.deepEqual(publishedInfos.at(-1).events.map(e=>e.type),['goal','corner']);
+  assert.deepEqual(publishedInfos.at(-1).events.map(e=>e.minute),[36,37]);
+ }finally{liveFeed.stop();await liveFeed.drain();}
+}
+
 console.log('PASS all-match Zizobet history, actor minute labels, corrections, odds exclusion and bounded background polling');
