@@ -9,8 +9,36 @@ export {isZizoId};
 export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDefinitions=()=>{},onFixtureDiscovered=()=>{},selectRows=r=>r,getWatchedIds=()=>[],request=get,connectMqtt=startMqtt,autoStart=true,now=()=>Date.now(),transitionGraceMs=120000,retentionMs=21600000,historyEnabled=autoStart,archiveHistory=archiveZizobetMatchHistory}={}){
  const meta={teams:new Map(),regions:new Map(),champs:new Map(),liveMarkets:new Map(),preMarkets:new Map(),positions:new Map(),statuses:new Map()};
  const state={provider:'ZIZOBET',transport:'MQTT cache invalidations + HTTP snapshots',running:false,cycles:0,syncedAt:null,lastError:null,received:0,kept:0,paused:false,pauses:0,resumes:0};
- const games=new Map(),quotes=new Map(),focused=new Map(),focusAttemptAt=new Map(),inflight=new Map(),dirty=new Set(),versions=new Map(),fullObserved=new Map(),watchedSnapshotAt=new Map(),transitions=new Map(),historyPollAt=new Map(),historyFinalized=new Set(),historyFtAttempts=new Map();let stopped=false,work=Promise.resolve(),mqtt,catalogAt=0,revision=0;
+ const games=new Map(),quotes=new Map(),focused=new Map(),focusAttemptAt=new Map(),inflight=new Map(),dirty=new Set(),versions=new Map(),fullObserved=new Map(),watchedSnapshotAt=new Map(),transitions=new Map(),historyPollAt=new Map(),historyFinalized=new Set(),historyFtAttempts=new Map(),headerEventSignals=new Map(),eventRefreshIds=new Set();let stopped=false,work=Promise.resolve(),mqtt,catalogAt=0,revision=0;
  const queue=fn=>{const p=work.then(()=>stopped||state.paused?undefined:fn());work=p.catch(e=>{state.lastError=e.message;});return p;};
+ const headerEventSignal=(row,game)=>{
+  const info=infoOf(row,game,meta),signal={};
+  if(Number.isSafeInteger(info.homeScore)&&Number.isSafeInteger(info.awayScore))
+   signal.score=[info.homeScore,info.awayScore];
+  if(Array.isArray(info.periodsScore))
+   signal.periodScores=info.periodsScore.map(value=>[value.t1,value.t2]);
+  for(const side of ['home','away']){
+   for(const field of ['corners','yellow','red','fouls','offsides','shots','shotsOnTarget']){
+    const value=info.stats?.[side]?.[field];
+    if(Number.isSafeInteger(value))signal['stats:'+side+':'+field]=value;
+   }
+  }
+  return signal;
+ };
+ const observeHeaderEvents=(id,row,game)=>{
+  const incoming=headerEventSignal(row,game),previous=headerEventSignals.get(id);
+  let changed=false;
+  if(previous)for(const [key,value] of Object.entries(incoming))
+   if(previous[key]!==JSON.stringify(value)){changed=true;break;}
+  const next={...(previous??{})};
+  for(const [key,value] of Object.entries(incoming))next[key]=JSON.stringify(value);
+  headerEventSignals.set(id,next);
+  if(previous&&changed){
+   eventRefreshIds.add(id);
+   // Make a failed/immediate refresh eligible for the short retry path.
+   historyPollAt.set(id,0);
+  }
+ };
  const mainQuotes=(quotes,live)=>(quotes??[]).filter(q=>{const id=Number(q.mid),def=(live?meta.liveMarkets:meta.preMarkets).get(id);const name=(live&&id===602)||(!live&&id===448)?'Full Time Result':(live&&id===603)||(!live&&id===537)?'Total Goals':def?.Name??def?.name??def?.nm??'';return isBoardOddsRow({market_name:name,period:/\b(?:half|period)\b/i.test(name)?1:0});});
  async function publish(row,game,rows,{complete=false,startedAt=++revision}={}){
   if(startedAt<(versions.get(row.match_id)??0))return;versions.set(row.match_id,startedAt);
@@ -79,7 +107,9 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
    // A delayed catalogue cannot roll back a newer detail or resurrect FT.
    if(previous?.live&&(previous.row.status==='ended'||startedAt<(versions.get(r.match_id)??0)))continue;
    if(Array.isArray(previous?.row?.raw?.eventTimeline))r.raw={...r.raw,eventTimeline:previous.row.raw.eventTimeline};
-   const hadLive=previous?.live,entry=previous??{};entry.row=r;entry.raw={...entry.raw,...g};entry.live=true;entry.seenAt=now();delete entry.transitionAt;transitions.delete(id);games.set(id,entry);
+   const hadLive=previous?.live;
+   observeHeaderEvents(id,r,g);
+   const entry=previous??{};entry.row=r;entry.raw={...entry.raw,...g};entry.live=true;entry.seenAt=now();delete entry.transitionAt;transitions.delete(id);games.set(id,entry);
    // Header prices remain live after a detail viewer leaves. Preserve a full
    // snapshot's suspension until a new full snapshot confirms reopening.
    if(hadLive&&fullObserved.has(id)&&r.status!=='ended'){
@@ -211,6 +241,13 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   for(const[topic,run]of[['live/headerformobilenew/en',liveList],['prematch/markets',metadata],['prematch/header',prematchList]])if(topics.includes(topic))try{await run();}catch(e){state.lastError=e.message;dirty.add(topic);}
   if(topics.includes('prematch/games'))try{const data=await request(CACHE+'prematch/games');for(const r of data?.UpdateList??[])if(games.has(Number(r.GameId))&&!games.get(Number(r.GameId)).live)pendingPre.push(Number(r.GameId));for(const value of data?.DeleteList??[]){const id=Number(value?.GameId??value),e=games.get(id);if(e&&!e.live){transition(id,e);await queue(()=>suspend(e));dirty.add('live/headerformobilenew/en');}}}catch(e){state.lastError=e.message;dirty.add('prematch/games');}
   const ids=new Set(topics.filter(t=>/^live\/gamenew\/\d+$/.test(t)).map(t=>Number(t.split('/').at(-1))));
+  // A score/statistics change from the lightweight header requests its full
+  // TimeLines snapshot in this same flush instead of waiting for history polling.
+  const urgentTimelineIds=new Set();
+  for(const id of eventRefreshIds){
+   if(!games.get(id)?.live){eventRefreshIds.delete(id);continue;}
+   urgentTimelineIds.add(id);ids.add(id);eventRefreshIds.delete(id);
+  }
   for(const[id,until]of focused){
    if(until<now()){focused.delete(id);focusAttemptAt.delete(id);}
    else if(now()-Math.max(fullObserved.get(id)??0,focusAttemptAt.get(id)??0)>=
@@ -225,7 +262,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   // Bounded round-robin history polls: every active fixture eventually gets
   // its own Zizobet TimeLines detail, even when nobody opens it or bets on it.
   // An archive-only request never fetches/parses the full market grid for storage.
-  const historyOnlyIds=new Set();
+  const historyOnlyIds=new Set(urgentTimelineIds);
   if(historyEnabled){
    const interval=Math.max(30000,Number(process.env.ZIZO_HISTORY_REFRESH_MS)||60000);
    const batch=Math.max(1,Math.min(8,Number(process.env.ZIZO_HISTORY_PER_FLUSH)||4));
@@ -246,7 +283,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   const batches=[];for(let i=0;i<board.length;i+=80)batches.push(board.slice(i,i+80));
   const loaded=await Promise.allSettled(batches.map(refreshPrematchBoard));for(let i=0;i<loaded.length;i++)if(loaded[i].status==='rejected'){pendingPre.push(...batches[i]);state.lastError=loaded[i].reason?.message??'Prematch board refresh failed';}
 
-    const batchSize=Math.min(20,Math.max(1,Number(process.env.ZIZO_SNAPSHOT_CONCURRENCY)||8)),all=[...ids];for(let i=0;i<all.length;i+=batchSize){if(stopped||state.paused)break;const batch=all.slice(i,i+batchSize),results=await Promise.allSettled(batch.map(id=>refresh(id,{probeLive:transitions.has(id)||watched.has(id),historyOnly:historyOnlyIds.has(id)})));for(let j=0;j<results.length;j++)if(results[j].status==='rejected'){state.lastError=results[j].reason?.message??'Snapshot refresh failed';const t=transitions.get(batch[j]);if(t){t.failures++;t.next=now()+Math.min(300000,15000*2**Math.min(t.failures-1,5));}}}
+    const batchSize=Math.min(20,Math.max(1,Number(process.env.ZIZO_SNAPSHOT_CONCURRENCY)||8)),all=[...ids];for(let i=0;i<all.length;i+=batchSize){if(stopped||state.paused)break;const batch=all.slice(i,i+batchSize),results=await Promise.allSettled(batch.map(id=>refresh(id,{probeLive:transitions.has(id)||watched.has(id),historyOnly:historyOnlyIds.has(id)})));for(let j=0;j<results.length;j++)if(results[j].status==='rejected'){state.lastError=results[j].reason?.message??'Snapshot refresh failed';if(historyOnlyIds.has(batch[j]))historyPollAt.set(batch[j],now()+3000);const t=transitions.get(batch[j]);if(t){t.failures++;t.next=now()+Math.min(300000,15000*2**Math.min(t.failures-1,5));}}}
  }catch(e){state.lastError=e.message;}finally{flushing=false;}}
  async function tick(){if(stopped||state.paused||state.running)return;state.running=true;state.lastError=null;try{if(!catalogAt||now()-catalogAt>600000)try{await metadata();}catch(e){state.lastError=e.message;}for(const run of[liveList,prematchList]){if(stopped||state.paused)break;try{await run();}catch(e){state.lastError=e.message;}}if(!stopped&&!state.paused)await flush();}catch(e){state.lastError=e.message;}finally{state.running=false;}}
  mqtt=connectMqtt({onInvalidate:topic=>dirty.add(topic),onStatus:s=>{state.socket=s;onStatus?.({...s,provider:'ZIZOBET'});}});
