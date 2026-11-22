@@ -228,6 +228,22 @@ assert.doesNotThrow(()=>assertDistinctSelectionMarkets([resolvedZizobetCorner, r
   'Native Corners title bypasses duplicate market identity guard');
 assert.doesNotThrow(()=>assertCompatibleSelections([resolvedZizobetCorner, resolvedNonCornerSameGroup]),
   'Canonical resolved Corners offer bypasses all compatibility checks');
+// Mirrors the actual frontend payload after the native provider title is
+// forwarded from Market -> OddsButton -> BetSelection. No opaque native key
+// or synthetic gCorners identifier is required for classification.
+const oddsButtonNativeTitleCorner = pick('200|zz901@total|5.5|Over', {
+  matchId:'200', marketId:'200|zz901@total|5.5',
+  marketName:'Over/Under', nativeMarketName:'Total Corners Over/Under',
+  marketType:'over_under', marketLine:'5.5', outcomeName:'Over 5.5'
+});
+assert.equal(selectionConflict(matchResult, oddsButtonNativeTitleCorner), null,
+  'Frontend Corners pick is recognized from the preserved native Zizobet title');
+assert.equal(selectionConflict(oddsButtonNativeTitleCorner, matchTotal), null,
+  'Native-title Corners pick combines with Goals in the frontend');
+assert.equal(selectionConflict(oddsButtonNativeTitleCorner, cornersUnder), null,
+  'Multiple native-title Corners picks combine in the frontend');
+assert.doesNotThrow(()=>assertCompatibleSelections([matchResult, oddsButtonNativeTitleCorner, cornersUnder]),
+  'Server accepts the exact frontend payload once resolved');
 // This mirrors the exact object built by OddsButton: marketKey/extId are not
 // sent to the betslip, so category detection must read the native key in outcomeId.
 const actualOddsButtonCorner = pick('200|gCorners|2.5|Over', {
