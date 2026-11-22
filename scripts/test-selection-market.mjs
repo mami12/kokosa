@@ -188,6 +188,16 @@ for (const other of [matchResult, matchTotal, cards, firstHalfTotal, sameGameCom
 }
 assert.notEqual(selectionConflict(actualOddsButtonCorner, cornersUnder), null,
   'A second corner market in the same fixture remains blocked');
+const albanianCornerTitle = pick('200|local-corner-market|10.5|Over', {
+  matchId:'200', marketId:'local-corner-id',
+  marketName:'Totali i goditjeve këndore (10.5)',
+  marketType:'over_under', marketLine:'10.5', outcomeName:'Lart'
+});
+assert.equal(selectionConflict(matchResult, albanianCornerTitle), null,
+  'Albanian translated corner title combines with Match Result');
+const albanianSecondCorner = {...albanianCornerTitle, outcomeId:'200|local-corner-market|11.5|Under', marketLine:'11.5', outcomeName:'Poshtë'};
+assert.equal(selectionConflict(albanianCornerTitle, albanianSecondCorner)?.code, 'SAME_MARKET_CATEGORY',
+  'Two Albanian corner offers remain in the same Corners category');
 const actualSecondCorner = pick('200|gCorners|5.5|Under', {
   matchId:'200', marketId:'another-local-market-id',
   marketName:'Over/Under', marketType:'over_under',
