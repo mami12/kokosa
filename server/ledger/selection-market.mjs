@@ -271,17 +271,17 @@ function isOverUnderChoice(selection) {
   const type = normalizedSelectionText(selection?.marketType ?? selection?.market_type);
   const {names} = selectionMarketEvidence(selection);
   return /^(?:over|under|lart|poshte|mbi|nen)(?:\s|$)/.test(outcome) ||
-    (type === 'over_under' && /\b(?:total|over under|over|under)\b/.test(names));
+    (type === 'over under' && /\b(?:total|over under|over|under)\b/.test(names));
 }
 
 /** Range selections can have numeric bucket labels rather than Over/Under. */
 function isRangeChoice(selection) {
   const {names,keys,type} = selectionMarketEvidence(selection);
-  const outcome = normalizedSelectionText(selectionOutcomeName(selection));
+  const outcome = String(selectionOutcomeName(selection)).trim();
   return type === 'range' || type === 'multi goals' ||
     /\b(?:range|multigoals?|multi goals?|total in range|number of goals)\b/.test(names) ||
     /(?:^|\s)(?:g|zz)?multigoals?(?:\s|$)|(?:goal|corner|card|foul|shot|offside|save|penalt).*range/.test(keys) ||
-    /^\d+(?:\.\d+)?\s*(?:-|–|to)\s*\d+(?:\.\d+)?(?:\s+(?:goals?|corners?|cards?|fouls?|shots?|offsides?|saves?))?$/.test(outcome);
+    /^\d+(?:[.,]\d+)?\s*(?:-|–|to)\s*\d+(?:[.,]\d+)?(?:\s+(?:goals?|corners?|cards?|fouls?|shots?|offsides?|saves?))?$/i.test(outcome);
 }
 
 function isStatisticOverUnderOrRange(selection) {
