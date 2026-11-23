@@ -116,6 +116,72 @@ const corners=pick('200|gCorners|2.5|Over',{matchId:'200',marketId:'200|gCorners
 const cards=pick('200|gCards|4.5|Over',{matchId:'200',marketId:'200|gCards|4.5',marketName:'Total Cards',marketType:'over_under',marketLine:'4.5',outcomeName:'Over 4.5'});
 const otherFixture=pick('201|g1x2||1',{matchId:'201',marketId:'201|g1x2|',marketName:'Match Result'});
 
+// Across one match, Over/Under and Range are mutually exclusive for the
+// same statistic, even when Zizobet assigns them different provider market IDs.
+const statisticOverRangePairs = [
+  ['goals', 'Total Goals', 'Total in Range', 'g6379', 'gMultiGoals'],
+  ['goals', 'Home Team Total Goals', 'Home Team Total Range', 'gHomeGoals', 'gHomeGoalRange'],
+  ['corners', 'Total Corners', 'Corner Range', 'gCorners', 'gCornerRange'],
+  ['cards', 'Total Cards', 'Total Cards Range', 'gCards', 'gCardRange'],
+  ['yellow cards', 'Total Yellow Cards', 'Yellow Card Range', 'gYellowCards', 'gYellowCardRange'],
+  ['red cards', 'Total Red Cards', 'Red Card Range', 'gRedCards', 'gRedCardRange'],
+  ['booking points', 'Total Booking Points', 'Card Point Range', 'gBookingPoints', 'gCardPointRange'],
+  ['fouls', 'Total Fouls', 'Foul Range', 'gFouls', 'gFoulRange'],
+  ['shots', 'Total Shots', 'Shots Range', 'gShots', 'gShotsRange'],
+  ['shots on target', 'Total Shots on Target', 'Shots on Target Range', 'gShotsOnTarget', 'gSOTRange'],
+  ['offsides', 'Total Offsides', 'Offside Range', 'gOffsides', 'gOffsideRange'],
+  ['throw-ins', 'Total Throw-ins', 'Throw-in Range', 'gThrowIns', 'gThrowInRange'],
+  ['saves', 'Total Saves', 'Saves Range', 'gSaves', 'gSavesRange'],
+  ['penalties', 'Total Penalties', 'Penalty Range', 'gPenalties', 'gPenaltyRange'],
+];
+for (const [stat, overMarket, rangeMarket, overKey, rangeKey] of statisticOverRangePairs) {
+  const overPick = pick(`200|${overKey}|2.5|Over`, {
+    matchId:'200',marketId:`200|${overKey}|2.5`,marketKey:overKey,
+    marketName:overMarket,marketType:'over_under',marketLine:'2.5',outcomeName:'Over 2.5'
+  });
+  const rangePick = pick(`200|${rangeKey}|2-3|Range`, {
+    matchId:'200',marketId:`200|${rangeKey}|2-3`,marketKey:rangeKey,
+    marketName:rangeMarket,marketType:'range',marketLine:'2-3',outcomeName:'2-3'
+  });
+  assert.equal(selectionConflict(overPick,rangePick)?.code,'SAME_STATISTIC_TOTAL_RANGE',
+    `${stat}: Over/Under blocks Range across distinct provider market IDs`);
+  assert.equal(selectionConflict(rangePick,overPick)?.code,'SAME_STATISTIC_TOTAL_RANGE',
+    `${stat}: Range blocks Over/Under in the reverse selection order`);
+  assert.deepEqual(toggleCompatibleSelection([overPick],rangePick),[overPick],
+    `${stat}: selecting Over/Under keeps Range markets locked`);
+  assert.deepEqual(toggleCompatibleSelection([rangePick],overPick),[rangePick],
+    `${stat}: selecting Range keeps Over/Under markets locked`);
+  assert.throws(()=>assertCompatibleSelections([overPick,rangePick]),
+    error=>error.code==='INCOMPATIBLE_SELECTIONS'&&error.conflictCode==='SAME_STATISTIC_TOTAL_RANGE',
+    `${stat}: backend rejects Over/Under + Range`);
+}
+
+// Over/Under picks from different markets of the same statistic are also
+// mutually exclusive, including full-time/team/period variants of Goals.
+const goalsOver = pick('200|g6379|2.5|Over', {
+  matchId:'200',marketId:'200|g6379|2.5',marketKey:'g6379',
+  marketName:'Total Goals',marketType:'over_under',outcomeName:'Over 2.5'
+});
+const homeGoalsUnder = pick('200|gHomeGoals|1.5|Under', {
+  matchId:'200',marketId:'200|gHomeGoals|1.5',marketKey:'gHomeGoals',
+  marketName:'Home Team Total Goals',marketType:'over_under',outcomeName:'Under 1.5'
+});
+assert.equal(selectionConflict(goalsOver,homeGoalsUnder)?.code,'SAME_STATISTIC_TOTAL_RANGE');
+assert.deepEqual(toggleCompatibleSelection([goalsOver],homeGoalsUnder),[goalsOver]);
+assert.throws(()=>assertCompatibleSelections([goalsOver,homeGoalsUnder]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS');
+
+// Different statistics and non-total market types remain available.
+const cornersOver = pick('200|gCorners|8.5|Over', {
+  matchId:'200',marketId:'200|gCorners|8.5',marketKey:'gCorners',
+  marketName:'Total Corners',marketType:'over_under',outcomeName:'Over 8.5'
+});
+assert.doesNotThrow(()=>assertCompatibleSelections([goalsOver,cornersOver,matchResult]));
+const bttsMarket = pick('200|gBtts||Yes', {
+  matchId:'200',marketId:'200|gBtts|',marketKey:'gBtts',
+  marketName:'Both Teams to Score',outcomeName:'Yes'
+});
+assert.doesNotThrow(()=>assertCompatibleSelections([goalsOver,bttsMarket]));
 // Selecting 1X2 must not lock unrelated market families from the same fixture.
 // The provider market key is the boundary: one pick per key, any number of
 // different keys from the same match.
