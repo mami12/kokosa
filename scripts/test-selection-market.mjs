@@ -136,6 +136,7 @@ assert.equal(selectionConflict(goalOver,goalUnderAlt)?.code,'SAME_TOTAL_FAMILY',
 const cornersUnder=pick('200|gCorners|4.5|Under',{matchId:'200',marketId:'200|gCorners|4.5',marketName:'Total Corners',marketType:'over_under',marketLine:'4.5',outcomeName:'Under 4.5'});
 assert.equal(selectionConflict(corners,cornersUnder)?.code,'SAME_MARKET_GROUP',
   'Different lines from the same Total Corners market cannot be combined');
+const raceCorners=pick('200|gRaceCorners||7',{matchId:'200',marketId:'200|gRaceCorners|',marketName:'Race to 7 Corners',outcomeName:'First to 7'});
 const raceCornersAgain=pick('200|gRaceCorners||10',{matchId:'200',marketId:'200|gRaceCorners|',marketName:'Race to 10 Corners',outcomeName:'First to 10'});
 assert.equal(selectionConflict(corners,raceCorners),null,
   'Total Corners can combine with Race to X Corners');
@@ -204,7 +205,6 @@ assert.throws(()=>assertCompatibleSelections([goalOver,nextGoal]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS',
   'The backend rejects different provider market IDs in one category');
 
-const raceCorners=pick('200|gRaceCorners||7',{matchId:'200',marketId:'200|gRaceCorners|',marketName:'Race to 7 Corners',outcomeName:'First to 7'});
 assert.equal(selectionConflict(corners,raceCorners),null,
   'Total Corners and Race to X Corners can be combined');
 const cardsOther=pick('200|gCards||Over',{matchId:'200',marketId:'200|gCards|',marketName:'Total Cards',outcomeName:'Over'});
@@ -273,11 +273,10 @@ assert.equal(selectionConflict(matchResult, oddsButtonNativeTitleCorner), null,
   'Frontend Corners pick is recognized from the preserved native Zizobet title');
 assert.equal(selectionConflict(oddsButtonNativeTitleCorner, matchTotal), null,
   'Native-title Corners pick combines with Goals in the frontend');
-assert.equal(selectionConflict(oddsButtonNativeTitleCorner, cornersUnder)?.code,'SAME_MARKET_GROUP',
-  'Native-title duplicate Total Corners selections are blocked');
-assert.throws(()=>assertCompatibleSelections([matchResult, oddsButtonNativeTitleCorner, cornersUnder]),
-  error=>error.code==='INCOMPATIBLE_SELECTIONS',
-  'Server rejects repeated native-title Total Corners market');
+assert.equal(selectionConflict(oddsButtonNativeTitleCorner, cornersUnder),null,
+  'Different provider market IDs remain distinct even when both display Total Corners');
+assert.doesNotThrow(()=>assertCompatibleSelections([matchResult, oddsButtonNativeTitleCorner, cornersUnder]),
+  'Server accepts distinct Corners market IDs alongside the main result');
 // This mirrors the exact object built by OddsButton: marketKey/extId are not
 // sent to the betslip, so category detection must read the native key in outcomeId.
 const actualOddsButtonCorner = pick('200|gCorners|2.5|Over', {
