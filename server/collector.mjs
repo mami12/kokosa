@@ -310,9 +310,47 @@ export function buildMarkets(oddsRows,{includeRemoved=false}={}) {
     visible = visible.filter((m) => !m.hidden);
   }
 
-  // Keep every distinct provider group. The Map above already coalesces rows
-  // with the SAME market_key + line. A duplicate display name is not proof
-  // that two different provider IDs are interchangeable betting contracts.
+  // Different native IDs can still publish the exact same visible offer.
+  // Keep one quote for an identical presentation contract so users do not see
+  // the same market card repeatedly. Do not merge outcomes across IDs: every
+  // displayed outcome must retain the market key that resolves its own quote.
+  const visibleOffers = new Map();
+  const normVisible = value => String(value ?? '').trim().toLowerCase()
+    .replace(/\\s*:\\s*/g, ':').replace(/\\s+/g, ' ');
+  const quoteFreshness = market => Math.max(0, ...(market.outcomes ?? []).map(outcome => {
+    const at = Date.parse(outcome.priceUpdatedAt ?? '');
+    return Number.isFinite(at) ? at : 0;
+  }));
+  for (const market of visible) {
+    const outcomeLabels = (market.outcomes ?? []).map(outcome => normVisible(outcome.name)).sort();
+    // Unlabelled selections are not safe to compare by presentation.
+    if (!outcomeLabels.length || outcomeLabels.some(label => !label)) {
+      visibleOffers.set('native:' + market.key + '|' + market.line, market);
+      continue;
+    }
+    const signature = JSON.stringify([
+      normVisible(market.name),
+      normVisible(market.nativeMarketName ?? market.name),
+      market.column,
+      Number(market.period ?? 0),
+      normVisible(market.line),
+      outcomeLabels,
+    ]);
+    const existing = visibleOffers.get(signature);
+    if (!existing) {
+      visibleOffers.set(signature, market);
+      continue;
+    }
+    const currentFreshness = quoteFreshness(market);
+    const existingFreshness = quoteFreshness(existing);
+    if (currentFreshness > existingFreshness ||
+        (currentFreshness === existingFreshness && Number(market.isBase) > Number(existing.isBase)) ||
+        (currentFreshness === existingFreshness && market.isBase === existing.isBase &&
+          Number(market.order) < Number(existing.order))) {
+      visibleOffers.set(signature, market);
+    }
+  }
+  visible = [...visibleOffers.values()];
 
   // Hide handicap and early payout offers from every public market view, never from stored
   // provider odds or historical ticket settlement.
