@@ -212,7 +212,6 @@ const differentMarketFamilies = [
   pick('200|gFouls|21.5|Over',{matchId:'200',marketId:'200|gFouls|21.5',marketName:'Total Fouls',marketType:'over_under',outcomeName:'Over 21.5'}),
   pick('200|gShotsOnTarget|7.5|Over',{matchId:'200',marketId:'200|gShotsOnTarget|7.5',marketName:'Shots on Target',marketType:'over_under',outcomeName:'Over 7.5'}),
   pick('200|gFirstGoal||Home',{matchId:'200',marketId:'200|gFirstGoal|',marketName:'First Goal',outcomeName:'Home'}),
-  pick('200|gCorrectScore||1:0',{matchId:'200',marketId:'200|gCorrectScore|',marketName:'Correct Score',outcomeName:'1:0'}),
   pick('200|BB|template-a',{matchId:'200',marketId:'200|BB|template-a',marketName:'Bet Builder'})
 ];
 for (const candidate of differentMarketFamilies) {
@@ -228,15 +227,21 @@ assert.deepEqual(toggleCompatibleSelection([matchResult,otherFixture],matchTotal
 assert.deepEqual(toggleCompatibleSelection([matchResult,otherFixture],corners),[matchResult,otherFixture,corners],
   'Corners can combine with result markets');
 assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,corners,otherFixture]));
+const resultCorrectScore=pick('200|gCorrectScore||1:0',{matchId:'200',marketId:'200|gCorrectScore|',marketName:'Correct Score',outcomeName:'1:0'});
+assert.equal(selectionConflict(matchResult,resultCorrectScore)?.family,'result',
+  '1X2 and Correct Score cannot be stacked as correlated match-result selections');
+assert.throws(()=>assertCompatibleSelections([matchResult,resultCorrectScore]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS');
 assert.doesNotThrow(()=>assertCompatibleSelections([matchTotal,corners,otherFixture]));
 assert.doesNotThrow(()=>assertCompatibleSelections([cards,corners,otherFixture]));
-assert.equal(selectionConflict(matchResult,doubleChance),null,
-  '1X2 + Double Chance are distinct markets');
-assert.equal(selectionConflict(matchResult,drawNoBet),null,
-  '1X2 + Draw No Bet are distinct markets');
-assert.deepEqual(toggleCompatibleSelection([matchResult],doubleChance),[matchResult,doubleChance],
-  'A different main-result market remains selectable');
-assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,doubleChance,drawNoBet]));
+assert.equal(selectionConflict(matchResult,doubleChance)?.family,'result',
+  '1X2 + Double Chance are mutually exclusive result-family markets');
+assert.equal(selectionConflict(matchResult,drawNoBet)?.family,'result',
+  '1X2 + Draw No Bet are mutually exclusive result-family markets');
+assert.deepEqual(toggleCompatibleSelection([matchResult],doubleChance),[matchResult],
+  'A second main-result market is blocked');
+assert.throws(()=>assertCompatibleSelections([matchResult,doubleChance,drawNoBet]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS');
 
 const goalOver=pick('200|gGoals|1.5|Over',{matchId:'200',marketId:'200|gGoals|1.5',marketName:'Total Goals',marketType:'over_under',marketLine:'1.5',outcomeName:'Over 1.5'});
 const goalUnderAlt=pick('200|gGoals|3.5|Under',{matchId:'200',marketId:'200|gGoals|3.5',marketName:'Total Goals',marketType:'over_under',marketLine:'3.5',outcomeName:'Under 3.5'});
