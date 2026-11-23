@@ -358,8 +358,83 @@ function noGoalPrematchScenario(selection) {
     isFirstGoalNoGoal(selection);
 }
 
+/** Canonical statistical families used to prevent correlated selections on one fixture.
+ * Combo markets contribute every family represented by their legs, not just their title.
+ */
+function selectionMetricFamilies(selection, seen = new Set()) {
+  const families = new Set();
+  if (!selection || typeof selection !== 'object' || seen.has(selection)) return families;
+  seen.add(selection);
+
+  const evidence = selectionMarketEvidence(selection);
+  const text = evidence.text;
+  const names = evidence.names;
+  const type = evidence.type;
+  const playerMarket = /\b(?:players?|scorer|goalscorer|to be booked|player shots?)\b/.test(names);
+
+  const add = value => { if (value) families.add(value); };
+  const metric = selectionMetric(selection);
+  if (metric) add(
+    metric === 'yellow_cards' || metric === 'red_cards' || metric === 'booking_points' ? 'cards' :
+    metric === 'shots_on_target' ? 'shots' : metric
+  );
+
+  if (isResultFamily(selection) ||
+      /\b(?:1x2|match result|full time result|match winner|double chance|draw no bet|moneyline)\b/.test(text) ||
+      /\b(?:half time full time|halftime fulltime|ht ft|half time result)\b/.test(text) ||
+      /^(?:htft|half time full time)$/.test(type) ||
+      /\bcorrect score\b/.test(text) ||
+      /\b(?:g|zz)?(?:1x2|dc|dnb|matchresult|fulltimeresult|matchwinner|doublechance)\b/.test(evidence.keys) ||
+      /\b(?:home|away) win\b|\bwin (?:over|and|with)\b|\bto win\b|\bhome or draw\b|\bhome or away\b|\bdraw or away\b/.test(text) ||
+      /^(?:double chance|draw no bet|moneyline|match result|1x2)$/.test(type)) add('result');
+
+  if (!playerMarket && (
+      /\b(?:goals?|btts|both teams (?:to )?score|correct score|first goal|next goal|first team to score|next team to score|goal time)\b/.test(text) ||
+      /\b(?:g|zz)?(?:home|away|total)?goals?(?:1h|2h|p1|p2)?\b/.test(evidence.keys) ||
+      /\b(?:g|zz)?(?:btts|correctscore|firstgoal|nextgoal|multigoals?)\b/.test(evidence.keys) ||
+      type === 'btts' || type === 'total goals'
+  )) add('goals');
+
+  if (/\b(?:corners?|corner kicks?|kendore|goditje kendore)\b/.test(text) ||
+      /\b(?:corners?|corner)\b/.test(type) ||
+      /\b(?:g|zz)?(?:corners?|cornerhandicap|racecorners|firstcorner)\b/.test(evidence.keys)) add('corners');
+
+  if (/\b(?:cards?|yellow cards?|red cards?|bookings?|carded|booking points?|card points?|disciplin)\b/.test(text) ||
+      /\b(?:cards?|card|yellow cards?|red cards?|booking points?)\b/.test(type) ||
+      /\b(?:g|zz)?(?:cards?|yellowcards?|redcards?|bookingpoints?)\b/.test(evidence.keys)) add('cards');
+
+  if (/\b(?:shots?|attempts?|shots on target|on target shots?)\b/.test(text) ||
+      /\b(?:shots?|attempts?)\b/.test(type) || /shots?/i.test(evidence.keys)) add('shots');
+  if (/\b(?:fouls?|faulle?)\b/.test(text) || /\bfouls?\b/.test(type) || /fouls?/i.test(evidence.keys)) add('fouls');
+  if (/\b(?:offsides?|offside)\b/.test(text) || /\boffsides?\b/.test(type) || /offsides?/i.test(evidence.keys)) add('offsides');
+  if (/\bthrow ins?\b/.test(text) || /throw ins?/.test(type) || /throw.?ins?/i.test(evidence.keys)) add('throw_ins');
+  if (/\b(?:saves?|goalkeeper saves?)\b/.test(text) || /\bsaves?\b/.test(type) || /saves?/i.test(evidence.keys)) add('saves');
+  if (/\bpenalt(?:y|ies)\b/.test(text) || /\bpenalties?\b/.test(type) || /penalt/i.test(evidence.keys)) add('penalties');
+
+  for (const leg of [...(selection.builderLegs ?? []), ...(selection.builder_legs ?? [])]) {
+    for (const family of selectionMetricFamilies(leg, seen)) add(family);
+  }
+
+  for (const leg of [...(selection.comboLegs ?? []), ...(selection.combo_legs ?? [])]) {
+    const market = normalizedSelectionText(leg?.market ?? leg?.marketName ?? leg?.name);
+    if (/^(?:1x2|dc|double chance|draw no bet|result|match result)$/.test(market)) add('result');
+    if (/^(?:btts|total|goals?|correct score)$/.test(market)) add('goals');
+    if (/corner/.test(market)) add('corners');
+    if (/card|booking/.test(market)) add('cards');
+    if (/shot/.test(market)) add('shots');
+    if (/foul/.test(market)) add('fouls');
+    if (/offside/.test(market)) add('offsides');
+    if (/throw.?in/.test(market)) add('throw_ins');
+    if (/save/.test(market)) add('saves');
+    if (/penalt/.test(market)) add('penalties');
+  }
+
+  return families;
+}
+
 /** Returns a structured conflict for two selections from the same fixture.
- * Names are the original provider names; translations are never consulted.
+ * Any overlapping statistical family is mutually exclusive, including when
+ * one selection is a multi-leg same-game combination.
  */
 export function selectionConflict(first, second) {
   if (!first || !second) return null;
@@ -368,9 +443,6 @@ export function selectionConflict(first, second) {
   const secondMatch = selectionMatchIdentity(second);
   if (firstMatch === null || secondMatch === null || firstMatch !== secondMatch) return null;
 
-  // A slip may contain different markets from the same fixture. The only
-  // same-fixture conflict is a second quote from the same provider market
-  // group (alternate outcomes/lines are mutually exclusive).
   const firstMarket = selectionMarketIdentity(first);
   const secondMarket = selectionMarketIdentity(second);
   if (firstMarket !== null && firstMarket === secondMarket) {
@@ -380,13 +452,17 @@ export function selectionConflict(first, second) {
     };
   }
 
-  const firstMetric = selectionMetric(first);
-  const secondMetric = selectionMetric(second);
-  if (firstMetric !== null && firstMetric === secondMetric &&
-      isStatisticOverUnderOrRange(first) && isStatisticOverUnderOrRange(second)) {
+  const firstFamilies = selectionMetricFamilies(first);
+  const secondFamilies = selectionMetricFamilies(second);
+  const overlap = [...firstFamilies].find(family => secondFamilies.has(family));
+  if (overlap) {
+    const legacyTotalPair = firstFamilies.size === 1 && secondFamilies.size === 1 &&
+      firstFamilies.has(overlap) && isStatisticOverUnderOrRange(first) &&
+      isStatisticOverUnderOrRange(second);
     return {
-      code: 'SAME_STATISTIC_TOTAL_RANGE',
-      message: 'Lejohet vetëm një zgjedhje Over/Under ose Range për të njëjtën statistikë në të njëjtën ndeshje.',
+      code: legacyTotalPair ? 'SAME_STATISTIC_TOTAL_RANGE' : 'SAME_STATISTIC_FAMILY',
+      message: 'Lejohet vetëm një zgjedhje për të njëjtën familje statistike në të njëjtën ndeshje, edhe kur marketet kanë emra të ndryshëm ose janë kombinime.',
+      family: overlap,
     };
   }
 

@@ -89,6 +89,22 @@ export function marketLineValue(market: Market): string {
  * Other/outdated/unknown templates remain separate rather than being guessed.
  * Every builder retains its own market/outcome ID and individual price.
  */
+/** Total Over/Under markets only display half-step lines (.5).
+ * Quarter lines (.25/.75) and whole-number lines are intentionally omitted.
+ * Markets without an identifiable line are left untouched rather than guessed.
+ */
+export function isAllowedTotalLine(market: Market): boolean {
+  const type = normalized(market.marketType).replace(/[\\s-]+/g, '_');
+  const names = [market.name, market.nativeMarketName].map(normalized).join(' ');
+  const isTotal = type === 'over_under' || type === 'overunder' || type === 'total' ||
+    /\\b(?:total|over\\s*\\/?\\s*under)\\b/.test(names);
+  if (!isTotal) return true;
+  const line = marketLineValue(market).trim().replace(',', '.');
+  if (!line) return true;
+  const value = Number(line);
+  return Number.isFinite(value) && Math.abs((value % 1) - 0.5) < 1e-9;
+}
+
 export function betBuilderGroup(market: Market): { key: string; title: string } | null {
   if (!/^bet builder\s*:/i.test(String(market.name ?? '').trim())) return null;
   const outcomes = market.outcomes ?? [];
