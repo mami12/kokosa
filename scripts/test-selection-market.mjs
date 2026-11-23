@@ -124,8 +124,8 @@ const fullTimeResultGoals=pick('200|gFTResultGoals||HomeOver',{matchId:'200',mar
 const corners=pick('200|gCorners|2.5|Over',{matchId:'200',marketId:'200|gCorners|2.5',marketName:'Total Corners',marketType:'over_under',marketLine:'2.5',outcomeName:'Over 2.5'});
 const cards=pick('200|gCards|4.5|Over',{matchId:'200',marketId:'200|gCards|4.5',marketName:'Total Cards',marketType:'over_under',marketLine:'4.5',outcomeName:'Over 4.5'});
 const otherFixture=pick('201|g1x2||1',{matchId:'201',marketId:'201|g1x2|',marketName:'Match Result'});
-assert.deepEqual(toggleCompatibleSelection([matchResult,otherFixture],matchTotal),[matchResult,otherFixture],
-  'Goals totals cannot combine with the result market from the same fixture');
+assert.deepEqual(toggleCompatibleSelection([matchResult,otherFixture],matchTotal),[matchResult,otherFixture,matchTotal],
+  'Goals totals can combine with the main result market from the same fixture');
 assert.deepEqual(toggleCompatibleSelection([matchResult,otherFixture],corners),[matchResult,otherFixture,corners],
   'Corners can combine with result markets');
 assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,corners,otherFixture]));
@@ -141,7 +141,7 @@ assert.throws(()=>assertCompatibleSelections([matchResult,doubleChance]),
 const goalOver=pick('200|gGoals|1.5|Over',{matchId:'200',marketId:'200|gGoals|1.5',marketName:'Total Goals',marketType:'over_under',marketLine:'1.5',outcomeName:'Over 1.5'});
 const goalUnderAlt=pick('200|gGoals|3.5|Under',{matchId:'200',marketId:'200|gGoals|3.5',marketName:'Total Goals',marketType:'over_under',marketLine:'3.5',outcomeName:'Under 3.5'});
 assert.equal(selectionConflict(goalOver,goalUnderAlt)?.code,'SAME_TOTAL_FAMILY',
-  'Alternate lines in the same total family are incompatible');
+  'Alternate lines remain incompatible unless the same fixture also has a main market');
 const cornersUnder=pick('200|gCorners|4.5|Under',{matchId:'200',marketId:'200|gCorners|4.5',marketName:'Total Corners',marketType:'over_under',marketLine:'4.5',outcomeName:'Under 4.5'});
 assert.equal(selectionConflict(corners,cornersUnder),null,
   'Different Corners lines in the same market group can be combined');
@@ -159,7 +159,17 @@ assert.deepEqual(toggleCompatibleSelection([corners],cornersUnder),[corners,corn
 const cardsUnder=pick('200|gCards|5.5|Under',{matchId:'200',marketId:'200|gCards|5.5',marketName:'Total Cards',marketType:'over_under',marketLine:'5.5',outcomeName:'Under 5.5'});
 assert.equal(selectionConflict(cards,cardsUnder)?.code,'SAME_TOTAL_FAMILY',
   'Only one total-cards Over/Under quote is allowed per period');
-assert.equal(findSelectionConflict([matchResult,goalOver,goalUnderAlt])?.code,'SAME_TOTAL_FAMILY');
+assert.equal(findSelectionConflict([matchResult,goalOver,goalUnderAlt]),null,
+  'A main market unlocks multiple full-time Goals total lines on the same fixture');
+assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,goalOver,goalUnderAlt]),
+  'Backend accepts 1X2 + Over 1.5 + Under 3.5');
+assert.doesNotThrow(()=>assertDistinctSelectionMarkets([matchResult,goalOver,goalUnderAlt]),
+  'Structural duplicate-market guard permits multiple goal totals when paired with a main market');
+assert.deepEqual(toggleCompatibleSelection([matchResult,goalOver],goalUnderAlt),
+  [matchResult,goalOver,goalUnderAlt],
+  'Frontend accepts a second goal total when a main market is already selected');
+assert.equal(selectionConflict(matchResult,matchTotal),null,
+  'Main result + total goals are compatible');
 
 // One selection per visible market category for the same fixture, even when
 // the provider gives the offers different market IDs and different names.
