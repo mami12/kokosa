@@ -434,8 +434,8 @@ for (const status of ['LIVE','PREMATCH']) {
  });
  assert.equal(selectionConflict(matchResult, extIdCorner), null,
   `Result + Corners must combine for ${status}`);
- assert.equal(selectionConflict(extIdCorner, actualOddsButtonCorner), null,
-  `Different Corners market IDs combine for ${status}`);
+ assert.equal(selectionConflict(extIdCorner, actualOddsButtonCorner)?.family,'corners',
+   `Different Corners market IDs still share the statistic family for ${status}`);
 }
 // Corners must remain combinable with all distinct market categories
 // for both live and prematch selections, even when the visible label is generic.
