@@ -76,6 +76,9 @@ export function toggleMarketSelection(previous, selection) {
 /** Guard the entire logical slip, including alternatives split into columns. */
 export function assertDistinctSelectionMarkets(selections) {
   const seen = new Map();
+  const hasMainForMatch = selection => (selections ?? []).some(candidate =>
+    selectionMatchIdentity(candidate) === selectionMatchIdentity(selection) &&
+    selectionCategory(candidate) === 'main');
   for (const selection of selections) {
     const identity = selectionMarketIdentity(selection);
     if (identity === null) continue; // The normal resolver rejects unidentified picks.
@@ -83,7 +86,8 @@ export function assertDistinctSelectionMarkets(selections) {
     // Any selection recognized as a Corners offer is exempt from the
     // structural same-market duplicate guard. Corners must stack with every
     // other Corners offer and with non-Corners markets on the same fixture.
-    if (previous && !(isCornerSelection(previous) || isCornerSelection(selection))) {
+    if (previous && !(isCornerSelection(previous) || isCornerSelection(selection)) &&
+        !(hasMainForMatch(selection) && isSimpleGoalsTotal(previous) && isSimpleGoalsTotal(selection))) {
       throw Object.assign(new Error('Lejohet vetëm një zgjedhje nga i njëjti grup tregu. Hiq zgjedhjen tjetër dhe provo përsëri.'), {
         status: 400, code: 'DUPLICATE_MARKET', outcomeId: selection.outcomeId,
       });
@@ -351,6 +355,11 @@ export function selectionConflict(first, second) {
     };
   }
 
+  // Explicit same-game combo exception: a main result market (1X2, Double
+  // Chance, DNB, etc.) may be combined with full-time Goals Over/Under totals.
+  if ((selectionCategory(first) === 'main' && isSimpleGoalsTotal(second)) ||
+      (selectionCategory(second) === 'main' && isSimpleGoalsTotal(first))) return null;
+
   if ((isResultFamily(first) && isResultFamily(second)) ||
       (isCorrectScoreFamily(first) && isCorrectScoreFamily(second))) {
     return { code: 'RESULT_FAMILY', message: 'Rezultati, Double Chance, DNB dhe Correct Score nuk mund të kombinohen për të njëjtën ndeshje.' };
@@ -388,8 +397,18 @@ export function selectionConflict(first, second) {
 }
 
 /** The first incompatibility between a candidate and the current betslip, if any. */
+function isGoalTotalStackAllowed(first, second, selections) {
+  if (!isSimpleGoalsTotal(first) || !isSimpleGoalsTotal(second)) return false;
+  const matchId = selectionMatchIdentity(first);
+  return matchId !== null && matchId === selectionMatchIdentity(second) &&
+    (selections ?? []).some(candidate =>
+      selectionMatchIdentity(candidate) === matchId && selectionCategory(candidate) === 'main');
+}
+
+/** Return the first incompatible candidate/current-slip pair, with contextual exceptions. */
 export function selectionConflictWithSlip(candidate, selections) {
   for (const existing of selections ?? []) {
+    if (isGoalTotalStackAllowed(candidate, existing, [candidate, ...(selections ?? [])])) continue;
     const conflict = selectionConflict(candidate, existing);
     if (conflict) return { ...conflict, existing };
   }
@@ -401,6 +420,7 @@ export function findSelectionConflict(selections) {
   const values = selections ?? [];
   for (let i = 0; i < values.length; i++) {
     for (let j = i + 1; j < values.length; j++) {
+      if (isGoalTotalStackAllowed(values[i], values[j], values)) continue;
       const conflict = selectionConflict(values[i], values[j]);
       if (conflict) return { ...conflict, first: values[i], second: values[j] };
     }
