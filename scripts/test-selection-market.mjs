@@ -574,8 +574,8 @@ assert.throws(()=>assertCompatibleSelections([homeTeamGoals,awayTeamGoals]),
 const correctScore=pick('200|gCorrectScore||0:0',{matchId:'200',marketId:'200|gCorrectScore|',marketName:'Correct Score',outcomeName:'0:0'});
 assert.equal(selectionConflict(matchResult,correctScore)?.family,'result',
   'Match Result and Correct Score are correlated match-result outcomes');
-assert.equal(selectionConflict(doubleChance,correctScore),null,
-  'Double Chance and Correct Score are separate provider markets');
+assert.equal(selectionConflict(doubleChance,correctScore)?.family,'result',
+  'Double Chance and Correct Score are correlated match-result outcomes');
 
 const prematch={status:'PREMATCH'};
 const underHalf=pick('200|gGoals|0.5|Under',{matchId:'200',marketId:'200|gGoals|0.5',marketName:'Total Goals',marketType:'over_under',marketLine:'0.5',outcomeName:'Under 0.5',matchSnapshot:prematch});
@@ -607,11 +607,11 @@ assert.throws(()=>assertCompatibleSelections([resolvedUnder,resolvedFirstGoal]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS');
 
 const bttsNo=pick('200|gBtts||No',{matchId:'200',marketId:'200|gBtts|',marketName:'Both Teams To Score',outcomeName:'No',matchSnapshot:prematch});
-assert.equal(selectionConflict(underHalf,bttsNo),null,
-  'Under 0.5 and BTTS are different markets');
+assert.equal(selectionConflict(underHalf,bttsNo)?.family,'goals',
+  'Under 0.5 and BTTS No belong to the same Goals family');
 const liveNoFirstGoal={...noFirstGoal,matchSnapshot:{status:'LIVE'}};
-assert.equal(selectionConflict(underHalf,liveNoFirstGoal),null,
-  'Different non-Corners markets can combine in live matches');
+assert.equal(selectionConflict(underHalf,liveNoFirstGoal)?.family,'goals',
+  'Live goal contracts remain exclusive within the same Goals family');
 
 assert.equal(selectionConflict(matchResult,otherFixture),null);
 assert.deepEqual(toggleCompatibleSelection([matchResult],matchResult),[],
