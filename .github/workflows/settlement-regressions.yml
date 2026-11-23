@@ -38,7 +38,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:settlement-focused
-      - run: npm run test:system
-      - run: npm run test:markets
+      - run: npm run test:selection-market
       - run: npm ci --prefix web
       - run: npm run build:web
+      - run: npm run test:markets
