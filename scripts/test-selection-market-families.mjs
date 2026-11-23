@@ -55,6 +55,8 @@ blocked(result,htft,'result');
 blocked(result,correctScore,'result');
 const nextGoal=pick('200|gNextGoal||Home',{marketName:'Next Goal',outcomeName:'Home'});
 blocked(result,nextGoal,'result');
+const threeWay=pick('200|g3Way||Home',{marketName:'3-Way Result',marketType:'3_way',outcomeName:'Home'});
+blocked(result,threeWay,'result');
 
 // Different provider IDs and labels must not bypass equivalent no-goal contracts.
 const underZeroFive=pick('200|gGoals|0.5|Under',{marketName:'Total Goals',marketType:'over_under',outcomeName:'Under 0.5',marketLine:'0.5'});
@@ -69,6 +71,8 @@ const goalRange23=pick('200|gGoalRange||2-3',{marketName:'Goal Range',marketType
 const goalRange24=pick('200|gMultiGoals||2-4',{marketName:'Multi Goals',marketType:'multi_goals',outcomeName:'2-4'});
 blocked(totalGoals,goalRange23,'goals');
 blocked(totalGoals,goalRange24,'goals');
+const goalRange03=pick('200|gTotalInRange||0-3',{marketName:'Total Goals In Range',marketType:'range',outcomeName:'0-3'});
+blocked(totalGoals,goalRange03,'goals');
 
 
 const corners=pick('200|gCorners|8.5|Over',{marketName:'Total Corners',marketType:'over_under',outcomeName:'Over 8.5'});
