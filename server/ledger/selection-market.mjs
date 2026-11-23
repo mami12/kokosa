@@ -383,11 +383,12 @@ function selectionMetricFamilies(selection, seen = new Set()) {
       /\b(?:half time full time|halftime fulltime|ht ft|half time result)\b/.test(text) ||
       /^(?:htft|half time full time)$/.test(type) ||
       /\bcorrect score\b/.test(text) ||
-      /\b(?:g|zz)?(?:1x2|dc|dnb|matchresult|matchwinner)\b/.test(evidence.keys) ||
+      /\b(?:g|zz)?(?:1x2|dc|dnb|matchresult|fulltimeresult|matchwinner|doublechance)\b/.test(evidence.keys) ||
+      /\b(?:home|away) win\b|\bwin (?:over|and|with)\b|\bto win\b|\bhome or draw\b|\bhome or away\b|\bdraw or away\b/.test(text) ||
       /^(?:double chance|draw no bet|moneyline|match result|1x2)$/.test(type)) add('result');
 
   if (!playerMarket && (
-      /\b(?:goals?|btts|both teams to score|correct score|first goal|next goal|goal time)\b/.test(text) ||
+      /\b(?:goals?|btts|both teams (?:to )?score|correct score|first goal|next goal|first team to score|next team to score|goal time)\b/.test(text) ||
       /\b(?:g|zz)?(?:home|away|total)?goals?(?:1h|2h|p1|p2)?\b/.test(evidence.keys) ||
       /\b(?:g|zz)?(?:btts|correctscore|firstgoal|nextgoal|multigoals?)\b/.test(evidence.keys) ||
       type === 'btts' || type === 'total goals'
