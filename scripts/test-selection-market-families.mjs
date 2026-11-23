@@ -49,12 +49,12 @@ const result=pick('200|g1x2||1',{marketName:'Match Result',marketType:'1x2',outc
 const doubleChance=pick('200|gDC||1X',{marketName:'Double Chance',outcomeName:'1X'});
 const dnb=pick('200|gDNB||Home',{marketName:'Draw No Bet',outcomeName:'Home'});
 const htft=pick('200|gHTFT||1-X',{marketName:'Half Time / Full Time',outcomeName:'Home/Draw'});
-blocked(result,doubleChance,'goals');
-blocked(result,dnb,'goals');
-blocked(result,htft,'goals');
-blocked(result,correctScore,'goals');
+blocked(result,doubleChance,'result');
+blocked(result,dnb,'result');
+blocked(result,htft,'result');
+blocked(result,correctScore,'result');
 const nextGoal=pick('200|gNextGoal||Home',{marketName:'Next Goal',outcomeName:'Home'});
-blocked(result,nextGoal,'goals');
+blocked(result,nextGoal,'result');
 
 // Different provider IDs and labels must not bypass equivalent no-goal contracts.
 const underZeroFive=pick('200|gGoals|0.5|Under',{marketName:'Total Goals',marketType:'over_under',outcomeName:'Under 0.5',marketLine:'0.5'});
@@ -90,10 +90,10 @@ blocked(yellowCards,bookingPoints,'cards');
 const resultGoalsCombo=pick('200|gResultGoals||HomeOver',{
   marketName:'Full Time Result + Total Goals',marketType:'combo',outcomeName:'Home & Over 2.5'
 });
-blocked(result,resultGoalsCombo,'goals');
+blocked(result,resultGoalsCombo,'result');
 blocked(totalGoals,resultGoalsCombo,'goals');
 const winAndOver=pick('200|gWinOver||HomeOver',{marketName:'Match Winner + Over 2.5 Goals',marketType:'combo',outcomeName:'Home & Over 2.5'});
-blocked(result,winAndOver,'goals');
+blocked(result,winAndOver,'result');
 blocked(totalGoals,winAndOver,'goals');
 const builder=pick('200|BB|template-1',{
   marketName:'Bet Builder',
@@ -102,14 +102,14 @@ const builder=pick('200|BB|template-1',{
     {marketId:'200|gCorners|8.5',outcomeId:'200|gCorners|8.5|Over'}
   ]
 });
-blocked(result,builder,'goals');
+blocked(result,builder,'result');
 blocked(corners,builder,'corners');
 
 const compactCombo=pick('200|combo|1',{
   marketName:'Bet Builder',
   comboLegs:[{market:'1X2',outcome:'1'},{market:'TOTAL',outcome:'Over',line:'2.5'}]
 });
-blocked(result,compactCombo,'goals');
+blocked(result,compactCombo,'result');
 blocked(totalGoals,compactCombo,'goals');
 
 const fouls=pick('200|gFouls|20.5|Over',{marketName:'Total Fouls',marketType:'over_under',outcomeName:'Over 20.5'});
