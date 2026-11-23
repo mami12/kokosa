@@ -16,13 +16,9 @@ for(const key of ['g6257','gBothScore','gCorrectScore','gGoalTime','gCorners','g
   assert.deepEqual(slip,[draw,other],`${key}: cannot create an extra column with same-market options`);
   slip=toggleMarketSelection(slip,draw);
   assert.deepEqual(slip,[other],`${key}: clicking the selected outcome removes it`);
-  if (key === 'gCorners') {
-    assert.doesNotThrow(()=>assertDistinctSelectionMarkets([home,away]),
-      'Every Corners market may have multiple selections');
-  } else {
-    assert.throws(()=>assertDistinctSelectionMarkets([home,away]),
-      error=>error.status===400&&error.code==='DUPLICATE_MARKET');
-  }
+  assert.throws(()=>assertDistinctSelectionMarkets([home,away]),
+    error=>error.status===400&&error.code==='DUPLICATE_MARKET',
+    `${key}: only one selection is allowed per market, including Corners`);
 }
 const over=pick('100|g6379|2.5|Over'),under=pick('100|g6379|2.5|Under');
 const line35=pick('100|g6379|3.5|Under');
@@ -39,13 +35,8 @@ for(const key of ['gGoals','gCorners','gCards','gGoalTime','gPlayer','gTeamFouls
  const low=pick(`100|${key}|1.5|Over`), high=pick(`100|${key}|3.5|Under`);
  assert.equal(selectionMarketIdentity(low),selectionMarketIdentity(high),`${key}: lines belong to one group`);
  assert.deepEqual(toggleMarketSelection([low],high),[high],`${key}: replace previous line`);
- if (key === 'gCorners') {
-   assert.doesNotThrow(()=>assertDistinctSelectionMarkets([low,high]),
-     'Corners lines are not restricted by market identity');
- } else {
-   assert.throws(()=>assertDistinctSelectionMarkets([low,high]),
-     error=>error.code==='DUPLICATE_MARKET',`${key}: reject multi-line tickets`);
- }
+ assert.throws(()=>assertDistinctSelectionMarkets([low,high]),
+   error=>error.code==='DUPLICATE_MARKET',`${key}: reject multiple selections from the same market`);
 }
 // Other fixtures and other actual provider market keys are independent.
 assert.notEqual(selectionMarketIdentity(over),selectionMarketIdentity(pick('101|g6379|2.5|Over')));
@@ -124,8 +115,8 @@ const fullTimeResultGoals=pick('200|gFTResultGoals||HomeOver',{matchId:'200',mar
 const corners=pick('200|gCorners|2.5|Over',{matchId:'200',marketId:'200|gCorners|2.5',marketName:'Total Corners',marketType:'over_under',marketLine:'2.5',outcomeName:'Over 2.5'});
 const cards=pick('200|gCards|4.5|Over',{matchId:'200',marketId:'200|gCards|4.5',marketName:'Total Cards',marketType:'over_under',marketLine:'4.5',outcomeName:'Over 4.5'});
 const otherFixture=pick('201|g1x2||1',{matchId:'201',marketId:'201|g1x2|',marketName:'Match Result'});
-assert.deepEqual(toggleCompatibleSelection([matchResult,otherFixture],matchTotal),[matchResult,otherFixture],
-  'Goals totals cannot combine with the result market from the same fixture');
+assert.deepEqual(toggleCompatibleSelection([matchResult,otherFixture],matchTotal),[matchResult,otherFixture,matchTotal],
+  'Goals totals can combine with the main result market from the same fixture');
 assert.deepEqual(toggleCompatibleSelection([matchResult,otherFixture],corners),[matchResult,otherFixture,corners],
   'Corners can combine with result markets');
 assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,corners,otherFixture]));
@@ -141,25 +132,67 @@ assert.throws(()=>assertCompatibleSelections([matchResult,doubleChance]),
 const goalOver=pick('200|gGoals|1.5|Over',{matchId:'200',marketId:'200|gGoals|1.5',marketName:'Total Goals',marketType:'over_under',marketLine:'1.5',outcomeName:'Over 1.5'});
 const goalUnderAlt=pick('200|gGoals|3.5|Under',{matchId:'200',marketId:'200|gGoals|3.5',marketName:'Total Goals',marketType:'over_under',marketLine:'3.5',outcomeName:'Under 3.5'});
 assert.equal(selectionConflict(goalOver,goalUnderAlt)?.code,'SAME_TOTAL_FAMILY',
-  'Alternate lines in the same total family are incompatible');
+  'Alternate lines remain incompatible unless the same fixture also has a main market');
 const cornersUnder=pick('200|gCorners|4.5|Under',{matchId:'200',marketId:'200|gCorners|4.5',marketName:'Total Corners',marketType:'over_under',marketLine:'4.5',outcomeName:'Under 4.5'});
-assert.equal(selectionConflict(corners,cornersUnder),null,
-  'Different Corners lines in the same market group can be combined');
+assert.equal(selectionConflict(corners,cornersUnder)?.code,'SAME_MARKET_GROUP',
+  'Different lines from the same Total Corners market cannot be combined');
+const raceCorners=pick('200|gRaceCorners||7',{matchId:'200',marketId:'200|gRaceCorners|',marketName:'Race to 7 Corners',outcomeName:'First to 7'});
 const raceCornersAgain=pick('200|gRaceCorners||10',{matchId:'200',marketId:'200|gRaceCorners|',marketName:'Race to 10 Corners',outcomeName:'First to 10'});
 assert.equal(selectionConflict(corners,raceCorners),null,
   'Total Corners can combine with Race to X Corners');
 assert.equal(selectionConflict(corners,raceCornersAgain),null,
-  'Every Corners market can combine with every other Corners market');
-assert.doesNotThrow(()=>assertCompatibleSelections([corners,cornersUnder,raceCorners,raceCornersAgain]),
-  'Backend accepts multiple Corners selections from one match');
-assert.doesNotThrow(()=>assertDistinctSelectionMarkets([corners,cornersUnder]),
-  'Structural duplicate-market guard also exempts Corners selections');
-assert.deepEqual(toggleCompatibleSelection([corners],cornersUnder),[corners,cornersUnder],
-  'Client betslip accepts a second Corners market');
+  'A different Corners market, Race to X, can combine with Total Corners');
+assert.equal(selectionConflict(raceCorners,raceCornersAgain)?.code,'SAME_MARKET_GROUP',
+  'Two Race to X choices from the same market cannot be combined');
+const firstCornerMarket=pick('200|gFirstCorner||Home',{matchId:'200',marketId:'200|gFirstCorner|',marketName:'First Corner',outcomeName:'Home'});
+assert.equal(selectionConflict(corners,firstCornerMarket),null,
+  'Total Corners and First Corner are different markets and can combine');
+assert.doesNotThrow(()=>assertCompatibleSelections([corners,raceCornersAgain,firstCornerMarket]),
+  'Backend accepts different Corners markets on one match');
+assert.throws(()=>assertCompatibleSelections([corners,cornersUnder]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS',
+  'Backend rejects two selections from Total Corners');
+assert.throws(()=>assertDistinctSelectionMarkets([corners,cornersUnder]),
+  error=>error.code==='DUPLICATE_MARKET',
+  'Structural duplicate-market guard rejects repeated Corners market');
+assert.deepEqual(toggleCompatibleSelection([corners],cornersUnder),[corners],
+  'Client refuses a second selection from the same Corners market');
 const cardsUnder=pick('200|gCards|5.5|Under',{matchId:'200',marketId:'200|gCards|5.5',marketName:'Total Cards',marketType:'over_under',marketLine:'5.5',outcomeName:'Under 5.5'});
 assert.equal(selectionConflict(cards,cardsUnder)?.code,'SAME_TOTAL_FAMILY',
   'Only one total-cards Over/Under quote is allowed per period');
-assert.equal(findSelectionConflict([matchResult,goalOver,goalUnderAlt])?.code,'SAME_TOTAL_FAMILY');
+assert.equal(findSelectionConflict([matchResult,goalOver,goalUnderAlt])?.code,'SAME_TOTAL_FAMILY',
+  'A main market does not permit a second full-time Goals total line');
+assert.throws(()=>assertCompatibleSelections([matchResult,goalOver,goalUnderAlt]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS',
+  'Backend rejects 1X2 + Over 1.5 + Over/Under 2.5');
+assert.throws(()=>assertDistinctSelectionMarkets([matchResult,goalOver,goalUnderAlt]),
+  error=>error.code==='DUPLICATE_MARKET',
+  'Structural duplicate-market guard blocks a second Goals total despite a main market');
+assert.deepEqual(toggleCompatibleSelection([matchResult,goalOver],goalUnderAlt),
+  [matchResult,goalOver],
+  'Frontend refuses a second Goals total even when a main market is selected');
+assert.equal(selectionConflict(matchResult,matchTotal),null,
+  'Main result + total goals are compatible');
+
+
+// Main market + one full-time Goals total must work in both LIVE and PREMATCH.
+const dcGoal = {...matchTotal, outcomeId:'200|g6379|1.5|Over', marketId:'200|g6379|1.5', marketLine:'1.5', outcomeName:'Over 1.5'};
+const goalLine35 = {...matchTotal, outcomeId:'200|g6379|3.5|Under', marketId:'200|g6379|3.5', marketLine:'3.5', outcomeName:'Under 3.5'};
+for (const status of ['LIVE','PREMATCH']) {
+  const main = {...doubleChance, matchSnapshot:{status}};
+  const totalA = {...dcGoal, matchSnapshot:{status}};
+  const totalB = {...goalLine35, matchSnapshot:{status}};
+  assert.deepEqual(toggleCompatibleSelection([main],totalA),[main,totalA],
+    `Double Chance + Over 1.5 is accepted for ${status}`);
+  assert.deepEqual(toggleCompatibleSelection([main,totalA],totalB),[main,totalA],
+    `Double Chance + a second Goals total is blocked for ${status}`);
+  assert.throws(()=>assertCompatibleSelections([main,totalA,totalB]),
+    error=>error.code==='INCOMPATIBLE_SELECTIONS',
+    `Backend blocks Double Chance + multiple Goals totals for ${status}`);
+}
+assert.throws(()=>assertCompatibleSelections([goalOver,goalUnderAlt]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS',
+  'Multiple goal totals without a main market remain blocked');
 
 // One selection per visible market category for the same fixture, even when
 // the provider gives the offers different market IDs and different names.
@@ -172,7 +205,6 @@ assert.throws(()=>assertCompatibleSelections([goalOver,nextGoal]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS',
   'The backend rejects different provider market IDs in one category');
 
-const raceCorners=pick('200|gRaceCorners||7',{matchId:'200',marketId:'200|gRaceCorners|',marketName:'Race to 7 Corners',outcomeName:'First to 7'});
 assert.equal(selectionConflict(corners,raceCorners),null,
   'Total Corners and Race to X Corners can be combined');
 const cardsOther=pick('200|gCards||Over',{matchId:'200',marketId:'200|gCards|',marketName:'Total Cards',outcomeName:'Over'});
@@ -191,16 +223,17 @@ const cornerWithSharedIdentity = pick('200|gCorners|2.5|Over', {
   matchId:'200', marketId:'200|shared-market|2.5',
   marketKey:'gCorners', marketName:'Total Corners', marketType:'over_under'
 });
-const nonCornerWithSharedIdentity = pick('200|shared-market|2.5|Yes', {
+const nonCornerWithSharedIdentity = pick('200|gCorners|2.5|Yes', {
   matchId:'200', marketId:'200|shared-market|2.5',
   marketName:'Correct Score', marketType:'other'
 });
-assert.equal(selectionConflict(cornerWithSharedIdentity, nonCornerWithSharedIdentity), null,
-  'Corners exemption runs before same-market-group and restricted-family checks');
-assert.equal(selectionConflict(nonCornerWithSharedIdentity, cornerWithSharedIdentity), null,
-  'Corners exemption works in either selection order');
-assert.doesNotThrow(()=>assertDistinctSelectionMarkets([cornerWithSharedIdentity, nonCornerWithSharedIdentity]),
-  'Structural duplicate-market guard cannot block a Corners + other-market combination');
+assert.equal(selectionConflict(cornerWithSharedIdentity, nonCornerWithSharedIdentity)?.code,'SAME_MARKET_GROUP',
+  'A Corners pick cannot bypass a duplicate market group');
+assert.equal(selectionConflict(nonCornerWithSharedIdentity, cornerWithSharedIdentity)?.code,'SAME_MARKET_GROUP',
+  'The duplicate market restriction works in either selection order');
+assert.throws(()=>assertDistinctSelectionMarkets([cornerWithSharedIdentity, nonCornerWithSharedIdentity]),
+  error=>error.code==='DUPLICATE_MARKET',
+  'Structural guard rejects a duplicated Corners market group');
 const genericallyNamedCorners = pick('200|zzCorners@total|2.5|Over', {
   matchId:'200', marketId:'200|zzCorners@total|2.5',
   marketKey:'gCorners', marketName:'Over/Under',
@@ -220,14 +253,14 @@ const resolvedNonCornerSameGroup = pick('200|zz901@total|5.5|Yes', {
   matchId:'200', marketKey:'zz901@total', marketId:'200|zz901@total|5.5',
   marketName:'Correct Score', marketType:'other'
 });
-assert.equal(selectionConflict(resolvedZizobetCorner, resolvedNonCornerSameGroup), null,
-  'Resolved native Corners title is recognized despite generic display marketName');
-assert.equal(selectionConflict(resolvedNonCornerSameGroup, resolvedZizobetCorner), null,
-  'Resolved native Corners title works in either selection order');
-assert.doesNotThrow(()=>assertDistinctSelectionMarkets([resolvedZizobetCorner, resolvedNonCornerSameGroup]),
-  'Native Corners title bypasses duplicate market identity guard');
-assert.doesNotThrow(()=>assertCompatibleSelections([resolvedZizobetCorner, resolvedNonCornerSameGroup]),
-  'Canonical resolved Corners offer bypasses all compatibility checks');
+assert.equal(selectionConflict(resolvedZizobetCorner, resolvedNonCornerSameGroup)?.code,'SAME_MARKET_GROUP',
+  'Native Corners title does not bypass the one-selection-per-market rule');
+assert.equal(selectionConflict(resolvedNonCornerSameGroup, resolvedZizobetCorner)?.code,'SAME_MARKET_GROUP',
+  'The native market duplicate rule works in either selection order');
+assert.throws(()=>assertDistinctSelectionMarkets([resolvedZizobetCorner, resolvedNonCornerSameGroup]),
+  error=>error.code==='DUPLICATE_MARKET');
+assert.throws(()=>assertCompatibleSelections([resolvedZizobetCorner, resolvedNonCornerSameGroup]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS');
 // Mirrors the actual frontend payload after the native provider title is
 // forwarded from Market -> OddsButton -> BetSelection. No opaque native key
 // or synthetic gCorners identifier is required for classification.
@@ -240,10 +273,10 @@ assert.equal(selectionConflict(matchResult, oddsButtonNativeTitleCorner), null,
   'Frontend Corners pick is recognized from the preserved native Zizobet title');
 assert.equal(selectionConflict(oddsButtonNativeTitleCorner, matchTotal), null,
   'Native-title Corners pick combines with Goals in the frontend');
-assert.equal(selectionConflict(oddsButtonNativeTitleCorner, cornersUnder), null,
-  'Multiple native-title Corners picks combine in the frontend');
+assert.equal(selectionConflict(oddsButtonNativeTitleCorner, cornersUnder),null,
+  'Different provider market IDs remain distinct even when both display Total Corners');
 assert.doesNotThrow(()=>assertCompatibleSelections([matchResult, oddsButtonNativeTitleCorner, cornersUnder]),
-  'Server accepts the exact frontend payload once resolved');
+  'Server accepts distinct Corners market IDs alongside the main result');
 // This mirrors the exact object built by OddsButton: marketKey/extId are not
 // sent to the betslip, so category detection must read the native key in outcomeId.
 const actualOddsButtonCorner = pick('200|gCorners|2.5|Over', {
@@ -259,8 +292,8 @@ for (const other of [matchResult, matchTotal, cards, firstHalfTotal, sameGameCom
   assert.equal(selectionConflict(actualOddsButtonCorner, other), null,
     'Corners compatibility is independent of selection order');
 }
-assert.equal(selectionConflict(actualOddsButtonCorner, cornersUnder), null,
-  'Any two Corners markets can be combined in the same fixture');
+assert.equal(selectionConflict(actualOddsButtonCorner, cornersUnder)?.code,'SAME_MARKET_GROUP',
+  'Two odds from the same gCorners market are blocked');
 const albanianCornerTitle = pick('200|local-corner-market|10.5|Over', {
   matchId:'200', marketId:'local-corner-id',
   marketName:'Totali i goditjeve këndore (10.5)',
@@ -269,8 +302,8 @@ const albanianCornerTitle = pick('200|local-corner-market|10.5|Over', {
 assert.equal(selectionConflict(matchResult, albanianCornerTitle), null,
   'Albanian translated corner title combines with Match Result');
 const albanianSecondCorner = {...albanianCornerTitle, outcomeId:'200|local-corner-market|11.5|Under', marketLine:'11.5', outcomeName:'Poshtë'};
-assert.equal(selectionConflict(albanianCornerTitle, albanianSecondCorner), null,
-  'Two Albanian corner offers can be combined');
+assert.equal(selectionConflict(albanianCornerTitle, albanianSecondCorner)?.code,'SAME_MARKET_GROUP',
+  'Two Albanian quotes from the same Corners market are blocked');
 // Zizobet sometimes gives the offer a local outcome ID, so OddsButton
 // must carry extId/marketKey into the selection. This applies identically
 // to live and prematch fixtures.
@@ -284,7 +317,7 @@ for (const status of ['LIVE','PREMATCH']) {
  assert.equal(selectionConflict(matchResult, extIdCorner), null,
   `Result + Corners must combine for ${status}`);
  assert.equal(selectionConflict(extIdCorner, actualOddsButtonCorner), null,
-  `Any two Corners selections combine for ${status}`);
+  `Different Corners market IDs combine for ${status}`);
 }
 // Corners must remain combinable with all distinct market categories
 // for both live and prematch selections, even when the visible label is generic.
@@ -307,8 +340,8 @@ const actualSecondCorner = pick('200|gCorners|5.5|Under', {
   marketName:'Over/Under', marketType:'over_under',
   marketLine:'5.5', outcomeName:'Under 5.5'
 });
-assert.equal(selectionConflict(actualOddsButtonCorner, actualSecondCorner), null,
-  'Two generic Over/Under corner offers from gCorners can be combined');
+assert.equal(selectionConflict(actualOddsButtonCorner, actualSecondCorner)?.code,'SAME_MARKET_GROUP',
+  'Two generic Over/Under quotes from the same gCorners market are blocked');
 assert.equal(selectionConflict(actualOddsButtonCorner, matchTotal), null,
   'Corners remain compatible with Goals despite generic Over/Under labels');
 assert.equal(selectionConflict(actualOddsButtonCorner, matchResult), null,
@@ -358,20 +391,20 @@ for (const line of ['0','0.5','7.5','1000.5','1000000.5']) {
   marketName:`Total Corners (${line})`, marketType:'over_under',
   marketLine:line, outcomeName:`Under ${line}`
  });
- assert.equal(selectionConflict(cornerLine, anotherCornerLine), null,
-  `Corners line ${line} accepts another Corners selection`);
- assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,cornerLine,anotherCornerLine]),
-  `Backend accepts Corners line ${line} alongside other markets and Corners`);
- assert.deepEqual(toggleCompatibleSelection([matchResult,cornerLine],anotherCornerLine),
-  [matchResult,cornerLine,anotherCornerLine],
-  `Client accepts Corners line ${line} alongside other markets and Corners`);
-}
-assert.throws(()=>assertCompatibleSelections([matchResult, actualOddsButtonCorner, matchTotal]),
+ assert.equal(selectionConflict(cornerLine, anotherCornerLine)?.code,'SAME_MARKET_GROUP',
+  `Total Corners line ${line} cannot be selected twice`);
+ assert.throws(()=>assertCompatibleSelections([matchResult,cornerLine,anotherCornerLine]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS',
-  'A corner cannot be used to permit a second non-corner selection from the same match');
+  `Backend rejects duplicate Total Corners picks at line ${line}`);
+ assert.deepEqual(toggleCompatibleSelection([matchResult,cornerLine],anotherCornerLine),
+  [matchResult,cornerLine],
+  `Client blocks second Total Corners pick at line ${line}`);
+}
+assert.doesNotThrow(()=>assertCompatibleSelections([matchResult, actualOddsButtonCorner, matchTotal]),
+  'Main result + Goals + Corners are allowed together');
 assert.deepEqual(toggleCompatibleSelection([matchResult, actualOddsButtonCorner], matchTotal),
-  [matchResult, actualOddsButtonCorner],
-  'The client blocks adding a second non-corner selection after Result + Corners');
+  [matchResult, actualOddsButtonCorner, matchTotal],
+  'The client allows a goal total alongside an existing main result + Corners');
 assert.equal(selectionConflict(matchResult,firstHalfTotal)?.code,'CORNER_REQUIRED',
   'Non-corner markets cannot combine on the same fixture');
 assert.equal(selectionConflict(matchResult,sameGameCombo)?.code,'CORNER_REQUIRED',
@@ -388,17 +421,16 @@ assert.throws(()=>assertCompatibleSelections([firstHalfTotal,sameGameCombo]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS');
 assert.throws(()=>assertCompatibleSelections([goalOver,goalUnderAlt]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS');
-assert.equal(selectionConflict(matchResult,matchTotal)?.code,'CORNER_REQUIRED',
-  'Result and Goals cannot combine without a corner market');
+assert.equal(selectionConflict(matchResult,matchTotal),null,
+  'Result and Goals can combine without requiring a corner market');
 assert.equal(selectionConflict(fullTimeResultGoals,goalOver)?.code,'RESULT_GOALS_TOTAL_CONFLICT',
   'Full Time Result/Goals cannot be combined with simple Total Goals');
 assert.equal(selectionConflict(goalOver,fullTimeResultGoals)?.code,'RESULT_GOALS_TOTAL_CONFLICT',
   'The Full Time Result/Goals exclusion applies in either selection order');
 assert.equal(selectionConflict(fullTimeResultGoals,cards)?.code,'CORNER_REQUIRED',
   'Two non-corner markets cannot combine, even when categories differ');
-assert.throws(()=>assertCompatibleSelections([matchResult,matchTotal]),
-  error=>error.code==='INCOMPATIBLE_SELECTIONS',
-  'Backend rejects Result + Goals without Corners');
+assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,matchTotal]),
+  'Backend accepts Result + Goals without Corners');
 assert.throws(()=>assertCompatibleSelections([goalOver,cards]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS',
   'Backend rejects Goals + Cards without Corners');

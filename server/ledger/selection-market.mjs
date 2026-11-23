@@ -80,10 +80,8 @@ export function assertDistinctSelectionMarkets(selections) {
     const identity = selectionMarketIdentity(selection);
     if (identity === null) continue; // The normal resolver rejects unidentified picks.
     const previous = seen.get(identity);
-    // Any selection recognized as a Corners offer is exempt from the
-    // structural same-market duplicate guard. Corners must stack with every
-    // other Corners offer and with non-Corners markets on the same fixture.
-    if (previous && !(isCornerSelection(previous) || isCornerSelection(selection))) {
+    // One selection per provider market group, including Corners markets.
+    if (previous) {
       throw Object.assign(new Error('Lejohet vetëm një zgjedhje nga i njëjti grup tregu. Hiq zgjedhjen tjetër dhe provo përsëri.'), {
         status: 400, code: 'DUPLICATE_MARKET', outcomeId: selection.outcomeId,
       });
@@ -331,17 +329,19 @@ export function selectionConflict(first, second) {
   const firstIsCorners = isCornerSelection(first);
   const secondIsCorners = isCornerSelection(second);
 
-  // A Corners selection must be combinable with ANY other market on this
-  // fixture, including another Corners selection. Return before market-group,
-  // period, result-family, and category checks so none can block it.
-  if (firstIsCorners || secondIsCorners) return null;
-
   const samePeriod = selectionPeriodScope(first) === selectionPeriodScope(second);
   const sameMarketGroup = selectionMarketIdentity(first) !== null &&
     selectionMarketIdentity(first) === selectionMarketIdentity(second);
-  if (!samePeriod && sameMarketGroup) {
+
+  // Never allow two picks from the same provider market group, including
+  // Corners lines. Different Corners markets remain stackable.
+  if (sameMarketGroup) {
     return { code: 'SAME_MARKET_GROUP', message: 'Lejohet vetëm një zgjedhje nga i njëjti treg.' };
   }
+
+  // Different Corners markets may combine with one another and with any
+  // other market on the same fixture.
+  if (firstIsCorners || secondIsCorners) return null;
 
   if ((isFullTimeResultGoalsMarket(first) && isSimpleGoalsTotal(second)) ||
       (isFullTimeResultGoalsMarket(second) && isSimpleGoalsTotal(first))) {
@@ -350,6 +350,11 @@ export function selectionConflict(first, second) {
       message: 'Full Time Result/Goals nuk mund të kombinohet me tregun e thjeshtë Goals për të njëjtën ndeshje.',
     };
   }
+
+  // Explicit same-game combo exception: a main result market (1X2, Double
+  // Chance, DNB, etc.) may be combined with full-time Goals Over/Under totals.
+  if ((selectionCategory(first) === 'main' && isSimpleGoalsTotal(second)) ||
+      (selectionCategory(second) === 'main' && isSimpleGoalsTotal(first))) return null;
 
   if ((isResultFamily(first) && isResultFamily(second)) ||
       (isCorrectScoreFamily(first) && isCorrectScoreFamily(second))) {
@@ -368,10 +373,6 @@ export function selectionConflict(first, second) {
     return { code: 'SAME_TOTAL_FAMILY', message: 'Lejohet vetëm një kuotë Over/Under për të njëjtën statistikë dhe pjesë të ndeshjes.' };
   }
 
-  if (sameMarketGroup) {
-    return { code: 'SAME_MARKET_GROUP', message: 'Lejohet vetëm një zgjedhje nga i njëjti treg.' };
-  }
-
   if (noGoalPrematchScenario(first) && noGoalPrematchScenario(second)) {
     return { code: 'NO_GOAL_PREMATCH', message: 'Nën 0.5 gola, Correct Score 0:0 dhe First Goal: No Goal janë i njëjti skenar dhe nuk mund të kombinohen.' };
   }
@@ -388,6 +389,7 @@ export function selectionConflict(first, second) {
 }
 
 /** The first incompatibility between a candidate and the current betslip, if any. */
+/** Return the first incompatible candidate/current-slip pair, with contextual exceptions. */
 export function selectionConflictWithSlip(candidate, selections) {
   for (const existing of selections ?? []) {
     const conflict = selectionConflict(candidate, existing);
