@@ -201,6 +201,7 @@ function selectionMetric(selection) {
       /(?:^|\s)(?:g|zz)?(?:home|away|total)?(?:team)?goals?(?:1h|2h|p1|p2)?(?:\s|$)/.test(text) ||
       /(?:^|\s)(?:g|zz)?(?:home|away|total)?teamgoals?(?:1h|2h|p1|p2)?(?:\s|$)/.test(keys) ||
       /(?:^|\s)(?:g|zz)?multigoals?(?:\s|$)/.test(keys) ||
+      /(?:^|\s)(?:g|zz)?(?:home|away)teamgoalrange(?:\s|$)/.test(keys) ||
       /\b(?:home|away) team (?:total )?range\b|\b(?:home|away) team goal range\b/.test(names) ||
       ['goals','goal','total goals','multigoals','multi goals'].includes(type)) return 'goals';
   return null;
@@ -385,11 +386,11 @@ function selectionMetricFamilies(selection, seen = new Set()) {
   );
 
   if (isResultFamily(selection) ||
-      /\b(?:1x2|match result|full time result|match winner|double chance|draw no bet|moneyline)\b/.test(text) ||
+      /\b(?:1x2|3 way|three way|match result|full time result|match winner|double chance|draw no bet|moneyline)\b/.test(text) ||
       /\b(?:half time full time|halftime fulltime|ht ft|half time result)\b/.test(text) ||
       /^(?:htft|half time full time)$/.test(type) ||
       /\bcorrect score\b/.test(text) ||
-      /\b(?:g|zz)?(?:1x2|dc|dnb|matchresult|fulltimeresult|matchwinner|doublechance)\b/.test(evidence.keys) ||
+      /\b(?:g|zz)?(?:1x2|3way|threeway|dc|dnb|matchresult|fulltimeresult|matchwinner|doublechance)\b/.test(evidence.keys) ||
       /\b(?:home|away) win\b|\bwin (?:over|and|with)\b|\bto win\b|\bhome or draw\b|\bhome or away\b|\bdraw or away\b/.test(text) ||
       /^(?:double chance|draw no bet|moneyline|match result|1x2)$/.test(type)) add('result');
 
