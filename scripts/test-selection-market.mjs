@@ -486,13 +486,14 @@ for (const cornerPick of allCornerSelections) {
   assert.equal(selectionConflict(cornerPick,matchTotal),null,
     'Every Corners market family combines with Goals');
 }
-assert.equal(findSelectionConflict(allCornerSelections),null,
-  'All distinct Corners market families can coexist on one fixture');
-assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,...allCornerSelections]),
-  'Backend accepts all Corners market families together with non-Corners markets');
+assert.equal(findSelectionConflict(allCornerSelections)?.family,'corners',
+  'All Corners market types share one statistic family on a fixture');
+assert.throws(()=>assertCompatibleSelections([matchResult,...allCornerSelections]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS',
+  'Backend blocks multiple Corners market types in one ticket');
 assert.deepEqual(toggleCompatibleSelection([matchResult,...allCornerSelections.slice(0,-1)],allCornerSelections.at(-1)),
-  [matchResult,...allCornerSelections],
-  'Client accepts all Corners market families together on the same fixture');
+  [matchResult,...allCornerSelections.slice(0,-1)],
+  'Client blocks a second Corners-family selection while preserving unrelated picks');
 
 // Corners acceptance is independent of line magnitude, including zero and
 // unusually large provider lines, for both client and backend validation.
