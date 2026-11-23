@@ -110,6 +110,12 @@ assert.deepEqual(changed.map(v=>v.outcomeId),['100|1x2||X','100|btts||Yes','101|
 const matchResult=pick('200|g1x2||1',{matchId:'200',marketId:'200|g1x2|',marketName:'Match Result',marketType:'1x2'});
 const doubleChance=pick('200|gdc||1X',{matchId:'200',marketId:'200|gdc|',marketName:'Double Chance'});
 const drawNoBet=pick('200|gdnb||1',{matchId:'200',marketId:'200|gdnb|',marketName:'Draw No Bet'});
+const nextGoal=pick('200|gNextGoal||Home',{matchId:'200',marketId:'200|gNextGoal|',marketName:'Next Goal',outcomeName:'Home'});
+assert.equal(selectionConflict(matchResult,nextGoal)?.family,'result',
+  'Next Goal cannot be combined with 1X2 on the same fixture');
+assert.deepEqual(toggleCompatibleSelection([matchResult],nextGoal),[matchResult]);
+assert.throws(()=>assertCompatibleSelections([matchResult,nextGoal]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS');
 const matchTotal=pick('200|g6379|2.5|Over',{matchId:'200',marketId:'200|g6379|2.5',marketName:'Total Goals',marketType:'over_under',marketLine:'2.5',outcomeName:'Over 2.5'});
 const fullTimeResultGoals=pick('200|gFTResultGoals||HomeOver',{matchId:'200',marketId:'200|gFTResultGoals|',marketName:'Full Time Result/Goals',marketType:'result_goals',outcomeName:'Home & Over 1.5'});
 const corners=pick('200|gCorners|2.5|Over',{matchId:'200',marketId:'200|gCorners|2.5',marketName:'Total Corners',marketType:'over_under',marketLine:'2.5',outcomeName:'Over 2.5'});
@@ -575,20 +581,22 @@ const prematch={status:'PREMATCH'};
 const underHalf=pick('200|gGoals|0.5|Under',{matchId:'200',marketId:'200|gGoals|0.5',marketName:'Total Goals',marketType:'over_under',marketLine:'0.5',outcomeName:'Under 0.5',matchSnapshot:prematch});
 const zeroZero=pick('200|gCorrectScore||0:0',{matchId:'200',marketId:'200|gCorrectScore|',marketName:'Correct Score',outcomeName:'0:0',matchSnapshot:prematch});
 const noFirstGoal=pick('200|gFirstGoal||None',{matchId:'200',marketId:'200|gFirstGoal|',marketName:'First Goal',outcomeName:'No Goal',matchSnapshot:prematch});
-assert.equal(selectionConflict(underHalf,zeroZero),null,
-  'Under 0.5 and Correct Score are different markets');
-assert.equal(selectionConflict(underHalf,noFirstGoal),null,
-  'Under 0.5 and First Goal are different markets');
-assert.equal(selectionConflict(zeroZero,noFirstGoal),null,
-  'Correct Score and First Goal are different markets');
-assert.doesNotThrow(()=>assertCompatibleSelections([underHalf,zeroZero,noFirstGoal]));
+assert.equal(selectionConflict(underHalf,zeroZero)?.family,'goals',
+  'Under 0.5 and Correct Score 0:0 represent the same no-goal outcome');
+assert.equal(selectionConflict(underHalf,noFirstGoal)?.family,'goals',
+  'Under 0.5 and First Goal: No Goal represent the same full-time outcome');
+assert.equal(selectionConflict(zeroZero,noFirstGoal)?.family,'goals',
+  'Correct Score 0:0 and First Goal: No Goal are equivalent');
+assert.throws(()=>assertCompatibleSelections([underHalf,zeroZero,noFirstGoal]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS');
 const resolvedUnder = {matchId:'200',marketKey:'gGoals',line:'0.5',outcomeKey:'Under',outcomeName:'Under 0.5',
   marketName:'Total Goals',marketType:'over_under',acceptedLiveSnapshot:{isLive:false}};
 const resolvedFirstGoal = {matchId:'200',marketKey:'gFirstGoal',line:'',outcomeKey:'None',outcomeName:'No Goal',
   marketName:'First Goal',acceptedLiveSnapshot:{isLive:false}};
-assert.equal(selectionConflict(resolvedUnder,resolvedFirstGoal),null,
-  'Server-resolved selections from different market keys can combine');
-assert.doesNotThrow(()=>assertCompatibleSelections([resolvedUnder,resolvedFirstGoal]));
+assert.equal(selectionConflict(resolvedUnder,resolvedFirstGoal)?.family,'goals',
+  'Server-resolved no-goal contracts conflict across provider market keys');
+assert.throws(()=>assertCompatibleSelections([resolvedUnder,resolvedFirstGoal]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS');
 
 const bttsNo=pick('200|gBtts||No',{matchId:'200',marketId:'200|gBtts|',marketName:'Both Teams To Score',outcomeName:'No',matchSnapshot:prematch});
 assert.equal(selectionConflict(underHalf,bttsNo),null,
