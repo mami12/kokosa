@@ -156,6 +156,20 @@ for (const [stat, overMarket, rangeMarket, overKey, rangeKey] of statisticOverRa
     `${stat}: backend rejects Over/Under + Range`);
 }
 
+// Actual OddsButton payloads may show a generic title while preserving
+// the provider's native market title separately.
+const nativeGoalsOver = pick('200|zz910@e30|2.5|Over', {
+  matchId:'200',marketId:'200|zz910@e30|2.5',marketName:'Over/Under',
+  nativeMarketName:'Total Goals',marketType:'OVER_UNDER',outcomeName:'Over 2.5'
+});
+const nativeGoalsRange = pick('200|zz911@e30|0-1|Range', {
+  matchId:'200',marketId:'200|zz911@e30|0-1',marketName:'Range',
+  nativeMarketName:'Multigoals Home Team',marketType:'RANGE',outcomeName:'0-1'
+});
+assert.equal(selectionConflict(nativeGoalsOver,nativeGoalsRange)?.code,'SAME_STATISTIC_TOTAL_RANGE',
+  'Native Zizobet titles identify the same Goals statistic despite generic display names');
+assert.deepEqual(toggleCompatibleSelection([nativeGoalsOver],nativeGoalsRange),[nativeGoalsOver]);
+
 // Over/Under picks from different markets of the same statistic are also
 // mutually exclusive, including full-time/team/period variants of Goals.
 const goalsOver = pick('200|g6379|2.5|Over', {
