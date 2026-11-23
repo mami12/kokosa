@@ -313,12 +313,12 @@ assert.throws(()=>assertCompatibleSelections([goalOver,goalUnderAlt]),
 
 // One selection per visible market category for the same fixture, even when
 // the provider gives the offers different market IDs and different names.
-const nextGoal=pick('200|gNextGoal||Home',{matchId:'200',marketId:'200|gNextGoal|',marketName:'Next Goal',outcomeName:'Home'});
-assert.equal(selectionConflict(goalOver,nextGoal)?.family,'goals',
+const nextGoalFromGoals=pick('200|gNextGoal||Home',{matchId:'200',marketId:'200|gNextGoal|',marketName:'Next Goal',outcomeName:'Home'});
+assert.equal(selectionConflict(goalOver,nextGoalFromGoals)?.family,'goals',
   'Total Goals and Next Goal share the goal family');
-assert.deepEqual(toggleCompatibleSelection([goalOver],nextGoal),[goalOver],
+assert.deepEqual(toggleCompatibleSelection([goalOver],nextGoalFromGoals),[goalOver],
   'The slip blocks Next Goal after a Goals selection');
-assert.throws(()=>assertCompatibleSelections([goalOver,nextGoal]),
+assert.throws(()=>assertCompatibleSelections([goalOver,nextGoalFromGoals]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS',
   'The backend blocks Next Goal with another Goals market');
 
