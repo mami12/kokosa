@@ -373,7 +373,10 @@ function selectionMetricFamilies(selection, seen = new Set()) {
   const type = evidence.type;
   const playerMarket = /\b(?:players?|scorer|goalscorer|to be booked|player shots?)\b/.test(names);
 
-  const add = value => { if (value) families.add(value); };
+  // Match-result and goal-outcome markets are one correlated family.
+  // This blocks combinations such as 1X2 + Next Goal, Correct Score + No Goals,
+  // and equivalent goal contracts even when the provider assigns different IDs.
+  const add = value => { if (value) families.add(value === 'result' ? 'goals' : value); };
   const metric = selectionMetric(selection);
   if (metric) add(
     metric === 'yellow_cards' || metric === 'red_cards' || metric === 'booking_points' ? 'cards' :
