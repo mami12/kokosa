@@ -1,0 +1,100 @@
+import assert from 'node:assert/strict';
+import {
+  assertDistinctSelectionMarkets, assertCompatibleSelections, selectionMarketIdentity,
+  selectionConflict, toggleMarketSelection, toggleCompatibleSelection, findSelectionConflict
+} from '../server/ledger/selection-market.mjs';
+
+const pick=(outcomeId,extra={})=>({outcomeId,matchId:'200',marketId:outcomeId.split('|').slice(0,2).join('|'),...extra});
+const conflict=(a,b,family)=> {
+  const result=selectionConflict(a,b);
+  assert.equal(result?.family,family,String(a.marketName)+' must conflict with '+String(b.marketName)+' as '+family);
+  assert.equal(selectionConflict(b,a)?.family,family,'Conflict must work in reverse selection order');
+};
+const blocked=(existing,candidate,family)=> {
+  conflict(existing,candidate,family);
+  assert.deepEqual(toggleCompatibleSelection([existing],candidate),[existing],
+    'Frontend must refuse the conflicting selection without removing the existing one');
+  assert.throws(()=>assertCompatibleSelections([existing,candidate]),
+    error=>error.code==='INCOMPATIBLE_SELECTIONS',
+    'Backend must reject the same conflicting selections');
+};
+
+const totalGoals=pick('200|gGoals|2.5|Over',{marketName:'Total Goals',marketType:'over_under',outcomeName:'Over 2.5'});
+const firstHalfGoals=pick('200|gGoals1h|1.5|Under',{marketName:'1st Half Total Goals',marketType:'over_under',outcomeName:'Under 1.5',period:1});
+const homeGoals=pick('200|gHomeGoals|1.5|Over',{marketName:'Home Team Total Goals',marketType:'over_under',outcomeName:'Over 1.5'});
+const awayGoals=pick('200|gAwayGoals|1.5|Over',{marketName:'Away Team Total Goals',marketType:'over_under',outcomeName:'Over 1.5'});
+const btts=pick('200|gBtts||Yes',{marketName:'Both Teams To Score',outcomeName:'Yes'});
+const correctScore=pick('200|gCorrectScore||1:0',{marketName:'Correct Score',outcomeName:'1:0'});
+blocked(totalGoals,firstHalfGoals,'goals');
+blocked(totalGoals,homeGoals,'goals');
+blocked(homeGoals,awayGoals,'goals');
+blocked(totalGoals,btts,'goals');
+blocked(totalGoals,correctScore,'goals');
+
+const result=pick('200|g1x2||1',{marketName:'Match Result',marketType:'1x2',outcomeName:'Home'});
+const doubleChance=pick('200|gDC||1X',{marketName:'Double Chance',outcomeName:'1X'});
+const dnb=pick('200|gDNB||Home',{marketName:'Draw No Bet',outcomeName:'Home'});
+const htft=pick('200|gHTFT||1-X',{marketName:'Half Time / Full Time',outcomeName:'Home/Draw'});
+blocked(result,doubleChance,'result');
+blocked(result,dnb,'result');
+blocked(result,htft,'result');
+blocked(result,correctScore,'result');
+
+const corners=pick('200|gCorners|8.5|Over',{marketName:'Total Corners',marketType:'over_under',outcomeName:'Over 8.5'});
+const raceCorners=pick('200|gRaceCorners||Home',{marketName:'Race to 5 Corners',outcomeName:'Home'});
+const firstCorner=pick('200|gFirstCorner||Home',{marketName:'First Corner',outcomeName:'Home'});
+const teamCorners=pick('200|gHomeCorners|4.5|Over',{marketName:'Home Team Total Corners',marketType:'over_under',outcomeName:'Over 4.5'});
+blocked(corners,raceCorners,'corners');
+blocked(corners,firstCorner,'corners');
+blocked(corners,teamCorners,'corners');
+
+const cards=pick('200|gCards|4.5|Over',{marketName:'Total Cards',marketType:'over_under',outcomeName:'Over 4.5'});
+const yellowCards=pick('200|gYellowCards|2.5|Over',{marketName:'Total Yellow Cards',marketType:'over_under',outcomeName:'Over 2.5'});
+const redCards=pick('200|gRedCards||Yes',{marketName:'Red Card',outcomeName:'Yes'});
+const bookingPoints=pick('200|gBookingPoints|30.5|Over',{marketName:'Booking Points',marketType:'over_under',outcomeName:'Over 30.5'});
+blocked(cards,yellowCards,'cards');
+blocked(cards,redCards,'cards');
+blocked(yellowCards,bookingPoints,'cards');
+
+const resultGoalsCombo=pick('200|gResultGoals||HomeOver',{
+  marketName:'Full Time Result + Total Goals',marketType:'combo',outcomeName:'Home & Over 2.5'
+});
+blocked(result,resultGoalsCombo,'result');
+blocked(totalGoals,resultGoalsCombo,'goals');
+const winAndOver=pick('200|gWinOver||HomeOver',{marketName:'Match Winner + Over 2.5 Goals',marketType:'combo',outcomeName:'Home & Over 2.5'});
+blocked(result,winAndOver,'result');
+blocked(totalGoals,winAndOver,'goals');
+const builder=pick('200|BB|template-1',{
+  marketName:'Bet Builder',
+  builderLegs:[
+    {marketId:'200|g1x2|',outcomeId:'200|g1x2||1'},
+    {marketId:'200|gCorners|8.5',outcomeId:'200|gCorners|8.5|Over'}
+  ]
+});
+blocked(result,builder,'result');
+blocked(corners,builder,'corners');
+
+const compactCombo=pick('200|combo|1',{
+  marketName:'Bet Builder',
+  comboLegs:[{market:'1X2',outcome:'1'},{market:'TOTAL',outcome:'Over',line:'2.5'}]
+});
+blocked(result,compactCombo,'result');
+blocked(totalGoals,compactCombo,'goals');
+
+const fouls=pick('200|gFouls|20.5|Over',{marketName:'Total Fouls',marketType:'over_under',outcomeName:'Over 20.5'});
+const otherFixture=pick('201|gGoals|2.5|Over',{matchId:'201',marketName:'Total Goals',marketType:'over_under',outcomeName:'Over 2.5'});
+assert.equal(selectionConflict(totalGoals,corners),null);
+assert.equal(selectionConflict(corners,cards),null);
+assert.equal(selectionConflict(cards,fouls),null);
+assert.equal(selectionConflict(totalGoals,otherFixture),null);
+assert.doesNotThrow(()=>assertCompatibleSelections([totalGoals,corners,cards,fouls,otherFixture]));
+assert.equal(findSelectionConflict([totalGoals,corners,cards,fouls,otherFixture]),null);
+
+const totalGoalsAlt=pick('200|gGoals|3.5|Under',{marketName:'Total Goals',marketType:'over_under',outcomeName:'Under 3.5'});
+assert.equal(selectionMarketIdentity(totalGoals),selectionMarketIdentity(totalGoalsAlt));
+assert.equal(selectionConflict(totalGoals,totalGoalsAlt)?.code,'SAME_MARKET_GROUP');
+assert.deepEqual(toggleMarketSelection([totalGoals],totalGoalsAlt),[totalGoalsAlt]);
+assert.throws(()=>assertDistinctSelectionMarkets([totalGoals,totalGoalsAlt]),error=>error.code==='DUPLICATE_MARKET');
+
+assert.deepEqual(toggleCompatibleSelection([totalGoals],totalGoals),[]);
+console.log('PASS: same-match market-family exclusivity for goals, results, corners, cards and multi-stat combinations.');
