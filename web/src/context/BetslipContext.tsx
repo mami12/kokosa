@@ -48,9 +48,7 @@ export const BetslipProvider = ({ children }: { children: React.ReactNode }) => 
   const columnPreviews = useMemo(() => previewColumnPayouts(columns, columnStakes), [columns, columnStakes]);
 
   const addSelection = useCallback((s: BetSelection) => {
-    setSelections(previous => user?.role === 'ADMIN'
-      ? toggleMarketSelection(previous, s)
-      : toggleCompatibleSelection(previous, s));
+    setSelections(previous => toggleCompatibleSelection(previous, s));
   },[user?.role]);
 
   const removeSelection = useCallback((outcomeId: string) => {
@@ -75,10 +73,8 @@ export const BetslipProvider = ({ children }: { children: React.ReactNode }) => 
     if (inFlightBet.current) return inFlightBet.current;
 
     if (!selections.length) return Promise.reject(new Error('Zgjidh të paktën një kuotë.'));
-    if (user?.role !== 'ADMIN') {
-      const conflict = findSelectionConflict(selections);
-      if (conflict) return Promise.reject(new Error(conflict.message));
-    }
+    const conflict = findSelectionConflict(selections);
+    if (conflict) return Promise.reject(new Error(conflict.message));
     if (stakeCents == null) return Promise.reject(new Error('Shuma duhet të ketë maksimumi 2 shifra pas presjes.'));
     if (stakeCents < MIN_TOTAL_STAKE_CENTS) return Promise.reject(new Error('Shuma minimale totale është 100 Lek'));
     if (columnsOverflow) return Promise.reject(new Error('Maksimumi 24 kolona për kupon.'));
@@ -133,10 +129,8 @@ export const BetslipProvider = ({ children }: { children: React.ReactNode }) => 
 
   const bookTicket = async () => {
     if (!selections.length) throw new Error('Zgjidh të paktën një kuotë.');
-    if (user?.role !== 'ADMIN') {
-      const conflict = findSelectionConflict(selections);
-      if (conflict) throw new Error(conflict.message);
-    }
+    const conflict = findSelectionConflict(selections);
+    if (conflict) throw new Error(conflict.message);
     if (automaticSystem) throw new Error('Prenotimi i shumë kolonave nuk është ende i disponueshëm.');
     if (columnPreviews.some(column => column.invalid)) throw new Error('Një kuotë ose pagesë është e pavlefshme. Rifresko zgjedhjet.');
     if (stakeCents == null) throw new Error('Shuma duhet të ketë maksimumi 2 shifra pas presjes.');
@@ -160,7 +154,7 @@ export const BetslipProvider = ({ children }: { children: React.ReactNode }) => 
 
   const selectionFeed=useMemo(()=>({
     store:selectionStore.current,
-    conflictFor:(candidate:BetSelection)=>user?.role==='ADMIN'?null:selectionStore.current.conflictFor(candidate),
+    conflictFor:(candidate:BetSelection)=>selectionStore.current.conflictFor(candidate),
     addSelection,removeSelection
   }),[addSelection,removeSelection,user?.role]);
   return (
