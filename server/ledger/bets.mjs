@@ -1021,17 +1021,12 @@ export async function placeBet({ user, stake, selections = [], ticketType = null
   }
 
   const type = ticketTypeForSelectionCount(ticketType, selections.length);
-  // Admins retain their existing provider-market rule on the submitted
-  // selections. For normal users, outcomeId-only client payloads do not carry
-  // authoritative provider market names, so compatibility MUST be checked
-  // only after resolve() returns the canonical Zizobet offer metadata.
-  const isAdmin = user?.role === 'ADMIN';
-  const assertSlipRule = isAdmin ? assertDistinctSelectionMarkets : assertCompatibleSelections;
-  if (isAdmin) assertSlipRule(selections);
-  // Independent odds checks can be awaited together instead of serially.
+  // Validate the canonical Zizobet contracts after resolving every outcome.
+  // Role must not bypass correlated-market protection: the same result/statistic
+  // rules apply to every ticket, regardless of who places it.
   const lines = (await Promise.all(selections.map(resolve))).map(line => ({ ...line, price: frozenSelectionPrice(line.price) }));
 
-  assertSlipRule(lines);
+  assertCompatibleSelections(lines);
   const totalOdds = totalOddsForSelections(lines);
   if (!Number.isFinite(totalOdds) || totalOdds > 9999999999.9999) throw badRequest('Koeficienti i biletës është shumë i madh.');
   const payout = systemColumnPayout(amount, lines.map(line => line.price));
