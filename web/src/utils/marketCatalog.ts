@@ -23,11 +23,10 @@ const normalized = (value: unknown): string =>
  */
 export function isHandicapMarket(market: Pick<Market, 'name' | 'marketType'>): boolean {
   const name = normalized(market.name);
-  const type = normalized(market.marketType).replaceAll(' ', '_').replaceAll('-', '_');
-  const names = [market.name, market.nativeMarketName].map(normalized).join(' ');
-  const isTotal = type === 'over_under' || type === 'overunder' || type === 'total' ||
-    names.includes('total') || names.includes('over/under') || names.includes('over under');
-
+  const type = normalized(market.marketType);
+  return type === 'handicap'
+    || /\b(handicap|handicaps|fora|spread|spreads)\b/i.test(name);
+}
 /** Hide unnamed/generated placeholders, not real short provider names.
  * "Total", "Result", "Corners", "Cards", etc. ARE original provider names.
  */
@@ -94,10 +93,10 @@ export function marketLineValue(market: Market): string {
  * Markets without an identifiable line are left untouched rather than guessed.
  */
 export function isAllowedTotalLine(market: Market): boolean {
-  const type = normalized(market.marketType).replace(/[\\s-]+/g, '_');
+  const type = normalized(market.marketType).replaceAll(' ', '_').replaceAll('-', '_');
   const names = [market.name, market.nativeMarketName].map(normalized).join(' ');
   const isTotal = type === 'over_under' || type === 'overunder' || type === 'total' ||
-    /\\b(?:total|over\\s*\\/?\\s*under)\\b/.test(names);
+    names.includes('total') || names.includes('over/under') || names.includes('over under');
   if (!isTotal) return true;
   const line = marketLineValue(market).trim().replace(',', '.');
   if (!line) return true;
