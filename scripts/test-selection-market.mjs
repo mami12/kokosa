@@ -458,8 +458,8 @@ const actualSecondCorner = pick('200|gCorners|5.5|Under', {
   marketName:'Over/Under', marketType:'over_under',
   marketLine:'5.5', outcomeName:'Under 5.5'
 });
-assert.equal(selectionConflict(actualOddsButtonCorner, actualSecondCorner)?.family,'corners',
-   'Two generic Over/Under quotes from gCorners are blocked across market IDs');
+assert.equal(selectionConflict(actualOddsButtonCorner, actualSecondCorner)?.code,'SAME_MARKET_GROUP',
+   'Two generic Over/Under quotes from the same gCorners market group are blocked');
 assert.equal(selectionConflict(actualOddsButtonCorner, matchTotal), null,
   'Corners remain compatible with Goals despite generic Over/Under labels');
 assert.equal(selectionConflict(actualOddsButtonCorner, matchResult), null,
