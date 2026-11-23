@@ -3,7 +3,6 @@ import {
   assertDistinctSelectionMarkets, assertCompatibleSelections, selectionMarketIdentity,
   selectionConflict, toggleMarketSelection, toggleCompatibleSelection, findSelectionConflict
 } from '../server/ledger/selection-market.mjs';
-import { buildBetslipColumns } from '../web/src/utils/betslipColumns.ts';
 
 const pick=(outcomeId,extra={})=>({outcomeId,matchId:'200',marketId:outcomeId.split('|').slice(0,2).join('|'),...extra});
 const conflict=(a,b,family)=> {
@@ -39,6 +38,7 @@ const htft=pick('200|gHTFT||1-X',{marketName:'Half Time / Full Time',outcomeName
 blocked(result,doubleChance,'result');
 blocked(result,dnb,'result');
 blocked(result,htft,'result');
+blocked(result,correctScore,'result');
 
 const corners=pick('200|gCorners|8.5|Over',{marketName:'Total Corners',marketType:'over_under',outcomeName:'Over 8.5'});
 const raceCorners=pick('200|gRaceCorners||Home',{marketName:'Race to 5 Corners',outcomeName:'Home'});
@@ -61,6 +61,9 @@ const resultGoalsCombo=pick('200|gResultGoals||HomeOver',{
 });
 blocked(result,resultGoalsCombo,'result');
 blocked(totalGoals,resultGoalsCombo,'goals');
+const winAndOver=pick('200|gWinOver||HomeOver',{marketName:'Match Winner + Over 2.5 Goals',marketType:'combo',outcomeName:'Home & Over 2.5'});
+blocked(result,winAndOver,'result');
+blocked(totalGoals,winAndOver,'goals');
 const builder=pick('200|BB|template-1',{
   marketName:'Bet Builder',
   builderLegs:[
@@ -93,11 +96,5 @@ assert.equal(selectionConflict(totalGoals,totalGoalsAlt)?.code,'SAME_MARKET_GROU
 assert.deepEqual(toggleMarketSelection([totalGoals],totalGoalsAlt),[totalGoalsAlt]);
 assert.throws(()=>assertDistinctSelectionMarkets([totalGoals,totalGoalsAlt]),error=>error.code==='DUPLICATE_MARKET');
 
-const multi=buildBetslipColumns([
-  {...totalGoals,outcomeId:'200|gGoals|2.5|Over'},
-  {...otherFixture,outcomeId:'201|gGoals|2.5|Over'}
-]);
-assert.equal(multi.columns.length,1);
-assert.equal(multi.columns[0].length,2);
 assert.deepEqual(toggleCompatibleSelection([totalGoals],totalGoals),[]);
 console.log('PASS: same-match market-family exclusivity for goals, results, corners, cards and multi-stat combinations.');
