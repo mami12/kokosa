@@ -181,27 +181,27 @@ function selectionMetric(selection) {
       /\b(?:players?|scorer|goalscorer)\b/.test(names)) return null;
 
   if (/\b(?:booking points?|card points?)\b/.test(text) ||
-      /booking.?points?|card.?points?/.test(keys) || type === 'booking_points') return 'booking_points';
+      /booking.?points?|card.?points?/.test(keys) || type === 'booking points') return 'booking_points';
   if (/\bshots?\s+on\s+(?:target|goal)\b|\bon target shots?\b/.test(text) ||
-      /shots.?on.?target/.test(keys) || type === 'shots_on_target') return 'shots_on_target';
+      /shots.?on.?target/.test(keys) || type === 'shots on target' || type === 'shots on goal') return 'shots_on_target';
   if (/\b(?:corners?|corner kicks?|kendore|goditje kendore)\b/.test(text) ||
       /corners?/.test(keys) || type === 'corners' || type === 'corner') return 'corners';
-  if (/\byellow cards?\b/.test(text) || /yellow.?cards?/.test(keys) || type === 'yellow_cards') return 'yellow_cards';
-  if (/\bred cards?\b/.test(text) || /red.?cards?/.test(keys) || type === 'red_cards') return 'red_cards';
+  if (/\byellow cards?\b/.test(text) || /yellow.?cards?/.test(keys) || type === 'yellow cards') return 'yellow_cards';
+  if (/\bred cards?\b/.test(text) || /red.?cards?/.test(keys) || type === 'red cards') return 'red_cards';
   if (/\b(?:cards?|bookings?|carded|disciplin)\b/.test(text) ||
       /cards?|bookings?/.test(keys) || type === 'cards' || type === 'card') return 'cards';
   if (/\b(?:shots?|attempts?)\b/.test(text) || /shots?/.test(keys) || type === 'shots') return 'shots';
   if (/\b(?:fouls?)\b|\bfaulle?\b/.test(text) || /fouls?/.test(keys) ||
       type === 'fouls' || type === 'foul') return 'fouls';
   if (/\b(?:offsides?|offside)\b/.test(text) || /offsides?/.test(keys) || type === 'offsides') return 'offsides';
-  if (/\bthrow ins?\b|\bthrow ins?\b/.test(text) || /throw.?ins?/.test(keys) || type === 'throw_ins') return 'throw_ins';
+  if (/\bthrow ins?\b|\bthrow ins?\b/.test(text) || /throw.?ins?/.test(keys) || type === 'throw ins') return 'throw_ins';
   if (/\b(?:saves?|goalkeeper saves?)\b/.test(text) || /saves?/.test(keys) || type === 'saves') return 'saves';
   if (/\bpenalt(?:y|ies)\b/.test(text) || /penalt/.test(keys) || type === 'penalties') return 'penalties';
   if (/\b(?:goals?|goal total|multigoals?|multi goals?|total in range)\b/.test(text) ||
       /(?:^|\s)(?:g|zz)?(?:home|away|total)?goals?(?:1h|2h|p1|p2)?(?:\s|$)/.test(text) ||
       /(?:^|\s)(?:g|zz)?multigoals?(?:\s|$)/.test(keys) ||
       /\b(?:home|away) team (?:total )?range\b|\b(?:home|away) team goal range\b/.test(names) ||
-      ['goals','goal','total_goals','multigoals'].includes(type)) return 'goals';
+      ['goals','goal','total goals','multigoals','multi goals'].includes(type)) return 'goals';
   return null;
 }
 
@@ -262,7 +262,7 @@ function selectionCategory(selection) {
       Number(selection?.period ?? selection?.providerPeriod ?? 0) === 1 ||
       Number(selection?.period ?? selection?.providerPeriod ?? 0) === 2) return 'htft';
   if (/\b(?:1x2|match result|full time result|winner|double chance|draw no bet|moneyline|qualify|result)\b/.test(name) || type === '1x2') return 'main';
-  if (type === 'over_under' || /\bgoals?\b|\btotal\b|over\s*\/?\s*under|both teams|btts|correct score|odd\s*\/\s*even/.test(name)) return 'goals';
+  if (type === 'over under' || /\bgoals?\b|\btotal\b|over\s*\/?\s*under|both teams|btts|correct score|odd\s*\/\s*even/.test(name)) return 'goals';
   return 'other';
 }
 
@@ -278,7 +278,7 @@ function isOverUnderChoice(selection) {
 function isRangeChoice(selection) {
   const {names,keys,type} = selectionMarketEvidence(selection);
   const outcome = normalizedSelectionText(selectionOutcomeName(selection));
-  return type === 'range' || type === 'multi_goals' ||
+  return type === 'range' || type === 'multi goals' ||
     /\b(?:range|multigoals?|multi goals?|total in range|number of goals)\b/.test(names) ||
     /(?:^|\s)(?:g|zz)?multigoals?(?:\s|$)|(?:goal|corner|card|foul|shot|offside|save|penalt).*range/.test(keys) ||
     /^\d+(?:\.\d+)?\s*(?:-|–|to)\s*\d+(?:\.\d+)?(?:\s+(?:goals?|corners?|cards?|fouls?|shots?|offsides?|saves?))?$/.test(outcome);
