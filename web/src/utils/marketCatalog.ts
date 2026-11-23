@@ -23,10 +23,10 @@ const normalized = (value: unknown): string =>
  */
 export function isHandicapMarket(market: Pick<Market, 'name' | 'marketType'>): boolean {
   const name = normalized(market.name);
-  const type = normalized(market.marketType);
-  return type === 'handicap'
-    || /\b(handicap|handicaps|fora|spread|spreads)\b/i.test(name);
-}
+  const type = normalized(market.marketType).replaceAll(' ', '_').replaceAll('-', '_');
+  const names = [market.name, market.nativeMarketName].map(normalized).join(' ');
+  const isTotal = type === 'over_under' || type === 'overunder' || type === 'total' ||
+    names.includes('total') || names.includes('over/under') || names.includes('over under');
 
 /** Hide unnamed/generated placeholders, not real short provider names.
  * "Total", "Result", "Corners", "Cards", etc. ARE original provider names.
