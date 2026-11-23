@@ -533,21 +533,23 @@ assert.equal(selectionConflict(firstHalfTotal,corners),null,
 assert.equal(selectionConflict(matchTotal,corners),null,
   'Full-time goals can combine with Corners');
 const firstHalfGoals={...goalUnderAlt,outcomeId:'200|gGoals1h|1.5|Under',marketId:'200|gGoals1h|1.5',marketName:'1st Half Total Goals',marketLine:'1.5',period:1};
-assert.equal(selectionConflict(goalOver,firstHalfGoals),null,
-  'Full-time Goals and first-half Goals are distinct markets');
-assert.doesNotThrow(()=>assertCompatibleSelections([goalOver,firstHalfGoals]),
-  'Backend accepts full-time Goals + first-half Goals from separate markets');
+assert.equal(selectionConflict(goalOver,firstHalfGoals)?.code,'SAME_STATISTIC_TOTAL_RANGE',
+  'Goals Over/Under is exclusive across full-time and first-half Goals markets');
+assert.throws(()=>assertCompatibleSelections([goalOver,firstHalfGoals]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS',
+  'Backend blocks full-time and first-half Goals Over/Under together');
 const secondHalfGoals={...goalUnderAlt,outcomeId:'200|gGoals2h|1.5|Under',marketId:'200|gGoals2h|1.5',marketName:'2nd Half Total Goals',marketLine:'1.5',period:2};
-assert.equal(selectionConflict(goalOver,secondHalfGoals),null,
-  'Full-time Goals and second-half Goals are distinct markets');
+assert.equal(selectionConflict(goalOver,secondHalfGoals)?.code,'SAME_STATISTIC_TOTAL_RANGE',
+  'Goals Over/Under is exclusive across full-time and second-half Goals markets');
 const homeTeamGoals=pick('200|gHomeGoals|1.5|Over',{matchId:'200',marketId:'200|gHomeGoals|1.5',marketKey:'gHomeGoals',marketName:'Home Team Total Goals',marketType:'over_under',marketLine:'1.5',outcomeName:'Over 1.5'});
 const awayTeamGoals=pick('200|gAwayGoals|1.5|Over',{matchId:'200',marketId:'200|gAwayGoals|1.5',marketKey:'gAwayGoals',marketName:'Away Team Total Goals',marketType:'over_under',marketLine:'1.5',outcomeName:'Over 1.5'});
-assert.equal(selectionConflict(homeTeamGoals,awayTeamGoals),null,
-  'Home Team Goals and Away Team Goals are distinct markets');
-assert.equal(selectionConflict(goalOver,homeTeamGoals),null,
-  'Simple Total Goals and Home Team Goals are distinct markets');
-assert.doesNotThrow(()=>assertCompatibleSelections([homeTeamGoals,awayTeamGoals]),
-  'Backend accepts Home Team Goals + Away Team Goals from distinct markets');
+assert.equal(selectionConflict(homeTeamGoals,awayTeamGoals)?.code,'SAME_STATISTIC_TOTAL_RANGE',
+  'Home and Away Team Goals Over/Under share the same Goals exclusivity group');
+assert.equal(selectionConflict(goalOver,homeTeamGoals)?.code,'SAME_STATISTIC_TOTAL_RANGE',
+  'Total Goals and Home Team Goals Over/Under cannot be combined');
+assert.throws(()=>assertCompatibleSelections([homeTeamGoals,awayTeamGoals]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS',
+  'Backend blocks Home Team Goals + Away Team Goals Over/Under');
 
 const correctScore=pick('200|gCorrectScore||0:0',{matchId:'200',marketId:'200|gCorrectScore|',marketName:'Correct Score',outcomeName:'0:0'});
 assert.equal(selectionConflict(matchResult,correctScore),null,
