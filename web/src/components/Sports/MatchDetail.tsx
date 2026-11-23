@@ -21,7 +21,7 @@ import { liveMatch } from '../../api/matchSync';
 import { filterDecidedOutcomes, isMarketVisible, isOutcomeDisplayable } from '../../utils/marketExpiry';
 import { formatMarketLine } from '../../utils/sportsbookLabels';
 import {filterRedundantMatchResultMarkets} from '../../utils/sportsbookFilters';
-import { marketBaseName, marketCategoryOf, isHandicapMarket, isIdentifiedMarket, marketCategoryLabel, marketDisplayTitle, marketGroupKey, marketLineValue, marketSelectionLabel } from '../../utils/marketCatalog';
+import { marketBaseName, marketCategoryOf, isHandicapMarket, isIdentifiedMarket, marketCategoryLabel, marketDisplayTitle, marketGroupKey, marketLineValue, marketSelectionLabel, isAllowedTotalLine } from '../../utils/marketCatalog';
 import type { MarketCategory, MarketLanguage } from '../../utils/marketCatalog';
 import {marketRank} from '../../../../server/market-catalog.mjs';
 import { useFavorites } from '../../context/FavoritesContext';
@@ -85,7 +85,7 @@ interface GroupedMarket {
 const groupMarkets = (markets: Market[], lang: MarketLanguage): GroupedMarket[] => {
   const groups = new Map<string, Market[]>();
   for (const market of markets) {
-    if (!isIdentifiedMarket(market) || isHandicapMarket(market)) continue;
+    if (!isIdentifiedMarket(market) || isHandicapMarket(market) || !isAllowedTotalLine(market)) continue;
     const key = marketGroupKey(market);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(market);
