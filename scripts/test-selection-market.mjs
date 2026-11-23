@@ -159,21 +159,22 @@ assert.deepEqual(toggleCompatibleSelection([corners],cornersUnder),[corners,corn
 const cardsUnder=pick('200|gCards|5.5|Under',{matchId:'200',marketId:'200|gCards|5.5',marketName:'Total Cards',marketType:'over_under',marketLine:'5.5',outcomeName:'Under 5.5'});
 assert.equal(selectionConflict(cards,cardsUnder)?.code,'SAME_TOTAL_FAMILY',
   'Only one total-cards Over/Under quote is allowed per period');
-assert.equal(findSelectionConflict([matchResult,goalOver,goalUnderAlt]),null,
-  'A main market unlocks multiple full-time Goals total lines on the same fixture');
-assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,goalOver,goalUnderAlt]),
-  'Backend accepts 1X2 + Over 1.5 + Under 3.5');
-assert.doesNotThrow(()=>assertDistinctSelectionMarkets([matchResult,goalOver,goalUnderAlt]),
-  'Structural duplicate-market guard permits multiple goal totals when paired with a main market');
+assert.equal(findSelectionConflict([matchResult,goalOver,goalUnderAlt])?.code,'SAME_TOTAL_FAMILY',
+  'A main market does not permit a second full-time Goals total line');
+assert.throws(()=>assertCompatibleSelections([matchResult,goalOver,goalUnderAlt]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS',
+  'Backend rejects 1X2 + Over 1.5 + Over/Under 2.5');
+assert.throws(()=>assertDistinctSelectionMarkets([matchResult,goalOver,goalUnderAlt]),
+  error=>error.code==='DUPLICATE_MARKET',
+  'Structural duplicate-market guard blocks a second Goals total despite a main market');
 assert.deepEqual(toggleCompatibleSelection([matchResult,goalOver],goalUnderAlt),
-  [matchResult,goalOver,goalUnderAlt],
-  'Frontend accepts a second goal total when a main market is already selected');
+  [matchResult,goalOver],
+  'Frontend refuses a second Goals total even when a main market is selected');
 assert.equal(selectionConflict(matchResult,matchTotal),null,
   'Main result + total goals are compatible');
 
 
-// Requested main-market + goal-total combinations must work in both LIVE and
-// PREMATCH payloads, including Double Chance and multiple distinct goal lines.
+// Main market + one full-time Goals total must work in both LIVE and PREMATCH.
 const dcGoal = {...matchTotal, outcomeId:'200|g6379|1.5|Over', marketId:'200|g6379|1.5', marketLine:'1.5', outcomeName:'Over 1.5'};
 const goalLine35 = {...matchTotal, outcomeId:'200|g6379|3.5|Under', marketId:'200|g6379|3.5', marketLine:'3.5', outcomeName:'Under 3.5'};
 for (const status of ['LIVE','PREMATCH']) {
@@ -182,10 +183,11 @@ for (const status of ['LIVE','PREMATCH']) {
   const totalB = {...goalLine35, matchSnapshot:{status}};
   assert.deepEqual(toggleCompatibleSelection([main],totalA),[main,totalA],
     `Double Chance + Over 1.5 is accepted for ${status}`);
-  assert.deepEqual(toggleCompatibleSelection([main,totalA],totalB),[main,totalA,totalB],
-    `Double Chance + Over 1.5 + Under 3.5 is accepted for ${status}`);
-  assert.doesNotThrow(()=>assertCompatibleSelections([main,totalA,totalB]),
-    `Backend accepts Double Chance + multiple goal totals for ${status}`);
+  assert.deepEqual(toggleCompatibleSelection([main,totalA],totalB),[main,totalA],
+    `Double Chance + a second Goals total is blocked for ${status}`);
+  assert.throws(()=>assertCompatibleSelections([main,totalA,totalB]),
+    error=>error.code==='INCOMPATIBLE_SELECTIONS',
+    `Backend blocks Double Chance + multiple Goals totals for ${status}`);
 }
 assert.throws(()=>assertCompatibleSelections([goalOver,goalUnderAlt]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS',
