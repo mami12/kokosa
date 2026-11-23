@@ -572,8 +572,8 @@ assert.throws(()=>assertCompatibleSelections([homeTeamGoals,awayTeamGoals]),
   'Backend blocks Home Team Goals + Away Team Goals Over/Under');
 
 const correctScore=pick('200|gCorrectScore||0:0',{matchId:'200',marketId:'200|gCorrectScore|',marketName:'Correct Score',outcomeName:'0:0'});
-assert.equal(selectionConflict(matchResult,correctScore),null,
-  'Match Result and Correct Score are separate provider markets');
+assert.equal(selectionConflict(matchResult,correctScore)?.family,'result',
+  'Match Result and Correct Score are correlated match-result outcomes');
 assert.equal(selectionConflict(doubleChance,correctScore),null,
   'Double Chance and Correct Score are separate provider markets');
 
@@ -581,6 +581,14 @@ const prematch={status:'PREMATCH'};
 const underHalf=pick('200|gGoals|0.5|Under',{matchId:'200',marketId:'200|gGoals|0.5',marketName:'Total Goals',marketType:'over_under',marketLine:'0.5',outcomeName:'Under 0.5',matchSnapshot:prematch});
 const zeroZero=pick('200|gCorrectScore||0:0',{matchId:'200',marketId:'200|gCorrectScore|',marketName:'Correct Score',outcomeName:'0:0',matchSnapshot:prematch});
 const noFirstGoal=pick('200|gFirstGoal||None',{matchId:'200',marketId:'200|gFirstGoal|',marketName:'First Goal',outcomeName:'No Goal',matchSnapshot:prematch});
+const noGoals=pick('200|gNoGoals||Yes',{matchId:'200',marketId:'200|gNoGoals|',marketName:'No Goals',outcomeName:'Yes',matchSnapshot:prematch});
+const exactZero=pick('200|gExactGoals||0',{matchId:'200',marketId:'200|gExactGoals|',marketName:'Exact Goals',outcomeName:'0',matchSnapshot:prematch});
+assert.equal(selectionConflict(underHalf,noGoals)?.family,'goals',
+  'Under 0.5 and No Goals are the same zero-goal result');
+assert.equal(selectionConflict(underHalf,exactZero)?.family,'goals',
+  'Under 0.5 and Exact Goals: 0 are the same zero-goal result');
+assert.equal(selectionConflict(noGoals,exactZero)?.family,'goals',
+  'No Goals and Exact Goals: 0 cannot be stacked');
 assert.equal(selectionConflict(underHalf,zeroZero)?.family,'goals',
   'Under 0.5 and Correct Score 0:0 represent the same no-goal outcome');
 assert.equal(selectionConflict(underHalf,noFirstGoal)?.family,'goals',
