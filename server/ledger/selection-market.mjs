@@ -80,10 +80,8 @@ export function assertDistinctSelectionMarkets(selections) {
     const identity = selectionMarketIdentity(selection);
     if (identity === null) continue; // The normal resolver rejects unidentified picks.
     const previous = seen.get(identity);
-    // Any selection recognized as a Corners offer is exempt from the
-    // structural same-market duplicate guard. Corners must stack with every
-    // other Corners offer and with non-Corners markets on the same fixture.
-    if (previous && !(isCornerSelection(previous) || isCornerSelection(selection))) {
+    // One selection per provider market group, including Corners markets.
+    if (previous) {
       throw Object.assign(new Error('Lejohet vetëm një zgjedhje nga i njëjti grup tregu. Hiq zgjedhjen tjetër dhe provo përsëri.'), {
         status: 400, code: 'DUPLICATE_MARKET', outcomeId: selection.outcomeId,
       });
@@ -331,17 +329,15 @@ export function selectionConflict(first, second) {
   const firstIsCorners = isCornerSelection(first);
   const secondIsCorners = isCornerSelection(second);
 
-  // A Corners selection must be combinable with ANY other market on this
-  // fixture, including another Corners selection. Return before market-group,
-  // period, result-family, and category checks so none can block it.
-  if (firstIsCorners || secondIsCorners) return null;
-
   const samePeriod = selectionPeriodScope(first) === selectionPeriodScope(second);
   const sameMarketGroup = selectionMarketIdentity(first) !== null &&
     selectionMarketIdentity(first) === selectionMarketIdentity(second);
-  if (!samePeriod && sameMarketGroup) {
-    return { code: 'SAME_MARKET_GROUP', message: 'Lejohet vetëm një zgjedhje nga i njëjti treg.' };
-  }
+
+  // Never allow two picks from the same provider market group, including
+  // Corners lines. Different Corners market groups remain stackable.
+  // Different Corners markets may combine with one another and with any
+  // other market on the same fixture.
+  if (firstIsCorners || secondIsCorners) return null;
 
   if ((isFullTimeResultGoalsMarket(first) && isSimpleGoalsTotal(second)) ||
       (isFullTimeResultGoalsMarket(second) && isSimpleGoalsTotal(first))) {
