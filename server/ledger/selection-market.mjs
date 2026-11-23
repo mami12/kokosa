@@ -380,7 +380,9 @@ function selectionMetricFamilies(selection, seen = new Set()) {
   );
 
   if (isResultFamily(selection) ||
-      /\b(?:half time\s*\/\s*full time|halftime\s*\/?\s*fulltime|ht\s*\/\s*ft|half time result)\b/.test(text) ||
+      /\b(?:half time full time|halftime fulltime|ht ft|half time result)\b/.test(text) ||
+      /^(?:htft|half time full time)$/.test(type) ||
+      /\bcorrect score\b/.test(text) ||
       /\b(?:g|zz)?(?:1x2|dc|dnb|matchresult|matchwinner)\b/.test(evidence.keys) ||
       /^(?:double chance|draw no bet|moneyline|match result|1x2)$/.test(type)) add('result');
 
