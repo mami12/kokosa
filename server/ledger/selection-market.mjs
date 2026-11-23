@@ -334,7 +334,11 @@ export function selectionConflict(first, second) {
     selectionMarketIdentity(first) === selectionMarketIdentity(second);
 
   // Never allow two picks from the same provider market group, including
-  // Corners lines. Different Corners market groups remain stackable.
+  // Corners lines. Different Corners markets remain stackable.
+  if (sameMarketGroup) {
+    return { code: 'SAME_MARKET_GROUP', message: 'Lejohet vetëm një zgjedhje nga i njëjti treg.' };
+  }
+
   // Different Corners markets may combine with one another and with any
   // other market on the same fixture.
   if (firstIsCorners || secondIsCorners) return null;
@@ -367,10 +371,6 @@ export function selectionConflict(first, second) {
       isOverUnderChoice(first) && isOverUnderChoice(second) &&
       !(firstIsCorners !== secondIsCorners)) {
     return { code: 'SAME_TOTAL_FAMILY', message: 'Lejohet vetëm një kuotë Over/Under për të njëjtën statistikë dhe pjesë të ndeshjes.' };
-  }
-
-  if (sameMarketGroup) {
-    return { code: 'SAME_MARKET_GROUP', message: 'Lejohet vetëm një zgjedhje nga i njëjti treg.' };
   }
 
   if (noGoalPrematchScenario(first) && noGoalPrematchScenario(second)) {
