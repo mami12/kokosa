@@ -377,8 +377,8 @@ function selectionMetricFamilies(selection, seen = new Set()) {
   const metric = selectionMetric(selection);
   // Next Goal is a goal statistic and also a match-result choice: it must not
   // be stacked with 1X2, double chance, HT/FT, or Correct Score.
-  if (/\\bnext goal\\b|\\bnext team to score\\b/.test(text) ||
-      /\\b(?:g|zz)?nextgoal\\b/.test(evidence.keys)) add('result');
+  if (/\bnext goal\b|\bnext team to score\b/.test(text) ||
+      /\b(?:g|zz)?nextgoal\b/.test(evidence.keys)) add('result');
   if (metric) add(
     metric === 'yellow_cards' || metric === 'red_cards' || metric === 'booking_points' ? 'cards' :
     metric === 'shots_on_target' ? 'shots' : metric
