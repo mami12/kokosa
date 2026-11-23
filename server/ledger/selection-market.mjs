@@ -155,25 +155,53 @@ const selectionPeriodScope = selection => {
   return 'period:0';
 };
 
-function selectionMetric(selection) {
-  const name = normalizedSelectionText(selectionMarketName(selection));
+function selectionMarketEvidence(selection) {
+  const outcomeParts = String(selection?.outcomeId ?? '').split('|');
+  const marketParts = String(selection?.marketId ?? selection?.market_id ?? '').split('|');
+  const names = normalizedSelectionText([
+    selection?.marketName, selection?.market_name,
+    selection?.nativeMarketName, selection?.native_market_name,
+    selection?.name, selection?.title,
+  ].filter(Boolean).join(' '));
+  const keys = normalizedSelectionText([
+    selection?.marketKey, selection?.market_key,
+    selection?.extId, selection?.ext_id,
+    selection?.nativeMarketId, selection?.native_market_id,
+    outcomeParts.length >= 2 ? outcomeParts[1] : '',
+    marketParts.length >= 2 ? marketParts[1] : '',
+  ].filter(Boolean).join(' '));
   const type = normalizedSelectionText(selection?.marketType ?? selection?.market_type);
-  const marketKey = normalizedSelectionText(selection?.marketKey ?? selection?.market_key ?? '');
-  const marketId = normalizedSelectionText(selection?.marketId ?? selection?.market_id ?? '');
-  const marketText = [name, marketKey, marketId].join(' ');
-  if (/\b(?:bet builder|same game combo|combo)\b/.test(name)) return null;
-  if (/\b(?:corners?|corner kicks?|kendore|goditje kendore)\b/.test(name) || type === 'corners' || type === 'corner') return 'corners';
-  if (/\b(?:cards?|bookings?|yellow card|red card|disciplin)\b/.test(name) ||
-      type === 'cards' || type === 'card') return 'cards';
-  if (/\b(?:shots? on target|on target shots?)\b/.test(name) || type === 'shots_on_target') return 'shots_on_target';
-  if (/\b(?:shots?|attempts?)\b/.test(name) || type === 'shots') return 'shots';
-  if (/\b(?:fouls?)\b/.test(name) || type === 'fouls' || type === 'foul') return 'fouls';
-  if (/\b(?:offsides?|offside)\b/.test(name) || type === 'offsides') return 'offsides';
-  if (/\b(?:throw ins?|throw ins)\b/.test(name) || type === 'throw_ins') return 'throw_ins';
-  if (/\b(?:saves?|goalkeeper saves?)\b/.test(name) || type === 'saves') return 'saves';
-  if (/\b(?:goals?|goal total)\b/.test(name) ||
-      /(?:^|\s)(?:g|zz)?(?:home|away|total)?goals?(?:1h|2h|p1|p2)?(?:\s|$)/.test(marketText) ||
-      ['goals','goal','total_goals'].includes(type)) return 'goals';
+  return {names, keys, text:[names,keys].filter(Boolean).join(' '), type};
+}
+
+/** Stable statistic identity for totals/ranges across provider market IDs. */
+function selectionMetric(selection) {
+  const {names,keys,text,type} = selectionMarketEvidence(selection);
+  if (/\b(?:bet builder|same game combo|combo)\b/.test(names) ||
+      /\b(?:players?|scorer|goalscorer)\b/.test(names)) return null;
+
+  if (/\b(?:booking points?|card points?)\b/.test(text) ||
+      /booking.?points?|card.?points?/.test(keys) || type === 'booking_points') return 'booking_points';
+  if (/\bshots?\s+on\s+(?:target|goal)\b|\bon target shots?\b/.test(text) ||
+      /shots.?on.?target/.test(keys) || type === 'shots_on_target') return 'shots_on_target';
+  if (/\b(?:corners?|corner kicks?|kendore|goditje kendore)\b/.test(text) ||
+      /corners?/.test(keys) || type === 'corners' || type === 'corner') return 'corners';
+  if (/\byellow cards?\b/.test(text) || /yellow.?cards?/.test(keys) || type === 'yellow_cards') return 'yellow_cards';
+  if (/\bred cards?\b/.test(text) || /red.?cards?/.test(keys) || type === 'red_cards') return 'red_cards';
+  if (/\b(?:cards?|bookings?|carded|disciplin)\b/.test(text) ||
+      /cards?|bookings?/.test(keys) || type === 'cards' || type === 'card') return 'cards';
+  if (/\b(?:shots?|attempts?)\b/.test(text) || /shots?/.test(keys) || type === 'shots') return 'shots';
+  if (/\b(?:fouls?)\b|\bfaulle?\b/.test(text) || /fouls?/.test(keys) ||
+      type === 'fouls' || type === 'foul') return 'fouls';
+  if (/\b(?:offsides?|offside)\b/.test(text) || /offsides?/.test(keys) || type === 'offsides') return 'offsides';
+  if (/\bthrow ins?\b|\bthrow ins?\b/.test(text) || /throw.?ins?/.test(keys) || type === 'throw_ins') return 'throw_ins';
+  if (/\b(?:saves?|goalkeeper saves?)\b/.test(text) || /saves?/.test(keys) || type === 'saves') return 'saves';
+  if (/\bpenalt(?:y|ies)\b/.test(text) || /penalt/.test(keys) || type === 'penalties') return 'penalties';
+  if (/\b(?:goals?|goal total|multigoals?|multi goals?|total in range)\b/.test(text) ||
+      /(?:^|\s)(?:g|zz)?(?:home|away|total)?goals?(?:1h|2h|p1|p2)?(?:\s|$)/.test(text) ||
+      /(?:^|\s)(?:g|zz)?multigoals?(?:\s|$)/.test(keys) ||
+      /\b(?:home|away) team (?:total )?range\b|\b(?:home|away) team goal range\b/.test(names) ||
+      ['goals','goal','total_goals','multigoals'].includes(type)) return 'goals';
   return null;
 }
 
@@ -241,9 +269,23 @@ function selectionCategory(selection) {
 function isOverUnderChoice(selection) {
   const outcome = normalizedSelectionText(selectionOutcomeName(selection));
   const type = normalizedSelectionText(selection?.marketType ?? selection?.market_type);
-  const name = normalizedSelectionText(selectionMarketName(selection));
-  return /^(?:over|under)(?:\s|$)/.test(outcome) ||
-    (type === 'over_under' && /\b(?:total|over under|over|under)\b/.test(name));
+  const {names} = selectionMarketEvidence(selection);
+  return /^(?:over|under|lart|poshte|mbi|nen)(?:\s|$)/.test(outcome) ||
+    (type === 'over_under' && /\b(?:total|over under|over|under)\b/.test(names));
+}
+
+/** Range selections can have numeric bucket labels rather than Over/Under. */
+function isRangeChoice(selection) {
+  const {names,keys,type} = selectionMarketEvidence(selection);
+  const outcome = normalizedSelectionText(selectionOutcomeName(selection));
+  return type === 'range' || type === 'multi_goals' ||
+    /\b(?:range|multigoals?|multi goals?|total in range|number of goals)\b/.test(names) ||
+    /(?:^|\s)(?:g|zz)?multigoals?(?:\s|$)|(?:goal|corner|card|foul|shot|offside|save|penalt).*range/.test(keys) ||
+    /^\d+(?:\.\d+)?\s*(?:-|–|to)\s*\d+(?:\.\d+)?(?:\s+(?:goals?|corners?|cards?|fouls?|shots?|offsides?|saves?))?$/.test(outcome);
+}
+
+function isStatisticOverUnderOrRange(selection) {
+  return isOverUnderChoice(selection) || isRangeChoice(selection);
 }
 
 function isResultFamily(selection) {
@@ -335,6 +377,16 @@ export function selectionConflict(first, second) {
     return {
       code: 'SAME_MARKET_GROUP',
       message: 'Lejohet vetëm një zgjedhje nga i njëjti treg.',
+    };
+  }
+
+  const firstMetric = selectionMetric(first);
+  const secondMetric = selectionMetric(second);
+  if (firstMetric !== null && firstMetric === secondMetric &&
+      isStatisticOverUnderOrRange(first) && isStatisticOverUnderOrRange(second)) {
+    return {
+      code: 'SAME_STATISTIC_TOTAL_RANGE',
+      message: 'Lejohet vetëm një zgjedhje Over/Under ose Range për të njëjtën statistikë në të njëjtën ndeshje.',
     };
   }
 
