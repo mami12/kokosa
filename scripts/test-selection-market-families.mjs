@@ -49,10 +49,27 @@ const result=pick('200|g1x2||1',{marketName:'Match Result',marketType:'1x2',outc
 const doubleChance=pick('200|gDC||1X',{marketName:'Double Chance',outcomeName:'1X'});
 const dnb=pick('200|gDNB||Home',{marketName:'Draw No Bet',outcomeName:'Home'});
 const htft=pick('200|gHTFT||1-X',{marketName:'Half Time / Full Time',outcomeName:'Home/Draw'});
-blocked(result,doubleChance,'result');
-blocked(result,dnb,'result');
-blocked(result,htft,'result');
-blocked(result,correctScore,'result');
+blocked(result,doubleChance,'goals');
+blocked(result,dnb,'goals');
+blocked(result,htft,'goals');
+blocked(result,correctScore,'goals');
+const nextGoal=pick('200|gNextGoal||Home',{marketName:'Next Goal',outcomeName:'Home'});
+blocked(result,nextGoal,'goals');
+
+// Different provider IDs and labels must not bypass equivalent no-goal contracts.
+const underZeroFive=pick('200|gGoals|0.5|Under',{marketName:'Total Goals',marketType:'over_under',outcomeName:'Under 0.5',marketLine:'0.5'});
+const noGoals=pick('200|gNoGoals||Yes',{marketName:'No Goals',outcomeName:'Yes'});
+const exactZero=pick('200|gExactGoals||0',{marketName:'Exact Goals',outcomeName:'0'});
+blocked(underZeroFive,noGoals,'goals');
+blocked(underZeroFive,exactZero,'goals');
+blocked(noGoals,exactZero,'goals');
+
+// Range buckets overlap the same goals statistic even with a separate provider market ID.
+const goalRange23=pick('200|gGoalRange||2-3',{marketName:'Goal Range',marketType:'range',outcomeName:'2-3'});
+const goalRange24=pick('200|gMultiGoals||2-4',{marketName:'Multi Goals',marketType:'multi_goals',outcomeName:'2-4'});
+blocked(totalGoals,goalRange23,'goals');
+blocked(totalGoals,goalRange24,'goals');
+
 
 const corners=pick('200|gCorners|8.5|Over',{marketName:'Total Corners',marketType:'over_under',outcomeName:'Over 8.5'});
 const raceCorners=pick('200|gRaceCorners||Home',{marketName:'Race to 5 Corners',outcomeName:'Home'});
@@ -73,10 +90,10 @@ blocked(yellowCards,bookingPoints,'cards');
 const resultGoalsCombo=pick('200|gResultGoals||HomeOver',{
   marketName:'Full Time Result + Total Goals',marketType:'combo',outcomeName:'Home & Over 2.5'
 });
-blocked(result,resultGoalsCombo,'result');
+blocked(result,resultGoalsCombo,'goals');
 blocked(totalGoals,resultGoalsCombo,'goals');
 const winAndOver=pick('200|gWinOver||HomeOver',{marketName:'Match Winner + Over 2.5 Goals',marketType:'combo',outcomeName:'Home & Over 2.5'});
-blocked(result,winAndOver,'result');
+blocked(result,winAndOver,'goals');
 blocked(totalGoals,winAndOver,'goals');
 const builder=pick('200|BB|template-1',{
   marketName:'Bet Builder',
@@ -85,14 +102,14 @@ const builder=pick('200|BB|template-1',{
     {marketId:'200|gCorners|8.5',outcomeId:'200|gCorners|8.5|Over'}
   ]
 });
-blocked(result,builder,'result');
+blocked(result,builder,'goals');
 blocked(corners,builder,'corners');
 
 const compactCombo=pick('200|combo|1',{
   marketName:'Bet Builder',
   comboLegs:[{market:'1X2',outcome:'1'},{market:'TOTAL',outcome:'Over',line:'2.5'}]
 });
-blocked(result,compactCombo,'result');
+blocked(result,compactCombo,'goals');
 blocked(totalGoals,compactCombo,'goals');
 
 const fouls=pick('200|gFouls|20.5|Over',{marketName:'Total Fouls',marketType:'over_under',outcomeName:'Over 20.5'});
