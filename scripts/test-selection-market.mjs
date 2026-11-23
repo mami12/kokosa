@@ -122,17 +122,18 @@ assert.deepEqual(toggleCompatibleSelection([matchResult,otherFixture],corners),[
 assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,corners,otherFixture]));
 assert.doesNotThrow(()=>assertCompatibleSelections([matchTotal,corners,otherFixture]));
 assert.doesNotThrow(()=>assertCompatibleSelections([cards,corners,otherFixture]));
-assert.equal(selectionConflict(matchResult,doubleChance)?.code,'RESULT_FAMILY');
-assert.equal(selectionConflict(matchResult,drawNoBet)?.code,'RESULT_FAMILY');
-assert.equal(toggleCompatibleSelection([matchResult],doubleChance).length,1,
-  'A conflicting result-family selection is not silently substituted');
-assert.throws(()=>assertCompatibleSelections([matchResult,doubleChance]),
-  error=>error.status===400&&error.code==='INCOMPATIBLE_SELECTIONS');
+assert.equal(selectionConflict(matchResult,doubleChance),null,
+  '1X2 + Double Chance are distinct markets');
+assert.equal(selectionConflict(matchResult,drawNoBet),null,
+  '1X2 + Draw No Bet are distinct markets');
+assert.deepEqual(toggleCompatibleSelection([matchResult],doubleChance),[matchResult,doubleChance],
+  'A different main-result market remains selectable');
+assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,doubleChance,drawNoBet]));
 
 const goalOver=pick('200|gGoals|1.5|Over',{matchId:'200',marketId:'200|gGoals|1.5',marketName:'Total Goals',marketType:'over_under',marketLine:'1.5',outcomeName:'Over 1.5'});
 const goalUnderAlt=pick('200|gGoals|3.5|Under',{matchId:'200',marketId:'200|gGoals|3.5',marketName:'Total Goals',marketType:'over_under',marketLine:'3.5',outcomeName:'Under 3.5'});
-assert.equal(selectionConflict(goalOver,goalUnderAlt)?.code,'SAME_TOTAL_FAMILY',
-  'Alternate lines remain incompatible unless the same fixture also has a main market');
+assert.equal(selectionConflict(goalOver,goalUnderAlt)?.code,'SAME_MARKET_GROUP',
+  'Alternate lines from the same Goals market remain mutually exclusive');
 const cornersUnder=pick('200|gCorners|4.5|Under',{matchId:'200',marketId:'200|gCorners|4.5',marketName:'Total Corners',marketType:'over_under',marketLine:'4.5',outcomeName:'Under 4.5'});
 assert.equal(selectionConflict(corners,cornersUnder)?.code,'SAME_MARKET_GROUP',
   'Different lines from the same Total Corners market cannot be combined');
@@ -158,10 +159,10 @@ assert.throws(()=>assertDistinctSelectionMarkets([corners,cornersUnder]),
 assert.deepEqual(toggleCompatibleSelection([corners],cornersUnder),[corners],
   'Client refuses a second selection from the same Corners market');
 const cardsUnder=pick('200|gCards|5.5|Under',{matchId:'200',marketId:'200|gCards|5.5',marketName:'Total Cards',marketType:'over_under',marketLine:'5.5',outcomeName:'Under 5.5'});
-assert.equal(selectionConflict(cards,cardsUnder)?.code,'SAME_TOTAL_FAMILY',
-  'Only one total-cards Over/Under quote is allowed per period');
-assert.equal(findSelectionConflict([matchResult,goalOver,goalUnderAlt])?.code,'SAME_TOTAL_FAMILY',
-  'A main market does not permit a second full-time Goals total line');
+assert.equal(selectionConflict(cards,cardsUnder)?.code,'SAME_MARKET_GROUP',
+  'Only one quote from the same Total Cards market is allowed');
+assert.equal(findSelectionConflict([matchResult,goalOver,goalUnderAlt])?.code,'SAME_MARKET_GROUP',
+  'A second Goals quote is blocked even when 1X2 is selected');
 assert.throws(()=>assertCompatibleSelections([matchResult,goalOver,goalUnderAlt]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS',
   'Backend rejects 1X2 + Over 1.5 + Over/Under 2.5');
@@ -197,20 +198,19 @@ assert.throws(()=>assertCompatibleSelections([goalOver,goalUnderAlt]),
 // One selection per visible market category for the same fixture, even when
 // the provider gives the offers different market IDs and different names.
 const nextGoal=pick('200|gNextGoal||Home',{matchId:'200',marketId:'200|gNextGoal|',marketName:'Next Goal',outcomeName:'Home'});
-assert.equal(selectionConflict(goalOver,nextGoal)?.code,'SAME_MARKET_CATEGORY',
-  'Goals totals and Next Goal belong to the same Goals category');
-assert.deepEqual(toggleCompatibleSelection([goalOver],nextGoal),[goalOver],
-  'The slip refuses a second Goals-category market without silently replacing the first');
-assert.throws(()=>assertCompatibleSelections([goalOver,nextGoal]),
-  error=>error.code==='INCOMPATIBLE_SELECTIONS',
-  'The backend rejects different provider market IDs in one category');
+assert.equal(selectionConflict(goalOver,nextGoal),null,
+  'Total Goals and Next Goal are different provider markets');
+assert.deepEqual(toggleCompatibleSelection([goalOver],nextGoal),[goalOver,nextGoal],
+  'The slip accepts a different Goals market from the same match');
+assert.doesNotThrow(()=>assertCompatibleSelections([goalOver,nextGoal]),
+  'The backend accepts different provider market IDs from one statistic category');
 
 assert.equal(selectionConflict(corners,raceCorners),null,
   'Total Corners and Race to X Corners can be combined');
 const cardsOther=pick('200|gCards||Over',{matchId:'200',marketId:'200|gCards|',marketName:'Total Cards',outcomeName:'Over'});
 const playerOther=pick('200|gBooked||Yes',{matchId:'200',marketId:'200|gBooked|',marketName:'Player to be Booked',outcomeName:'Yes'});
-assert.equal(selectionConflict(cardsOther,playerOther)?.code,'SAME_MARKET_CATEGORY',
-  'Different markets classified under Other cannot be stacked for one match');
+assert.equal(selectionConflict(cardsOther,playerOther),null,
+  'Different market IDs can combine even when both were previously classified as Other');
 assert.equal(selectionConflict(goalOver,corners),null,
   'Different visible categories remain compatible within one match');
 assert.equal(selectionConflict(matchResult,corners),null,
@@ -405,44 +405,39 @@ assert.doesNotThrow(()=>assertCompatibleSelections([matchResult, actualOddsButto
 assert.deepEqual(toggleCompatibleSelection([matchResult, actualOddsButtonCorner], matchTotal),
   [matchResult, actualOddsButtonCorner, matchTotal],
   'The client allows a goal total alongside an existing main result + Corners');
-assert.equal(selectionConflict(matchResult,firstHalfTotal)?.code,'CORNER_REQUIRED',
-  'Non-corner markets cannot combine on the same fixture');
-assert.equal(selectionConflict(matchResult,sameGameCombo)?.code,'CORNER_REQUIRED',
-  'Bet Builder cannot combine with another non-corner market on the same fixture');
-assert.equal(selectionConflict(firstHalfTotal,sameGameCombo)?.code,'CORNER_REQUIRED',
-  'Two non-corner markets remain incompatible on the same fixture');
+assert.equal(selectionConflict(matchResult,firstHalfTotal),null,
+  '1X2 and a first-half Goals market are distinct markets');
+assert.equal(selectionConflict(matchResult,sameGameCombo),null,
+  '1X2 and Bet Builder are distinct markets');
+assert.equal(selectionConflict(firstHalfTotal,sameGameCombo),null,
+  'First-half Goals and Bet Builder are distinct markets');
 assert.equal(selectionConflict(matchResult,{...sameGameCombo,matchId:'201',marketId:'201|BB|template-a'}),null,
-  'Main Market and Combos remain compatible when they belong to different fixtures');
-assert.throws(()=>assertCompatibleSelections([matchResult,firstHalfTotal]),
-  error=>error.code==='INCOMPATIBLE_SELECTIONS');
-assert.throws(()=>assertCompatibleSelections([matchResult,sameGameCombo]),
-  error=>error.code==='INCOMPATIBLE_SELECTIONS');
-assert.throws(()=>assertCompatibleSelections([firstHalfTotal,sameGameCombo]),
-  error=>error.code==='INCOMPATIBLE_SELECTIONS');
+  'Selections from different fixtures remain compatible');
+assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,firstHalfTotal]));
+assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,sameGameCombo]));
+assert.doesNotThrow(()=>assertCompatibleSelections([firstHalfTotal,sameGameCombo]));
 assert.throws(()=>assertCompatibleSelections([goalOver,goalUnderAlt]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS');
 assert.equal(selectionConflict(matchResult,matchTotal),null,
   'Result and Goals can combine without requiring a corner market');
-assert.equal(selectionConflict(fullTimeResultGoals,goalOver)?.code,'RESULT_GOALS_TOTAL_CONFLICT',
-  'Full Time Result/Goals cannot be combined with simple Total Goals');
-assert.equal(selectionConflict(goalOver,fullTimeResultGoals)?.code,'RESULT_GOALS_TOTAL_CONFLICT',
-  'The Full Time Result/Goals exclusion applies in either selection order');
-assert.equal(selectionConflict(fullTimeResultGoals,cards)?.code,'CORNER_REQUIRED',
-  'Two non-corner markets cannot combine, even when categories differ');
+assert.equal(selectionConflict(fullTimeResultGoals,goalOver),null,
+  'Full Time Result/Goals and Total Goals are different markets');
+assert.equal(selectionConflict(goalOver,fullTimeResultGoals),null,
+  'Different markets remain compatible in either selection order');
+assert.equal(selectionConflict(fullTimeResultGoals,cards),null,
+  'Different non-Corners market categories combine on one match');
 assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,matchTotal]),
   'Backend accepts Result + Goals without Corners');
-assert.throws(()=>assertCompatibleSelections([goalOver,cards]),
-  error=>error.code==='INCOMPATIBLE_SELECTIONS',
-  'Backend rejects Goals + Cards without Corners');
-assert.throws(()=>assertCompatibleSelections([fullTimeResultGoals,goalOver]),
-  error=>error.code==='INCOMPATIBLE_SELECTIONS'&&error.conflictCode==='RESULT_GOALS_TOTAL_CONFLICT',
-  'Backend rejects only the Full Time Result/Goals + simple Goals pair');
-assert.deepEqual(toggleCompatibleSelection([fullTimeResultGoals],goalOver),[fullTimeResultGoals],
-  'Player betslip refuses Full Time Result/Goals + simple Goals');
-assert.equal(selectionConflict(goalOver,cards)?.code,'CORNER_REQUIRED',
-  'Goals and Cards cannot combine without Corners');
-assert.equal(selectionConflict(sameGameCombo,goalOver)?.code,'CORNER_REQUIRED',
-  'Bet Builder and Goals cannot combine without Corners');
+assert.doesNotThrow(()=>assertCompatibleSelections([goalOver,cards]),
+  'Backend accepts Goals + Cards as different markets');
+assert.doesNotThrow(()=>assertCompatibleSelections([fullTimeResultGoals,goalOver]),
+  'Backend accepts different full-time goal market groups');
+assert.deepEqual(toggleCompatibleSelection([fullTimeResultGoals],goalOver),[fullTimeResultGoals,goalOver],
+  'Player betslip accepts Full Time Result/Goals + Total Goals from distinct markets');
+assert.equal(selectionConflict(goalOver,cards),null,
+  'Goals and Cards are distinct markets and can combine');
+assert.equal(selectionConflict(sameGameCombo,goalOver),null,
+  'Bet Builder and Goals are distinct markets and can combine');
 assert.equal(selectionConflict(sameGameCombo,corners),null,
   'Bet Builder can combine with Corners');
 assert.equal(selectionConflict(firstHalfTotal,corners),null,
@@ -450,53 +445,53 @@ assert.equal(selectionConflict(firstHalfTotal,corners),null,
 assert.equal(selectionConflict(matchTotal,corners),null,
   'Full-time goals can combine with Corners');
 const firstHalfGoals={...goalUnderAlt,outcomeId:'200|gGoals1h|1.5|Under',marketId:'200|gGoals1h|1.5',marketName:'1st Half Total Goals',marketLine:'1.5',period:1};
-assert.equal(selectionConflict(goalOver,firstHalfGoals)?.code,'SAME_MARKET_CATEGORY',
-  'Full-time Goals and first-half Goals cannot be combined');
-assert.throws(()=>assertCompatibleSelections([goalOver,firstHalfGoals]),
-  error=>error.code==='INCOMPATIBLE_SELECTIONS',
-  'Backend rejects full-time Goals + first-half Goals');
+assert.equal(selectionConflict(goalOver,firstHalfGoals),null,
+  'Full-time Goals and first-half Goals are distinct markets');
+assert.doesNotThrow(()=>assertCompatibleSelections([goalOver,firstHalfGoals]),
+  'Backend accepts full-time Goals + first-half Goals from separate markets');
 const secondHalfGoals={...goalUnderAlt,outcomeId:'200|gGoals2h|1.5|Under',marketId:'200|gGoals2h|1.5',marketName:'2nd Half Total Goals',marketLine:'1.5',period:2};
-assert.equal(selectionConflict(goalOver,secondHalfGoals)?.code,'SAME_MARKET_CATEGORY',
-  'Full-time Goals and second-half Goals cannot be combined');
+assert.equal(selectionConflict(goalOver,secondHalfGoals),null,
+  'Full-time Goals and second-half Goals are distinct markets');
 const homeTeamGoals=pick('200|gHomeGoals|1.5|Over',{matchId:'200',marketId:'200|gHomeGoals|1.5',marketKey:'gHomeGoals',marketName:'Home Team Total Goals',marketType:'over_under',marketLine:'1.5',outcomeName:'Over 1.5'});
 const awayTeamGoals=pick('200|gAwayGoals|1.5|Over',{matchId:'200',marketId:'200|gAwayGoals|1.5',marketKey:'gAwayGoals',marketName:'Away Team Total Goals',marketType:'over_under',marketLine:'1.5',outcomeName:'Over 1.5'});
-assert.equal(selectionConflict(homeTeamGoals,awayTeamGoals)?.code,'SAME_MARKET_CATEGORY',
-  'Home Team Goals and Away Team Goals cannot be combined');
-assert.equal(selectionConflict(goalOver,homeTeamGoals)?.code,'SAME_MARKET_CATEGORY',
-  'Simple Total Goals and Home Team Goals cannot be combined');
-assert.throws(()=>assertCompatibleSelections([homeTeamGoals,awayTeamGoals]),
-  error=>error.code==='INCOMPATIBLE_SELECTIONS',
-  'Backend rejects Home Team Goals + Away Team Goals');
+assert.equal(selectionConflict(homeTeamGoals,awayTeamGoals),null,
+  'Home Team Goals and Away Team Goals are distinct markets');
+assert.equal(selectionConflict(goalOver,homeTeamGoals),null,
+  'Simple Total Goals and Home Team Goals are distinct markets');
+assert.doesNotThrow(()=>assertCompatibleSelections([homeTeamGoals,awayTeamGoals]),
+  'Backend accepts Home Team Goals + Away Team Goals from distinct markets');
 
 const correctScore=pick('200|gCorrectScore||0:0',{matchId:'200',marketId:'200|gCorrectScore|',marketName:'Correct Score',outcomeName:'0:0'});
-assert.equal(selectionConflict(matchResult,correctScore)?.code,'RESULT_CORRELATION',
-  'A correct score cannot be stacked with a result selection');
-assert.equal(selectionConflict(doubleChance,correctScore)?.code,'RESULT_CORRELATION');
+assert.equal(selectionConflict(matchResult,correctScore),null,
+  'Match Result and Correct Score are separate provider markets');
+assert.equal(selectionConflict(doubleChance,correctScore),null,
+  'Double Chance and Correct Score are separate provider markets');
 
 const prematch={status:'PREMATCH'};
 const underHalf=pick('200|gGoals|0.5|Under',{matchId:'200',marketId:'200|gGoals|0.5',marketName:'Total Goals',marketType:'over_under',marketLine:'0.5',outcomeName:'Under 0.5',matchSnapshot:prematch});
 const zeroZero=pick('200|gCorrectScore||0:0',{matchId:'200',marketId:'200|gCorrectScore|',marketName:'Correct Score',outcomeName:'0:0',matchSnapshot:prematch});
 const noFirstGoal=pick('200|gFirstGoal||None',{matchId:'200',marketId:'200|gFirstGoal|',marketName:'First Goal',outcomeName:'No Goal',matchSnapshot:prematch});
-assert.equal(selectionConflict(underHalf,zeroZero)?.code,'NO_GOAL_PREMATCH');
-assert.equal(selectionConflict(underHalf,noFirstGoal)?.code,'NO_GOAL_PREMATCH');
-assert.equal(selectionConflict(zeroZero,noFirstGoal)?.code,'NO_GOAL_PREMATCH');
-assert.throws(()=>assertCompatibleSelections([underHalf,zeroZero,noFirstGoal]),
-  error=>error.code==='INCOMPATIBLE_SELECTIONS');
+assert.equal(selectionConflict(underHalf,zeroZero),null,
+  'Under 0.5 and Correct Score are different markets');
+assert.equal(selectionConflict(underHalf,noFirstGoal),null,
+  'Under 0.5 and First Goal are different markets');
+assert.equal(selectionConflict(zeroZero,noFirstGoal),null,
+  'Correct Score and First Goal are different markets');
+assert.doesNotThrow(()=>assertCompatibleSelections([underHalf,zeroZero,noFirstGoal]));
 const resolvedUnder = {matchId:'200',marketKey:'gGoals',line:'0.5',outcomeKey:'Under',outcomeName:'Under 0.5',
   marketName:'Total Goals',marketType:'over_under',acceptedLiveSnapshot:{isLive:false}};
 const resolvedFirstGoal = {matchId:'200',marketKey:'gFirstGoal',line:'',outcomeKey:'None',outcomeName:'No Goal',
   marketName:'First Goal',acceptedLiveSnapshot:{isLive:false}};
-assert.equal(selectionConflict(resolvedUnder,resolvedFirstGoal)?.code,'NO_GOAL_PREMATCH',
-  'Server-resolved provider rows are checked without a client outcomeId');
-assert.throws(()=>assertCompatibleSelections([resolvedUnder,resolvedFirstGoal]),
-  error=>error.code==='INCOMPATIBLE_SELECTIONS');
+assert.equal(selectionConflict(resolvedUnder,resolvedFirstGoal),null,
+  'Server-resolved selections from different market keys can combine');
+assert.doesNotThrow(()=>assertCompatibleSelections([resolvedUnder,resolvedFirstGoal]));
 
 const bttsNo=pick('200|gBtts||No',{matchId:'200',marketId:'200|gBtts|',marketName:'Both Teams To Score',outcomeName:'No',matchSnapshot:prematch});
-assert.equal(selectionConflict(underHalf,bttsNo)?.code,'CORNER_REQUIRED',
-  'Distinct non-corner markets still cannot combine on the same fixture');
+assert.equal(selectionConflict(underHalf,bttsNo),null,
+  'Under 0.5 and BTTS are different markets');
 const liveNoFirstGoal={...noFirstGoal,matchSnapshot:{status:'LIVE'}};
-assert.equal(selectionConflict(underHalf,liveNoFirstGoal)?.code,'CORNER_REQUIRED',
-  'Two non-corner selections remain blocked even when their scenarios differ');
+assert.equal(selectionConflict(underHalf,liveNoFirstGoal),null,
+  'Different non-Corners markets can combine in live matches');
 
 assert.equal(selectionConflict(matchResult,otherFixture),null);
 assert.deepEqual(toggleCompatibleSelection([matchResult],matchResult),[],
