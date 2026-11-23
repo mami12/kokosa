@@ -321,71 +321,24 @@ function noGoalPrematchScenario(selection) {
  */
 export function selectionConflict(first, second) {
   if (!first || !second) return null;
-  if (first.outcomeId != null && second.outcomeId != null &&
-      String(first.outcomeId) === String(second.outcomeId)) return null;
+
   const firstMatch = selectionMatchIdentity(first);
   const secondMatch = selectionMatchIdentity(second);
   if (firstMatch === null || secondMatch === null || firstMatch !== secondMatch) return null;
-  const firstIsCorners = isCornerSelection(first);
-  const secondIsCorners = isCornerSelection(second);
 
-  const samePeriod = selectionPeriodScope(first) === selectionPeriodScope(second);
-  const sameMarketGroup = selectionMarketIdentity(first) !== null &&
-    selectionMarketIdentity(first) === selectionMarketIdentity(second);
-
-  // Never allow two picks from the same provider market group, including
-  // Corners lines. Different Corners markets remain stackable.
-  if (sameMarketGroup) {
-    return { code: 'SAME_MARKET_GROUP', message: 'Lejohet vetëm një zgjedhje nga i njëjti treg.' };
-  }
-
-  // Different Corners markets may combine with one another and with any
-  // other market on the same fixture.
-  if (firstIsCorners || secondIsCorners) return null;
-
-  if ((isFullTimeResultGoalsMarket(first) && isSimpleGoalsTotal(second)) ||
-      (isFullTimeResultGoalsMarket(second) && isSimpleGoalsTotal(first))) {
+  // A slip may contain different markets from the same fixture. The only
+  // same-fixture conflict is a second quote from the same provider market
+  // group (alternate outcomes/lines are mutually exclusive).
+  const firstMarket = selectionMarketIdentity(first);
+  const secondMarket = selectionMarketIdentity(second);
+  if (firstMarket !== null && firstMarket === secondMarket) {
     return {
-      code: 'RESULT_GOALS_TOTAL_CONFLICT',
-      message: 'Full Time Result/Goals nuk mund të kombinohet me tregun e thjeshtë Goals për të njëjtën ndeshje.',
+      code: 'SAME_MARKET_GROUP',
+      message: 'Lejohet vetëm një zgjedhje nga i njëjti treg.',
     };
   }
 
-  // Explicit same-game combo exception: a main result market (1X2, Double
-  // Chance, DNB, etc.) may be combined with full-time Goals Over/Under totals.
-  if ((selectionCategory(first) === 'main' && isSimpleGoalsTotal(second)) ||
-      (selectionCategory(second) === 'main' && isSimpleGoalsTotal(first))) return null;
-
-  if ((isResultFamily(first) && isResultFamily(second)) ||
-      (isCorrectScoreFamily(first) && isCorrectScoreFamily(second))) {
-    return { code: 'RESULT_FAMILY', message: 'Rezultati, Double Chance, DNB dhe Correct Score nuk mund të kombinohen për të njëjtën ndeshje.' };
-  }
-  if ((isResultFamily(first) && isCorrectScoreFamily(second)) ||
-      (isCorrectScoreFamily(first) && isResultFamily(second))) {
-    return { code: 'RESULT_CORRELATION', message: 'Correct Score përcakton edhe rezultatin e ndeshjes; këto zgjedhje nuk mund të kombinohen.' };
-  }
-
-  const firstMetric = selectionMetric(first);
-  const secondMetric = selectionMetric(second);
-  if (samePeriod && firstMetric && firstMetric === secondMetric &&
-      isOverUnderChoice(first) && isOverUnderChoice(second) &&
-      !(firstIsCorners !== secondIsCorners)) {
-    return { code: 'SAME_TOTAL_FAMILY', message: 'Lejohet vetëm një kuotë Over/Under për të njëjtën statistikë dhe pjesë të ndeshjes.' };
-  }
-
-  if (noGoalPrematchScenario(first) && noGoalPrematchScenario(second)) {
-    return { code: 'NO_GOAL_PREMATCH', message: 'Nën 0.5 gola, Correct Score 0:0 dhe First Goal: No Goal janë i njëjti skenar dhe nuk mund të kombinohen.' };
-  }
-
-  // Non-Corners selections retain the existing same-match restrictions.
-  const firstCategory = selectionCategory(first);
-  const secondCategory = selectionCategory(second);
-  return {
-    code: firstCategory === secondCategory ? 'SAME_MARKET_CATEGORY' : 'CORNER_REQUIRED',
-    message: firstCategory === secondCategory
-      ? 'Lejohet vetëm një bast nga e njëjta kategori tregu për të njëjtën ndeshje.'
-      : 'Për të kombinuar dy zgjedhje nga e njëjta ndeshje, njëra duhet të jetë treg këndesh.',
-  };
+  return null;
 }
 
 /** The first incompatibility between a candidate and the current betslip, if any. */
