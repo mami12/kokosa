@@ -171,6 +171,26 @@ assert.deepEqual(toggleCompatibleSelection([matchResult,goalOver],goalUnderAlt),
 assert.equal(selectionConflict(matchResult,matchTotal),null,
   'Main result + total goals are compatible');
 
+
+// Requested main-market + goal-total combinations must work in both LIVE and
+// PREMATCH payloads, including Double Chance and multiple distinct goal lines.
+const dcGoal = {...matchTotal, outcomeId:'200|g6379|1.5|Over', marketId:'200|g6379|1.5', marketLine:'1.5', outcomeName:'Over 1.5'};
+const goalLine35 = {...matchTotal, outcomeId:'200|g6379|3.5|Under', marketId:'200|g6379|3.5', marketLine:'3.5', outcomeName:'Under 3.5'};
+for (const status of ['LIVE','PREMATCH']) {
+  const main = {...doubleChance, matchSnapshot:{status}};
+  const totalA = {...dcGoal, matchSnapshot:{status}};
+  const totalB = {...goalLine35, matchSnapshot:{status}};
+  assert.deepEqual(toggleCompatibleSelection([main],totalA),[main,totalA],
+    `Double Chance + Over 1.5 is accepted for ${status}`);
+  assert.deepEqual(toggleCompatibleSelection([main,totalA],totalB),[main,totalA,totalB],
+    `Double Chance + Over 1.5 + Under 3.5 is accepted for ${status}`);
+  assert.doesNotThrow(()=>assertCompatibleSelections([main,totalA,totalB]),
+    `Backend accepts Double Chance + multiple goal totals for ${status}`);
+}
+assert.throws(()=>assertCompatibleSelections([goalOver,goalUnderAlt]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS',
+  'Multiple goal totals without a main market remain blocked');
+
 // One selection per visible market category for the same fixture, even when
 // the provider gives the offers different market IDs and different names.
 const nextGoal=pick('200|gNextGoal||Home',{matchId:'200',marketId:'200|gNextGoal|',marketName:'Next Goal',outcomeName:'Home'});
@@ -376,12 +396,11 @@ for (const line of ['0','0.5','7.5','1000.5','1000000.5']) {
   [matchResult,cornerLine,anotherCornerLine],
   `Client accepts Corners line ${line} alongside other markets and Corners`);
 }
-assert.throws(()=>assertCompatibleSelections([matchResult, actualOddsButtonCorner, matchTotal]),
-  error=>error.code==='INCOMPATIBLE_SELECTIONS',
-  'A corner cannot be used to permit a second non-corner selection from the same match');
+assert.doesNotThrow(()=>assertCompatibleSelections([matchResult, actualOddsButtonCorner, matchTotal]),
+  'Main result + Goals + Corners are allowed together');
 assert.deepEqual(toggleCompatibleSelection([matchResult, actualOddsButtonCorner], matchTotal),
-  [matchResult, actualOddsButtonCorner],
-  'The client blocks adding a second non-corner selection after Result + Corners');
+  [matchResult, actualOddsButtonCorner, matchTotal],
+  'The client allows a goal total alongside an existing main result + Corners');
 assert.equal(selectionConflict(matchResult,firstHalfTotal)?.code,'CORNER_REQUIRED',
   'Non-corner markets cannot combine on the same fixture');
 assert.equal(selectionConflict(matchResult,sameGameCombo)?.code,'CORNER_REQUIRED',
@@ -398,17 +417,16 @@ assert.throws(()=>assertCompatibleSelections([firstHalfTotal,sameGameCombo]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS');
 assert.throws(()=>assertCompatibleSelections([goalOver,goalUnderAlt]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS');
-assert.equal(selectionConflict(matchResult,matchTotal)?.code,'CORNER_REQUIRED',
-  'Result and Goals cannot combine without a corner market');
+assert.equal(selectionConflict(matchResult,matchTotal),null,
+  'Result and Goals can combine without requiring a corner market');
 assert.equal(selectionConflict(fullTimeResultGoals,goalOver)?.code,'RESULT_GOALS_TOTAL_CONFLICT',
   'Full Time Result/Goals cannot be combined with simple Total Goals');
 assert.equal(selectionConflict(goalOver,fullTimeResultGoals)?.code,'RESULT_GOALS_TOTAL_CONFLICT',
   'The Full Time Result/Goals exclusion applies in either selection order');
 assert.equal(selectionConflict(fullTimeResultGoals,cards)?.code,'CORNER_REQUIRED',
   'Two non-corner markets cannot combine, even when categories differ');
-assert.throws(()=>assertCompatibleSelections([matchResult,matchTotal]),
-  error=>error.code==='INCOMPATIBLE_SELECTIONS',
-  'Backend rejects Result + Goals without Corners');
+assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,matchTotal]),
+  'Backend accepts Result + Goals without Corners');
 assert.throws(()=>assertCompatibleSelections([goalOver,cards]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS',
   'Backend rejects Goals + Cards without Corners');
