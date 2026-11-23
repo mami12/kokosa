@@ -115,6 +115,28 @@ const fullTimeResultGoals=pick('200|gFTResultGoals||HomeOver',{matchId:'200',mar
 const corners=pick('200|gCorners|2.5|Over',{matchId:'200',marketId:'200|gCorners|2.5',marketName:'Total Corners',marketType:'over_under',marketLine:'2.5',outcomeName:'Over 2.5'});
 const cards=pick('200|gCards|4.5|Over',{matchId:'200',marketId:'200|gCards|4.5',marketName:'Total Cards',marketType:'over_under',marketLine:'4.5',outcomeName:'Over 4.5'});
 const otherFixture=pick('201|g1x2||1',{matchId:'201',marketId:'201|g1x2|',marketName:'Match Result'});
+
+// Selecting 1X2 must not lock unrelated market families from the same fixture.
+// The provider market key is the boundary: one pick per key, any number of
+// different keys from the same match.
+const differentMarketFamilies = [
+  pick('200|g6379|2.5|Over',{matchId:'200',marketId:'200|g6379|2.5',marketName:'Total Goals',marketType:'over_under',outcomeName:'Over 2.5'}),
+  pick('200|gCards|4.5|Over',{matchId:'200',marketId:'200|gCards|4.5',marketName:'Total Cards',marketType:'over_under',outcomeName:'Over 4.5'}),
+  pick('200|gCorners|8.5|Over',{matchId:'200',marketId:'200|gCorners|8.5',marketName:'Total Corners',marketType:'over_under',outcomeName:'Over 8.5'}),
+  pick('200|gFouls|21.5|Over',{matchId:'200',marketId:'200|gFouls|21.5',marketName:'Total Fouls',marketType:'over_under',outcomeName:'Over 21.5'}),
+  pick('200|gShotsOnTarget|7.5|Over',{matchId:'200',marketId:'200|gShotsOnTarget|7.5',marketName:'Shots on Target',marketType:'over_under',outcomeName:'Over 7.5'}),
+  pick('200|gFirstGoal||Home',{matchId:'200',marketId:'200|gFirstGoal|',marketName:'First Goal',outcomeName:'Home'}),
+  pick('200|gCorrectScore||1:0',{matchId:'200',marketId:'200|gCorrectScore|',marketName:'Correct Score',outcomeName:'1:0'}),
+  pick('200|BB|template-a',{matchId:'200',marketId:'200|BB|template-a',marketName:'Bet Builder'})
+];
+for (const candidate of differentMarketFamilies) {
+  assert.equal(selectionConflict(matchResult,candidate),null,
+    `1X2 remains compatible with distinct market ${candidate.outcomeId}`);
+  assert.deepEqual(toggleCompatibleSelection([matchResult],candidate),[matchResult,candidate],
+    `Selecting 1X2 does not disable distinct market ${candidate.outcomeId}`);
+}
+assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,...differentMarketFamilies]),
+  'Backend accepts one selection from each different market family in the same match');
 assert.deepEqual(toggleCompatibleSelection([matchResult,otherFixture],matchTotal),[matchResult,otherFixture,matchTotal],
   'Goals totals can combine with the main result market from the same fixture');
 assert.deepEqual(toggleCompatibleSelection([matchResult,otherFixture],corners),[matchResult,otherFixture,corners],
