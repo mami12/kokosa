@@ -28,6 +28,20 @@ const correctScore=pick('200|gCorrectScore||1:0',{marketName:'Correct Score',out
 blocked(totalGoals,firstHalfGoals,'goals');
 blocked(totalGoals,homeGoals,'goals');
 blocked(homeGoals,awayGoals,'goals');
+
+// Zizobet team-total variants can arrive with a generic display title while
+// the native key carries the complete Home/Away Team Goals identity.
+const homeTeamGoalsKeyOnly=pick('200|gHomeTeamGoals|1.5|Over',{
+  marketKey:'gHomeTeamGoals',marketName:'Home Team Total',marketType:'over_under',
+  outcomeName:'Over 1.5'
+});
+const awayTeamGoalsKeyOnly=pick('200|gAwayTeamGoals|1.5|Over',{
+  marketKey:'gAwayTeamGoals',marketName:'Away Team Total',marketType:'over_under',
+  outcomeName:'Over 1.5'
+});
+blocked(totalGoals,homeTeamGoalsKeyOnly,'goals');
+blocked(totalGoals,awayTeamGoalsKeyOnly,'goals');
+blocked(homeTeamGoalsKeyOnly,awayTeamGoalsKeyOnly,'goals');
 blocked(totalGoals,btts,'goals');
 blocked(totalGoals,correctScore,'goals');
 
