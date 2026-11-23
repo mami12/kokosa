@@ -47,7 +47,7 @@ export const BetslipProvider = ({ children }: { children: React.ReactNode }) => 
 
   const addSelection = useCallback((s: BetSelection) => {
     setSelections(previous => toggleCompatibleSelection(previous, s));
-  },[user?.role]);
+  },[]);
 
   const removeSelection = useCallback((outcomeId: string) => {
     setSelections(previous => previous.filter(p => p.outcomeId !== outcomeId));
@@ -154,7 +154,7 @@ export const BetslipProvider = ({ children }: { children: React.ReactNode }) => 
     store:selectionStore.current,
     conflictFor:(candidate:BetSelection)=>selectionStore.current.conflictFor(candidate),
     addSelection,removeSelection
-  }),[addSelection,removeSelection,user?.role]);
+  }),[addSelection,removeSelection]);
   return (
     <SelectionFeedContext.Provider value={selectionFeed}><BetslipContext.Provider value={{
       selections, columns, columnsOverflow, columnStakes, columnPreviews, stake, setStake, ticketType: effectiveTicketType,
