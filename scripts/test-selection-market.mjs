@@ -410,8 +410,8 @@ for (const other of [matchResult, matchTotal, cards, firstHalfTotal, sameGameCom
   assert.equal(selectionConflict(actualOddsButtonCorner, other), null,
     'Corners compatibility is independent of selection order');
 }
-assert.equal(selectionConflict(actualOddsButtonCorner, cornersUnder)?.family,'corners',
-   'Two gCorners offers are blocked across provider market IDs');
+assert.equal(selectionConflict(actualOddsButtonCorner, cornersUnder)?.code,'SAME_MARKET_GROUP',
+   'Two gCorners offers from the same provider market group are blocked');
 const albanianCornerTitle = pick('200|local-corner-market|10.5|Over', {
   matchId:'200', marketId:'local-corner-id',
   marketName:'Totali i goditjeve këndore (10.5)',
