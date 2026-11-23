@@ -316,7 +316,7 @@ export function buildMarkets(oddsRows,{includeRemoved=false}={}) {
   // displayed outcome must retain the market key that resolves its own quote.
   const visibleOffers = new Map();
   const normVisible = value => String(value ?? '').trim().toLowerCase()
-    .replace(/\\s*:\\s*/g, ':').replace(/\\s+/g, ' ');
+    .replace(/\s*:\s*/g, ':').replace(/\s+/g, ' ');
   const quoteFreshness = market => Math.max(0, ...(market.outcomes ?? []).map(outcome => {
     const at = Date.parse(outcome.priceUpdatedAt ?? '');
     return Number.isFinite(at) ? at : 0;
