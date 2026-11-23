@@ -174,7 +174,7 @@ export default function MarketPanel({ match }: { match: Match }) {
     const query = marketSearch.trim().toLowerCase();
     for (const market of match.markets ?? []) {
       if (!combosEnabled && isComboMarket(market)) continue;
-      if (!marketDiagnosticAll() && (!isIdentifiedMarket(market) || isHandicapMarket(market) || !isAllowedTotalLine(market))) continue;
+      if (!isAllowedTotalLine(market) || (!marketDiagnosticAll() && (!isIdentifiedMarket(market) || isHandicapMarket(market)))) continue;
       if (query && ![market.name, marketDisplayTitle(market, lang, true), market.line, ...(market.outcomes ?? []).flatMap(o => [o.name, marketSelectionLabel(o.name, lang, market.name, `${match.homeTeam} vs ${match.awayTeam}`, o.code, market.line)])]
         .some(value => String(value ?? '').toLowerCase().includes(query))) continue;
       if (!isMarketVisible(liveMatch, market, lockedMarkets, lockedOutcomes, riskLockedOutcomes)) continue;
