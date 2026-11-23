@@ -201,7 +201,9 @@ const bttsMarket = pick('200|gBtts||Yes', {
   matchId:'200',marketId:'200|gBtts|',marketKey:'gBtts',
   marketName:'Both Teams to Score',outcomeName:'Yes'
 });
-assert.doesNotThrow(()=>assertCompatibleSelections([goalsOver,bttsMarket]));
+assert.throws(()=>assertCompatibleSelections([goalsOver,bttsMarket]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS',
+  'Backend blocks a BTTS market alongside another Goals-family selection');
 // Selecting 1X2 must not lock unrelated market families from the same fixture.
 // The provider market key is the boundary: one pick per key, any number of
 // different keys from the same match.
@@ -216,12 +218,12 @@ const differentMarketFamilies = [
 ];
 for (const candidate of differentMarketFamilies) {
   assert.equal(selectionConflict(matchResult,candidate),null,
-    `1X2 remains compatible with distinct market ${candidate.outcomeId}`);
+    `1X2 remains compatible with distinct non-result market ${candidate.outcomeId}`);
   assert.deepEqual(toggleCompatibleSelection([matchResult],candidate),[matchResult,candidate],
     `Selecting 1X2 does not disable distinct market ${candidate.outcomeId}`);
 }
-assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,...differentMarketFamilies]),
-  'Backend accepts one selection from each different market family in the same match');
+assert.doesNotThrow(()=>assertCompatibleSelections([matchResult,...differentMarketFamilies.filter(p=>!String(p.marketName).includes('First Goal'))]),
+  'Backend accepts one selection from each independent family in the same match');
 assert.deepEqual(toggleCompatibleSelection([matchResult,otherFixture],matchTotal),[matchResult,otherFixture,matchTotal],
   'Goals totals can combine with the main result market from the same fixture');
 assert.deepEqual(toggleCompatibleSelection([matchResult,otherFixture],corners),[matchResult,otherFixture,corners],
@@ -320,8 +322,8 @@ assert.throws(()=>assertCompatibleSelections([goalOver,nextGoal]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS',
   'The backend blocks Next Goal with another Goals market');
 
-assert.equal(selectionConflict(corners,raceCorners),null,
-  'Total Corners and Race to X Corners can be combined');
+assert.equal(selectionConflict(corners,raceCorners)?.family,'corners',
+  'Total Corners and Race to X Corners share one statistic family');
 const cardsOther=pick('200|gCards||Over',{matchId:'200',marketId:'200|gCards|',marketName:'Total Cards',outcomeName:'Over'});
 const playerOther=pick('200|gBooked||Yes',{matchId:'200',marketId:'200|gBooked|',marketName:'Player to be Booked',outcomeName:'Yes'});
 assert.equal(selectionConflict(cardsOther,playerOther),null,
