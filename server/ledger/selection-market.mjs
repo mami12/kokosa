@@ -198,7 +198,8 @@ function selectionMetric(selection) {
   if (/\b(?:saves?|goalkeeper saves?)\b/.test(text) || /saves?/.test(keys) || type === 'saves') return 'saves';
   if (/\bpenalt(?:y|ies)\b/.test(text) || /penalt/.test(keys) || type === 'penalties') return 'penalties';
   if (/\b(?:goals?|goal total|multigoals?|multi goals?|total in range)\b/.test(text) ||
-      /(?:^|\s)(?:g|zz)?(?:home|away|total)?goals?(?:1h|2h|p1|p2)?(?:\s|$)/.test(text) ||
+      /(?:^|\s)(?:g|zz)?(?:home|away|total)?(?:team)?goals?(?:1h|2h|p1|p2)?(?:\s|$)/.test(text) ||
+      /(?:^|\s)(?:g|zz)?(?:home|away|total)?teamgoals?(?:1h|2h|p1|p2)?(?:\s|$)/.test(keys) ||
       /(?:^|\s)(?:g|zz)?multigoals?(?:\s|$)/.test(keys) ||
       /\b(?:home|away) team (?:total )?range\b|\b(?:home|away) team goal range\b/.test(names) ||
       ['goals','goal','total goals','multigoals','multi goals'].includes(type)) return 'goals';
