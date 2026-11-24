@@ -132,4 +132,53 @@ assert.deepEqual(toggleMarketSelection([totalGoals],totalGoalsAlt),[totalGoalsAl
 assert.throws(()=>assertDistinctSelectionMarkets([totalGoals,totalGoalsAlt]),error=>error.code==='DUPLICATE_MARKET');
 
 assert.deepEqual(toggleCompatibleSelection([totalGoals],totalGoals),[]);
+// Winner-or-total markets are compound contracts: each represents both
+// match result and goal totals, so they conflict with either family.
+const homeWinTotalOver=pick('200|gHomeWinTotalOver||Yes',{
+  marketName:'Home team win or total over1',marketType:'other',outcomeName:'Yes'
+});
+const homeWinTotalUnder=pick('200|gHomeWinTotalUnder||Yes',{
+  marketName:'Home team wins or total under1',marketType:'other',outcomeName:'Yes'
+});
+const awayWinTotalOver=pick('200|gAwayWinTotalOver||Yes',{
+  marketName:'Away team wins or total over1',marketType:'other',outcomeName:'Yes'
+});
+const awayWinTotalUnder=pick('200|gAwayWinTotalUnder||Yes',{
+  marketName:'Away team wins or total under1',marketType:'other',outcomeName:'Yes'
+});
+for (const compound of [homeWinTotalOver,homeWinTotalUnder,awayWinTotalOver,awayWinTotalUnder]) {
+  blocked(compound,totalGoals,'goals');
+  blocked(compound,result,'result');
+  assert.equal(selectionConflict(compound,corners),null,
+    'Win-or-total market remains compatible with unrelated Corners');
+}
+
+// Half-time and second-half result + total combinations contribute to
+// both families. Plain half totals contribute to Goals.
+const firstHalfResultTotal=pick('200|g1HResultTotal||HomeOver',{
+  marketName:'1st half - Result & total',marketType:'other',outcomeName:'Home & Over 0.5',period:1
+});
+const secondHalfResultTotal=pick('200|g2HResultTotal||HomeOver',{
+  marketName:'2nd half - Result & total',marketType:'other',outcomeName:'Home & Over 0.5',period:2
+});
+for (const compound of [firstHalfResultTotal,secondHalfResultTotal]) {
+  blocked(compound,totalGoals,'goals');
+  blocked(compound,result,'result');
+  assert.equal(selectionConflict(compound,corners),null,
+    'Half result + total remains compatible with unrelated Corners');
+}
+const firstHalfTotal=pick('200|g1HTotal|1.5|Over',{
+  marketName:'1st half - Total',marketType:'over_under',outcomeName:'Over 1.5',period:1
+});
+const secondHalfTotal=pick('200|g2HTotal|1.5|Over',{
+  marketName:'2nd Half - Total',marketType:'over_under',outcomeName:'Over 1.5',period:2
+});
+blocked(totalGoals,firstHalfTotal,'goals');
+blocked(totalGoals,secondHalfTotal,'goals');
+blocked(firstHalfTotal,secondHalfTotal,'goals');
+assert.equal(selectionConflict(firstHalfTotal,result),null,
+  'Plain first-half total remains distinct from Match Result');
+assert.equal(selectionConflict(secondHalfTotal,result),null,
+  'Plain second-half total remains distinct from Match Result');
+
 console.log('PASS: same-match market-family exclusivity for goals, results, corners, cards and multi-stat combinations.');
