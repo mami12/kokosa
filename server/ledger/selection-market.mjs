@@ -402,10 +402,17 @@ function selectionMetricFamilies(selection, seen = new Set()) {
       /^(?:double chance|draw no bet|moneyline|match result|1x2)$/.test(type)) add('result');
 
   if (!playerMarket && (
-      /\b(?:goals?|multi goals?|multigoals?|btts|both teams (?:to )?score|correct score|first goal|next goal|first team to score|next team to score|goal time)\b/.test(text) ||
+      /\b(?:goals?|multi goals?|multigoals?|btts|both teams (?:to )?score|correct score|first goal|next goal|first team to score|next team to score|goal time|clean sheet|wins? to nil|wins? any of the halves|wins? both halves|score in both halves)\b/.test(text) ||
       /(?:g|zz)?(?:home|away|total)?(?:team)?goals?(?:1h|2h|p1|p2)?|(?:g|zz)?(?:home|away|total)?(?:team)?goalrange|(?:g|zz)?(?:btts|correctscore|firstgoal|nextgoal|multigoals?)/.test(evidence.keys) ||
       type === 'btts' || type === 'total goals'
   )) add('goals');
+
+  // Compound winner/clean-sheet/half-win offers encode both a result and a
+  // goals contract. Treat them as both families, not as an unrelated "Other".
+  if (/\b(?:home|away) team wins? (?:to nil|any of the halves|both halves|or any clean sheet|or both teams to score)\b|\b(?:draw or any clean sheet|home team win or both teams to score|away team win or both teams to score)\b/.test(text)) {
+    add('result');
+    add('goals');
+  }
 
   if (/\b(?:corners?|corner kicks?|kendore|goditje kendore)\b/.test(text) ||
       /\b(?:corners?|corner)\b/.test(type) ||
