@@ -192,18 +192,18 @@ function selectionMetric(selection) {
   if (/\bshots?\s+on\s+(?:target|goal)\b|\bon target shots?\b/.test(text) ||
       /shots.?on.?target/.test(keys) || type === 'shots on target' || type === 'shots on goal') return 'shots_on_target';
   if (/\b(?:corners?|corner kicks?|kendore|goditje kendore)\b/.test(text) ||
-      /corners?/.test(keys) || type === 'corners' || type === 'corner') return 'corners';
+      /corner/.test(keys) || type === 'corners' || type === 'corner') return 'corners';
   if (/\byellow cards?\b/.test(text) || /yellow.?cards?/.test(keys) || type === 'yellow cards') return 'yellow_cards';
   if (/\bred cards?\b/.test(text) || /red.?cards?/.test(keys) || type === 'red cards') return 'red_cards';
   if (/\b(?:cards?|bookings?|carded|disciplin)\b/.test(text) ||
-      /cards?|bookings?/.test(keys) || type === 'cards' || type === 'card') return 'cards';
-  if (/\b(?:shots?|attempts?)\b/.test(text) || /shots?/.test(keys) || type === 'shots') return 'shots';
-  if (/\b(?:fouls?)\b|\bfaulle?\b/.test(text) || /fouls?/.test(keys) ||
+      /cards?|bookings?|cardrange|bookingrange/.test(keys) || type === 'cards' || type === 'card') return 'cards';
+  if (/\b(?:shots?|attempts?)\b/.test(text) || /shots?|shotrange/.test(keys) || type === 'shots') return 'shots';
+  if (/\b(?:fouls?)\b|\bfaulle?\b/.test(text) || /fouls?|foulrange/.test(keys) ||
       type === 'fouls' || type === 'foul') return 'fouls';
-  if (/\b(?:offsides?|offside)\b/.test(text) || /offsides?/.test(keys) || type === 'offsides') return 'offsides';
+  if (/\b(?:offsides?|offside)\b/.test(text) || /offsides?|offsiderange/.test(keys) || type === 'offsides') return 'offsides';
   if (/\bthrow ins?\b|\bthrow ins?\b/.test(text) || /throw.?ins?/.test(keys) || type === 'throw ins') return 'throw_ins';
-  if (/\b(?:saves?|goalkeeper saves?)\b/.test(text) || /saves?/.test(keys) || type === 'saves') return 'saves';
-  if (/\bpenalt(?:y|ies)\b/.test(text) || /penalt/.test(keys) || type === 'penalties') return 'penalties';
+  if (/\b(?:saves?|goalkeeper saves?)\b/.test(text) || /saves?|saverange/.test(keys) || type === 'saves') return 'saves';
+  if (/\bpenalt(?:y|ies)\b/.test(text) || /penalt|penaltyrange/.test(keys) || type === 'penalties') return 'penalties';
   if (/\b(?:goals?|goal total|multigoals?|multi goals?|total in range)\b/.test(text) ||
       /(?:^|\s)(?:g|zz)?(?:home|away|total)?(?:team)?goals?(?:1h|2h|p1|p2)?(?:\s|$)/.test(text) ||
       /(?:^|\s)(?:g|zz)?(?:home|away|total)?teamgoals?(?:1h|2h|p1|p2)?(?:\s|$)/.test(keys) ||
@@ -417,12 +417,12 @@ function selectionMetricFamilies(selection, seen = new Set()) {
       /\b(?:g|zz)?(?:cards?|yellowcards?|redcards?|bookingpoints?)\b/.test(evidence.keys)) add('cards');
 
   if (/\b(?:shots?|attempts?|shots on target|on target shots?)\b/.test(text) ||
-      /\b(?:shots?|attempts?)\b/.test(type) || /shots?/i.test(evidence.keys)) add('shots');
-  if (/\b(?:fouls?|faulle?)\b/.test(text) || /\bfouls?\b/.test(type) || /fouls?/i.test(evidence.keys)) add('fouls');
-  if (/\b(?:offsides?|offside)\b/.test(text) || /\boffsides?\b/.test(type) || /offsides?/i.test(evidence.keys)) add('offsides');
+      /\b(?:shots?|attempts?)\b/.test(type) || /shots?|shotrange/i.test(evidence.keys)) add('shots');
+  if (/\b(?:fouls?|faulle?)\b/.test(text) || /\bfouls?\b/.test(type) || /fouls?|foulrange/i.test(evidence.keys)) add('fouls');
+  if (/\b(?:offsides?|offside)\b/.test(text) || /\boffsides?\b/.test(type) || /offsides?|offsiderange/i.test(evidence.keys)) add('offsides');
   if (/\bthrow ins?\b/.test(text) || /throw ins?/.test(type) || /throw.?ins?/i.test(evidence.keys)) add('throw_ins');
-  if (/\b(?:saves?|goalkeeper saves?)\b/.test(text) || /\bsaves?\b/.test(type) || /saves?/i.test(evidence.keys)) add('saves');
-  if (/\bpenalt(?:y|ies)\b/.test(text) || /\bpenalties?\b/.test(type) || /penalt/i.test(evidence.keys)) add('penalties');
+  if (/\b(?:saves?|goalkeeper saves?)\b/.test(text) || /\bsaves?\b/.test(type) || /saves?|saverange/i.test(evidence.keys)) add('saves');
+  if (/\bpenalt(?:y|ies)\b/.test(text) || /\bpenalties?\b/.test(type) || /penalt|penaltyrange/i.test(evidence.keys)) add('penalties');
 
   for (const leg of [...(selection.builderLegs ?? []), ...(selection.builder_legs ?? [])]) {
     for (const family of selectionMetricFamilies(leg, seen)) add(family);
