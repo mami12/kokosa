@@ -219,6 +219,7 @@ function selectionMetric(selection) {
       /(?:^|\s)(?:g|zz)?(?:home|away|total)?(?:team)?goals?(?:1h|2h|p1|p2)?(?:\s|$)/.test(text) ||
       /(?:g|zz)?(?:home|away|total)?(?:team)?goals?(?:1h|2h|p1|p2)?|(?:g|zz)?(?:home|away|total)?(?:team)?goalrange|(?:g|zz)?multigoals?/.test(keys) ||
       /\b(?:home|away) team (?:total )?range\b|\b(?:home|away) team goal range\b|\b(?:home|away) team total\b/.test(names) ||
+      /\b(?:1st|first|2nd|second) half total\b/.test(names) ||
       ['goals','goal','total goals','multigoals','multi goals'].includes(type)) return 'goals';
   return null;
 }
@@ -408,17 +409,23 @@ function selectionMetricFamilies(selection, seen = new Set()) {
       /\bcorrect score\b/.test(text) ||
       /\b(?:g|zz)?(?:1x2|3way|threeway|dc|dnb|matchresult|fulltimeresult|matchwinner|doublechance)\b/.test(evidence.keys) ||
       /\b(?:home|away) win\b|\bwin (?:over|and|with)\b|\bto win\b|\bhome or draw\b|\bhome or away\b|\bdraw or away\b/.test(text) ||
+      /\b(?:home|away) team wins? or total (?:over|under)\s*\d*/.test(text) ||
+      /\b(?:1st|first|2nd|second) half result (?:and )?total\b/.test(text) ||
       /^(?:double chance|draw no bet|moneyline|match result|1x2)$/.test(type)) add('result');
 
   if (!playerMarket && (
       /\b(?:goals?|multi goals?|multigoals?|btts|both teams (?:to )?score|correct score|first goal|next goal|first team to score|next team to score|goal time|clean sheet|wins? to nil|wins? any of the halves|wins? both halves|score in both halves)\b/.test(text) ||
       /(?:g|zz)?(?:home|away|total)?(?:team)?goals?(?:1h|2h|p1|p2)?|(?:g|zz)?(?:home|away|total)?(?:team)?goalrange|(?:g|zz)?(?:btts|correctscore|firstgoal|nextgoal|multigoals?)/.test(evidence.keys) ||
+      /\b(?:home|away) team wins? or total (?:over|under)\s*\d*/.test(text) ||
+      /\b(?:1st|first|2nd|second) half result (?:and )?total\b/.test(text) ||
       type === 'btts' || type === 'total goals'
   )) add('goals');
 
   // Compound winner/clean-sheet/half-win offers encode both a result and a
   // goals contract. Treat them as both families, not as an unrelated "Other".
-  if (/\b(?:home|away) team wins? (?:to nil|any of the halves|both halves|or any clean sheet|or both teams to score)\b|\b(?:draw or any clean sheet|home team win or both teams to score|away team win or both teams to score)\b/.test(text)) {
+  if (/\b(?:home|away) team wins? (?:to nil|any of the halves|both halves|or any clean sheet|or both teams to score)\b|\b(?:draw or any clean sheet|home team win or both teams to score|away team win or both teams to score)\b/.test(text) ||
+      /\b(?:home|away) team wins? or total (?:over|under)\s*\d*/.test(text) ||
+      /\b(?:1st|first|2nd|second) half result (?:and )?total\b/.test(text)) {
     add('result');
     add('goals');
   }
