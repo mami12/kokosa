@@ -681,7 +681,10 @@ function gradeHalftimeRest(line,result){
  const firstHalf=/^(?:1|1h|h1|1st|1st half|first half|firsthalf|period 1|period1)$/.test(phase);
  const laterPhase=/^(?:2|2h|h2|2nd|2nd half|second half|secondhalf|halftime|half time|ht|ft|full time|ended|finished)$/.test(phase);
  const clock=Number(snapshot.clockMilliseconds);
- if(laterPhase||(!firstHalf&&(!Number.isFinite(clock)||clock>=45*60*1000)))return null;
+ const prematch=snapshot.isLive===false;
+ if(prematch){
+  if(baseHome!==0||baseAway!==0)return null;
+ }else if(laterPhase||(!firstHalf&&(!Number.isFinite(clock)||clock>=45*60*1000)))return null;
  const endHome=scoreValue(result?.half_home_score);
  const endAway=scoreValue(result?.half_away_score);
  if(endHome===null||endAway===null)return null;
@@ -689,12 +692,16 @@ function gradeHalftimeRest(line,result){
  if(deltaHome<0||deltaAway<0)return null;
  const selections=[line?.outcome_key,line?.outcome_name]
   .map(value=>String(value??'').trim().toLowerCase());
+ const homeName=normalizedTeamLabel(line?.home_team??line?.accepted_contract?.homeTeamName??result?.home_team);
+ const awayName=normalizedTeamLabel(line?.away_team??line?.accepted_contract?.awayTeamName??result?.away_team);
  const decide=value=>value?'WON':'LOST';
- if(selections.some(value=>value==='1'||value==='home'||value.startsWith('home ')))
+ if(selections.some(value=>value==='1'||value==='home'||value.startsWith('home ')||
+    homeName&&normalizedTeamLabel(value)===homeName))
   return decide(deltaHome>deltaAway);
  if(selections.some(value=>value==='x'||value==='draw'||value==='tie'))
   return decide(deltaHome===deltaAway);
- if(selections.some(value=>value==='2'||value==='away'||value.startsWith('away ')))
+ if(selections.some(value=>value==='2'||value==='away'||value.startsWith('away ')||
+    awayName&&normalizedTeamLabel(value)===awayName))
   return decide(deltaAway>deltaHome);
  return null;
 }
