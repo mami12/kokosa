@@ -661,10 +661,10 @@ for (const [family, totalKey, rangeKey, totalLabel, rangeLabel] of nativeKeyFami
     marketName:rangeLabel, marketType:'range', marketLine:'2-3', outcomeName:'2-3'
   });
   assert.equal(selectionConflict(total,range)?.family,
-    family === 'yellow cards' || family === 'red cards' ? 'cards' : family,
+    ['yellow cards','red cards','booking points'].includes(family) ? 'cards' : family === 'shots on target' ? 'shots' : family,
     `${family}: native camelCase provider keys conflict despite generic display labels`);
   assert.equal(selectionConflict(range,total)?.family,
-    family === 'yellow cards' || family === 'red cards' ? 'cards' : family,
+    ['yellow cards','red cards','booking points'].includes(family) ? 'cards' : family === 'shots on target' ? 'shots' : family,
     `${family}: native-key conflict works in reverse order`);
   assert.deepEqual(toggleCompatibleSelection([total],range),[total],
     `${family}: frontend locks a range market using native keys only`);
