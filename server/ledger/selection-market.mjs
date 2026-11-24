@@ -402,7 +402,7 @@ function selectionMetricFamilies(selection, seen = new Set()) {
       /^(?:double chance|draw no bet|moneyline|match result|1x2)$/.test(type)) add('result');
 
   if (!playerMarket && (
-      /\b(?:goals?|btts|both teams (?:to )?score|correct score|first goal|next goal|first team to score|next team to score|goal time)\b/.test(text) ||
+      /\b(?:goals?|multi goals?|multigoals?|btts|both teams (?:to )?score|correct score|first goal|next goal|first team to score|next team to score|goal time)\b/.test(text) ||
       /(?:g|zz)?(?:home|away|total)?(?:team)?goals?(?:1h|2h|p1|p2)?|(?:g|zz)?(?:home|away|total)?(?:team)?goalrange|(?:g|zz)?(?:btts|correctscore|firstgoal|nextgoal|multigoals?)/.test(evidence.keys) ||
       type === 'btts' || type === 'total goals'
   )) add('goals');
