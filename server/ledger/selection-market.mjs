@@ -218,7 +218,7 @@ function selectionMetric(selection) {
       /\b(?:goals?|goal total|multigoals?|multi goals?|total in range)\b/.test(text) ||
       /(?:^|\s)(?:g|zz)?(?:home|away|total)?(?:team)?goals?(?:1h|2h|p1|p2)?(?:\s|$)/.test(text) ||
       /(?:g|zz)?(?:home|away|total)?(?:team)?goals?(?:1h|2h|p1|p2)?|(?:g|zz)?(?:home|away|total)?(?:team)?goalrange|(?:g|zz)?multigoals?/.test(keys) ||
-      /\b(?:home|away) team (?:total )?range\b|\b(?:home|away) team goal range\b/.test(names) ||
+      /\b(?:home|away) team (?:total )?range\b|\b(?:home|away) team goal range\b|\b(?:home|away) team total\b/.test(names) ||
       ['goals','goal','total goals','multigoals','multi goals'].includes(type)) return 'goals';
   return null;
 }
