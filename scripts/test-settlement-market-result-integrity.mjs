@@ -127,6 +127,18 @@ const heldNative=(market,outcome,snapshot=acceptedAt43)=>choice(market,outcome,{
 assert.equal(gradeLine(heldNative('Halftime - Who wins the rest','2'),firstHalfRestResult),'WON',
  'A held historical native halftime-rest ticket is repaired from its original accepted snapshot');
 assert.equal(gradeLine(heldNative('Halftime - Who wins the rest','1'),firstHalfRestResult),'LOST');
+assert.equal(gradeLine(choice('Halftime - Who wins the rest','PSV Eindhoven U19',{
+ home_team:'Real Madrid U19',away_team:'PSV Eindhoven U19',
+ accepted_contract:{acceptedLiveSnapshot:acceptedAt43}
+}),firstHalfRestResult),'WON',
+ 'The quoted team-name selection resolves to the correct halftime side');
+assert.equal(gradeLine(choice('Halftime - Who wins the rest','PSV Eindhoven U19',{
+ home_team:'Real Madrid U19',away_team:'PSV Eindhoven U19',
+ accepted_contract:{acceptedLiveSnapshot:{
+  isLive:false,scoreHome:0,scoreAway:0
+ }}
+}),firstHalfRestResult),'WON',
+ 'A prematch 0-0 baseline can settle from the confirmed first-half score');
 
 for(const [market,outcome,expected] of [
  ['Total awayteam 4.5','Under','WON'],['Total awayteam 4.5','Over','LOST'],
