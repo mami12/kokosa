@@ -131,7 +131,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
  async function publish(row,game,rows,{complete=false,startedAt=++revision}={}){
   if(startedAt<(versions.get(row.match_id)??0))return;versions.set(row.match_id,startedAt);
   const entry=games.get(Number(row.raw?.nativeId));
-  const received=providerTimeline(row.match_id,game.TimeLines);
+  const received=providerTimeline(row.match_id,game.TimeLines,game);
   // Lightweight provider updates can omit an actor, even for the same ID.
   // Keep the previously confirmed label without reintroducing deleted events.
   const timeline=received?inheritEventPlayers(received,entry?.row?.raw?.eventTimeline):received;

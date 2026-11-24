@@ -38,7 +38,7 @@ assert.equal(secondYellow.cardColorsVerified,true,
  'the second generic card is recognised as a red dismissal after the same player’s first yellow');
 assert.deepEqual(secondYellow.teams.card,{home:0,away:2});
 assert.deepEqual(secondYellow.events.filter(e=>e.type==='card').map(e=>e.cardColor),['yellow','red']);
-const displayedCards=providerTimeline(889870,[...secondYellowFrame.TimeLines]);
+const displayedCards=providerTimeline(889870,[...secondYellowFrame.TimeLines],secondYellowFrame.Match);
 assert.deepEqual(displayedCards.map(e=>[e.type,e.minute,e.player]),[
  ['yellow_card',49,'Mathieu Buyens'],['red_card',65,'Mathieu Buyens']
 ],'Admin chronology displays the second-yellow dismissal as a red card');
@@ -53,6 +53,27 @@ const unclassified=normalizeLiveFrame({
 });
 assert.equal(unclassified.cardColorsVerified,false);
 assert.equal(unclassified.events[0].cardColor,null);
+
+// Zizobet may omit the player on the dismissal row. Native red/yellow
+// counters can still classify it when there is exactly one possible colour.
+const counterConfirmed=normalizeLiveFrame({
+ Match:{Score:'0:0',MatchTimeExtended:'75:00',EventStatus:6,CornersTeam1:0,CornersTeam2:0,
+  YellowCardsTeam1:0,YellowCardsTeam2:1,RedCardsTeam1:0,RedCardsTeam2:1},
+ TimeLines:[
+  {id:'known-yellow',type:'yellow_card',team:2,gt:49,pl:'Mathieu Buyens'},
+  {id:'anonymous-dismissal',type:'card',team:2,gt:65}
+ ]
+});
+assert.equal(counterConfirmed.cardColorsVerified,true);
+assert.deepEqual(counterConfirmed.events.filter(e=>e.type==='card').map(e=>e.cardColor),['yellow','red']);
+const counterDisplayed=providerTimeline(889871,[
+ {id:'known-yellow',type:'yellow_card',team:2,gt:49,pl:'Mathieu Buyens'},
+ {id:'anonymous-dismissal',type:'card',team:2,gt:65}
+],{
+ YellowCardsTeam1:0,YellowCardsTeam2:1,RedCardsTeam1:0,RedCardsTeam2:1
+});
+assert.equal(counterDisplayed[1].type,'red_card',
+ 'A unique native red-card counter disambiguates the generic incident');
 const db=new PGlite();try{
  await db.exec(LEDGER_SQL);const q=(sql,p=[])=>db.query(sql,p);
  const database={connect:async()=>({query:q,release(){}})};

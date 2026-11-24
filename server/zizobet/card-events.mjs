@@ -64,7 +64,7 @@ function eventMinute(row) {
   return match ? Number(match[1]) + Number(match[2] ?? 0) : Number.POSITIVE_INFINITY;
 }
 
-export function classifyZizobetCardEvents(rows) {
+export function classifyZizobetCardEvents(rows, match={}) {
   const cardIndices = new Set();
   const colors = new Map();
   const secondYellow = new Set();
@@ -101,6 +101,40 @@ export function classifyZizobetCardEvents(rows) {
       if (color === 'red') dismissed.add(identity);
     }
     if (color) colors.set(index, color);
+  }
+
+  // Some native timelines omit the actor on the dismissal row. If the
+  // provider's separate yellow/red counters leave exactly one possible
+  // colour for the unresolved incident(s), use that native reconciliation.
+  // Mixed unresolved yellow+red sets remain ambiguous and are not guessed.
+  for (const [side,yellowValue,redValue] of [
+    ['home',match?.YellowCardsTeam1,match?.RedCardsTeam1],
+    ['away',match?.YellowCardsTeam2,match?.RedCardsTeam2]
+  ]) {
+    const yellowTotal=yellowValue==null||yellowValue===''?null:Number(yellowValue);
+    const redTotal=redValue==null||redValue===''?null:Number(redValue);
+    if (![yellowTotal,redTotal].every(v=>Number.isSafeInteger(v)&&v>=0))continue;
+    const sideIndices=[...cardIndices].filter(index=>
+      (/^(?:1|home|h)$/i.test(String(rows[index]?.team??''))?'home':
+       /^(?:2|away|a)$/i.test(String(rows[index]?.team??''))?'away':null)===side);
+    const knownYellow=sideIndices.filter(index=>colors.get(index)==='yellow').length;
+    const knownRed=sideIndices.filter(index=>colors.get(index)==='red').length;
+    const unresolved=sideIndices.filter(index=>!colors.has(index));
+    const missingYellow=yellowTotal-knownYellow;
+    const missingRed=redTotal-knownRed;
+    if(missingYellow<0||missingRed<0||
+       unresolved.length!==missingYellow+missingRed||!unresolved.length)continue;
+    let assignment=null;
+    if(missingRed===0)assignment='yellow';
+    else if(missingYellow===0)assignment='red';
+    else if(unresolved.length===1&&missingRed===1)assignment='red';
+    else if(unresolved.length===1&&missingYellow===1)assignment='yellow';
+    if(assignment){
+      for(const index of unresolved){
+        colors.set(index,assignment);
+        if(assignment==='red')secondYellow.add(index);
+      }
+    }
   }
   return {cardIndices, colors, secondYellow};
 }

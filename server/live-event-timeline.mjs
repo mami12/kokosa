@@ -1,10 +1,10 @@
 import {classifyZizobetCardEvents} from './zizobet/card-events.mjs';
 
 /** Display only provider-timed incidents; reception time is never an event minute. */
-export function providerTimeline(matchId,rows){
+export function providerTimeline(matchId,rows,match={}){
  if(!Array.isArray(rows))return undefined;
  const events=new Map();
- const cardEvents=classifyZizobetCardEvents(rows);
+ const cardEvents=classifyZizobetCardEvents(rows,match);
  for(const [index,row] of rows.entries()){
   if(row.cancelled||row.canceled||row.disabled||row.isConfirmed===false||/cancelled|canceled|voided/i.test(String(row.status??''))){
    if(row.id!=null)events.delete(String(row.id));

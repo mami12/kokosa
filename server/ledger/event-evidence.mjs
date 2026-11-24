@@ -122,7 +122,7 @@ export function normalizeEvents(data,source){
    e.pl??null,e.playerId??e.player_id??null,e.cardColor??e.card_color??e.color??null
   ])).digest('hex').slice(0,32);
  };
- const zizoCardEvents=source==='zizobet'?classifyZizobetCardEvents(data.TimeLines??[]):null;
+ const zizoCardEvents=source==='zizobet'?classifyZizobetCardEvents(data.TimeLines??[],data.Match??{}):null;
  if(source==='zizobet')events=(data.TimeLines??[]).map((e,index)=>{
   const type=String(e.type??'').toLowerCase();
   const eventTime=zizobetEventTime(e.gt??e.minute??e.time,e.clk),minute=eventTime.minute;
