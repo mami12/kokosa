@@ -1157,8 +1157,21 @@ export function gradeLine(line, result) {
 
     case 'REST_OF_MATCH': {
       const snap = line.accepted_contract?.acceptedLiveSnapshot;
+      const halftimeRest=/^(?:half\s*time|halftime)\s*[-–.:]?\s*who\s+wins\s+the\s+rest$/i
+        .test(String(line.market_name??'').trim());
       let baseHome = snap?.scoreHome ?? snap?.counters?.goal?.home;
       let baseAway = snap?.scoreAway ?? snap?.counters?.goal?.away;
+      if(halftimeRest){
+        // This is the remainder of the FIRST HALF. A purchase made at 43'
+        // must be graded against the confirmed HT score, not the later FT
+        // score, otherwise a second-half goal can reverse the result.
+        if(!snap)return null;
+        const phase=String(snap.feedPhase??'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+        const firstHalf=/^(?:1|1h|h1|1st|1st half|first half|firsthalf|period 1|period1)$/.test(phase);
+        const laterPhase=/^(?:2|2h|h2|2nd|2nd half|second half|secondhalf|halftime|half time|ht|ft|full time|ended|finished)$/.test(phase);
+        const clock=Number(snap.clockMilliseconds);
+        if(laterPhase||(!firstHalf&&(!Number.isFinite(clock)||clock>=45*60*1000)))return null;
+      }
       if (baseHome == null || baseAway == null) {
         const p3 = line.accepted_contract?.nativeParameters?.p3;
         if (typeof p3 === 'string' && p3.includes(':')) {
@@ -1176,16 +1189,11 @@ export function gradeLine(line, result) {
           baseAway = Number(fromMatch[2]);
         }
       }
-      if (baseHome == null || baseAway == null) {
-        if (/halftime\s*-?\s*who\s+wins\s+the\s+rest|\bhalftime\b.*\brest\b/i.test(line.market_name ?? '')) {
-          baseHome = scoreValue(result.half_home_score);
-          baseAway = scoreValue(result.half_away_score);
-        }
-      }
       if (baseHome == null || baseAway == null) return null;
-      const fullHome = scoreValue(result.home_score), fullAway = scoreValue(result.away_score);
-      if (fullHome == null || fullAway == null) return null;
-      const deltaHome = fullHome - baseHome, deltaAway = fullAway - baseAway;
+      const endHome=scoreValue(halftimeRest?result.half_home_score:result.home_score);
+      const endAway=scoreValue(halftimeRest?result.half_away_score:result.away_score);
+      if(endHome===null||endAway===null)return null;
+      const deltaHome = endHome - Number(baseHome), deltaAway = endAway - Number(baseAway);
       if (deltaHome < 0 || deltaAway < 0) return null;
       if (key === '1' || /^home/.test(name)) return decide(deltaHome > deltaAway);
       if (key === 'x' || /^draw|^tie/.test(name)) return decide(deltaHome === deltaAway);

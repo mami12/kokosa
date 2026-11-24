@@ -115,6 +115,56 @@ for(const [market,scope] of [
  assert.equal(hasRequiredSettlementEvidence(over,threeEach),true);
 }
 
+// Exact Zizobet-style titles have the line in the market name and an
+// empty DB line column. They must still freeze a team-scoped goal contract,
+// then grade from the same confirmed Zizobet chronology used by settlement.
+const nativeTeamGoalResult={home_team:'Real Madrid U19',away_team:'PSV Eindhoven U19',
+ home_score:3,away_score:3,source:'ZIZOBET'};
+const confirmedGoalRow={
+ home:3,away:3,total:6,count_home:3,count_away:3,
+ through_minute:130,complete:true,
+ observed_at:'2026-11-24T17:00:00.000Z',
+ confirmed_at:'2026-11-24T17:00:00.000Z',
+ second_poll_at:'2026-11-24T17:00:00.000Z',
+ open_recovery_gap:false
+};
+const goalFacts=async(sql,args)=>{
+ assert.match(sql,/with covered as/,'team goal tickets use the PostgreSQL primary event grader');
+ return {rows:[confirmedGoalRow]};
+};
+for(const [market,side] of [
+ ['Total hometeam 4.5','home'],['Total awayteam 4.5','away'],
+ ['Total hometeam 3.5','home'],['Total awayteam 3.5','away']
+]){
+ for(const [outcome,expected] of [['Under','WON'],['Over','LOST']]){
+  const quote=line(market,outcome,'');
+  const contract=liveContract(quote);
+  assert.equal(contract?.kind,'team-total-goals',market+' freezes its native goal total');
+  assert.equal(contract?.side,side,market+' freezes the correct team');
+  assert.equal(contract?.threshold,Number(market.match(/\\d+\\.\\d+/)?.[0]),market+' freezes the quoted threshold');
+  assert.equal(contract?.choice,outcome.toLowerCase(),market+' retains the quoted direction');
+  const wager={id:'00000000-0000-4000-8000-000000000001',match_id:9981,
+   market_name:market,outcome_name:outcome,outcome_key:outcome,line:'',
+   live_contract:contract};
+  assert.equal(await gradeStoredEventContract(wager,nativeTeamGoalResult,{execute:goalFacts}),
+   expected,market+' '+outcome+' must not be inverted by the primary settlement grader');
+ }
+}
+for(const [market,outcome,expected] of [
+ ['Total awayteam 2.5','Under','LOST'],
+ ['Total awayteam 2.5','Over','WON'],
+ ['Total hometeam 2.5','Under','LOST'],
+ ['Total hometeam 2.5','Over','WON']
+]){
+ const contract=liveContract(line(market,outcome,''));
+ assert.equal(contract?.kind,'team-total-goals');
+ const wager={id:'00000000-0000-4000-8000-000000000002',match_id:9981,
+  market_name:market,outcome_name:outcome,outcome_key:outcome,line:'',
+  live_contract:contract};
+ assert.equal(await gradeStoredEventContract(wager,nativeTeamGoalResult,{execute:goalFacts}),
+  expected,market+' '+outcome+' above/below 3 goals');
+}
+
 const finalGoals={...finalCorners,home_score:0,away_score:1};
 for(const [market,outcome,expected] of [
  ['Total hometeam (0.5)','Under','WON'],

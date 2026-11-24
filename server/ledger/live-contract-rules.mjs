@@ -260,10 +260,16 @@ export function parseTeamGoalMarket(line,teams={}){
  const kind=/^(?:over|lart|mbi)(?:\s|$)/.test(choice)?'over':
   /^(?:under|poshte|nen)(?:\s|$)/.test(choice)?'under':null;
  if(!kind)return null;
- const rawLine=line.line??line.specifier??original.match(/\((\d+(?:[.,]\d+)?)\)\s*$/)?.[1];
+ const explicitLine=[line.line,line.specifier].find(value=>
+  value!=null&&String(value).trim()!=='');
  const namedValue=choice.match(/(?:over|under|lart|mbi|poshte|nen)\s+(\d+(?:[.,]\d+)?)/)?.[1];
- const threshold=number(String(namedValue??rawLine??'').replace(',','.'));
- if(threshold===null||threshold<0||threshold>100)return null;
+ const titleLine=goalTotalContract(line,teams)?.line;
+ const thresholds=[namedValue,explicitLine,titleLine]
+  .filter(value=>value!=null&&String(value).trim()!=='')
+  .map(value=>number(String(value).replace(',','.')));
+ if(!thresholds.length||thresholds.some(value=>value===null||value!==thresholds[0]))return null;
+ const threshold=thresholds[0];
+ if(threshold<0||threshold>100)return null;
  return {version:1,kind:'team-total-goals',event:'goal',side:scope,choice:kind,threshold};
 }
 

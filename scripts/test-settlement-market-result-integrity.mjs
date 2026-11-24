@@ -86,6 +86,31 @@ for(const [market,outcome,expected] of [
   'The verified 3-3 final score is sufficient for '+market+' '+outcome);
 }
 
+const firstHalfRestResult={...realPsvDraw,
+ home_score:3,away_score:3,half_home_score:2,half_away_score:3};
+const acceptedAt43={
+ scoreHome:2,scoreAway:2,clockMilliseconds:43*60*1000,
+ feedPhase:'1st half'
+};
+for(const [outcome,expected] of [
+ ['2','WON'],['1','LOST'],['X','LOST']
+]){
+ const wager=choice('Halftime - Who wins the rest',outcome,{
+  accepted_contract:{acceptedLiveSnapshot:acceptedAt43}
+ });
+ assert.equal(gradeLine(wager,firstHalfRestResult),expected,
+  'Halftime rest is decided only by the 43-minute-to-HT score delta: '+outcome);
+ assert.equal(hasRequiredSettlementEvidence(wager,firstHalfRestResult),true,
+  'Confirmed HT and FT scores are present for the halftime-rest selection');
+}
+assert.equal(gradeLine(choice('Halftime - Who wins the rest','2',{
+ accepted_contract:{acceptedLiveSnapshot:{...acceptedAt43,
+  clockMilliseconds:46*60*1000,feedPhase:'2nd half'}}
+}),firstHalfRestResult),null,
+ 'A first-half-rest market cannot be regraded from a second-half snapshot');
+assert.equal(gradeLine(choice('Halftime - Who wins the rest','2'),firstHalfRestResult),null,
+ 'Without an immutable entry score the first-half-rest winner remains unknown');
+
 const draw={...score,home_score:1,away_score:1,half_home_score:1,half_away_score:1};
 assert.equal(gradeLine(choice('Draw No Bet','1'),draw),'WON');
 assert.equal(settledOddsFor(choice('Draw No Bet','1'),draw,'WON'),1);
