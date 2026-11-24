@@ -174,7 +174,7 @@ function selectionMarketEvidence(selection) {
   // gShotsOnTarget). Keep both readable and compact forms: normalizing
   // camelCase to words alone breaks the native-key recognizers below.
   const readableKeys = normalizedSelectionText(rawKeys);
-  const compactKeys = readableKeys.replace(/\\s+/g, '');
+  const compactKeys = readableKeys.replace(/\s+/g, '');
   const keys = [readableKeys, compactKeys].filter(Boolean).join(' ');
   const type = normalizedSelectionText(selection?.marketType ?? selection?.market_type ??
     selection?.nativeMarketType ?? selection?.native_market_type);
@@ -184,32 +184,32 @@ function selectionMarketEvidence(selection) {
 /** Stable statistic identity for totals/ranges across provider market IDs. */
 function selectionMetric(selection) {
   const {names,keys,text,type} = selectionMarketEvidence(selection);
-  if (/\\b(?:bet builder|same game combo|combo)\\b/.test(names) ||
-      /\\b(?:players?|scorer|goalscorer)\\b/.test(names)) return null;
+  if (/\b(?:bet builder|same game combo|combo)\b/.test(names) ||
+      /\b(?:players?|scorer|goalscorer)\b/.test(names)) return null;
 
   // Compact native keys are important: Zizobet uses identifiers such as
   // gHomeGoals, gCornerRange, gTeamFouls and gShotsOnTarget.
-  if (/\\b(?:booking points?|card points?)\\b/.test(text) ||
+  if (/\b(?:booking points?|card points?)\b/.test(text) ||
       /booking.?points?|card.?points?/.test(keys) || type === 'booking points') return 'booking_points';
-  if (/\\bshots?\\s+on\\s+(?:target|goal)\\b|\\bon target shots?\\b/.test(text) ||
+  if (/\bshots?\s+on\s+(?:target|goal)\b|\bon target shots?\b/.test(text) ||
       /shots.?on.?target/.test(keys) || type === 'shots on target' || type === 'shots on goal') return 'shots_on_target';
-  if (/\\b(?:corners?|corner kicks?|kendore|goditje kendore)\\b/.test(text) ||
+  if (/\b(?:corners?|corner kicks?|kendore|goditje kendore)\b/.test(text) ||
       /corner/.test(keys) || type === 'corners' || type === 'corner') return 'corners';
-  if (/\\byellow cards?\\b/.test(text) || /yellow.?cards?/.test(keys) || type === 'yellow cards') return 'yellow_cards';
-  if (/\\bred cards?\\b/.test(text) || /red.?cards?/.test(keys) || type === 'red cards') return 'red_cards';
-  if (/\\b(?:cards?|bookings?|carded|disciplin)\\b/.test(text) ||
+  if (/\byellow cards?\b/.test(text) || /yellow.?cards?/.test(keys) || type === 'yellow cards') return 'yellow_cards';
+  if (/\bred cards?\b/.test(text) || /red.?cards?/.test(keys) || type === 'red cards') return 'red_cards';
+  if (/\b(?:cards?|bookings?|carded|disciplin)\b/.test(text) ||
       /cards?|bookings?|cardrange|bookingrange/.test(keys) || type === 'cards' || type === 'card') return 'cards';
-  if (/\\b(?:shots?|attempts?)\\b/.test(text) || /shots?|shotrange/.test(keys) || type === 'shots') return 'shots';
-  if (/\\b(?:fouls?)\\b|\\bfaulle?\\b/.test(text) || /fouls?|foulrange/.test(keys) ||
+  if (/\b(?:shots?|attempts?)\b/.test(text) || /shots?|shotrange/.test(keys) || type === 'shots') return 'shots';
+  if (/\b(?:fouls?)\b|\bfaulle?\b/.test(text) || /fouls?|foulrange/.test(keys) ||
       type === 'fouls' || type === 'foul') return 'fouls';
-  if (/\\b(?:offsides?|offside)\\b/.test(text) || /offsides?|offsiderange/.test(keys) || type === 'offsides') return 'offsides';
-  if (/\\bthrow ins?\\b/.test(text) || /throw.?ins?/.test(keys) || type === 'throw ins') return 'throw_ins';
-  if (/\\b(?:saves?|goalkeeper saves?)\\b/.test(text) || /saves?|saverange/.test(keys) || type === 'saves') return 'saves';
-  if (/\\bpenalt(?:y|ies)\\b/.test(text) || /penalt|penaltyrange/.test(keys) || type === 'penalties') return 'penalties';
-  if (/\\b(?:goals?|goal total|multigoals?|multi goals?|total in range)\\b/.test(text) ||
-      /(?:^|\\s)(?:g|zz)?(?:home|away|total)?(?:team)?goals?(?:1h|2h|p1|p2)?(?:\\s|$)/.test(text) ||
+  if (/\b(?:offsides?|offside)\b/.test(text) || /offsides?|offsiderange/.test(keys) || type === 'offsides') return 'offsides';
+  if (/\bthrow ins?\b/.test(text) || /throw.?ins?/.test(keys) || type === 'throw ins') return 'throw_ins';
+  if (/\b(?:saves?|goalkeeper saves?)\b/.test(text) || /saves?|saverange/.test(keys) || type === 'saves') return 'saves';
+  if (/\bpenalt(?:y|ies)\b/.test(text) || /penalt|penaltyrange/.test(keys) || type === 'penalties') return 'penalties';
+  if (/\b(?:goals?|goal total|multigoals?|multi goals?|total in range)\b/.test(text) ||
+      /(?:^|\s)(?:g|zz)?(?:home|away|total)?(?:team)?goals?(?:1h|2h|p1|p2)?(?:\s|$)/.test(text) ||
       /(?:g|zz)?(?:home|away|total)?(?:team)?goals?(?:1h|2h|p1|p2)?|(?:g|zz)?(?:home|away|total)?(?:team)?goalrange|(?:g|zz)?multigoals?/.test(keys) ||
-      /\\b(?:home|away) team (?:total )?range\\b|\\b(?:home|away) team goal range\\b/.test(names) ||
+      /\b(?:home|away) team (?:total )?range\b|\b(?:home|away) team goal range\b/.test(names) ||
       ['goals','goal','total goals','multigoals','multi goals'].includes(type)) return 'goals';
   return null;
 }
