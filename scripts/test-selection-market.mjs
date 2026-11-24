@@ -687,4 +687,37 @@ for (const teamKey of ['gHomeGoals','gAwayGoals','gHomeTeamGoals','gAwayTeamGoal
     error=>error.code==='INCOMPATIBLE_SELECTIONS');
 }
 
+// Compound markets represent more than their visible category. They
+// must be excluded against every family they encode.
+for (const marketName of [
+  'Home team wins to nil',
+  'Away team wins to nil',
+  'Home team wins any of the halves',
+  'Home team wins both halves',
+  'Away team wins any of the halves',
+  'Away team wins both halves',
+  'Draw or any clean sheet',
+  'Home team wins or any clean sheet',
+  'Away team win or any clean sheet',
+  'Home team win or both teams to score',
+  'Away team wins or both teams to score',
+]) {
+  const compound = pick(`200|${marketName}|Yes`, {
+    matchId:'200', marketId:`200|${marketName}`, marketName, marketType:'other', outcomeName:'Yes'
+  });
+  assert.ok(selectionConflict(matchTotal,compound),
+    `${marketName}: conflicts with Total Goals`);
+  assert.ok(selectionConflict(matchResult,compound),
+    `${marketName}: conflicts with Match Result`);
+}
+for (const marketName of ['Home team to score in both halves','Away team to score in both halves']) {
+  const scoring = pick(`200|${marketName}|Yes`, {
+    matchId:'200', marketId:`200|${marketName}`, marketName, marketType:'other', outcomeName:'Yes'
+  });
+  assert.ok(selectionConflict(matchTotal,scoring),
+    `${marketName}: conflicts with Total Goals`);
+  assert.equal(selectionConflict(matchResult,scoring),null,
+    `${marketName}: remains distinct from Match Result`);
+}
+
 console.log('PASS compatible same-match combinations, result-family exclusions, statistic totals, periods, correlated no-goal picks, and backend-resolved contracts.');
