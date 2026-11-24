@@ -19,9 +19,9 @@ const score=game=>{
 export function normalizeLiveFrame(data){
  const game=data?.Match??{};
  const finished=Number(game.EventStatus??game.MatchStatusID)===40;
- // An authoritative FT status closes the match-wide event feed even when
- // Zizobet omits the final clock field from the result-only response.
- const clock=asClock(game)??(finished?130:null),goals=score(game);
+ // An authoritative FT status closes the match-wide event feed through stoppage time,
+ // even when Zizobet leaves MatchTimeExtended at 90:00 on its final response.
+ const clock=finished?130:asClock(game),goals=score(game);
  const resultHalfCorners=providerResultPair(game,'RESULT_CORNERHT');
  const resultFullCorners=providerResultPair(game,'RESULT_CORNERFT');
  const runningCorners=providerResultPair(game,'Corners')??{
