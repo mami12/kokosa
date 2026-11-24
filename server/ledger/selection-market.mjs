@@ -163,15 +163,22 @@ function selectionMarketEvidence(selection) {
     selection?.nativeMarketName, selection?.native_market_name,
     selection?.name, selection?.title,
   ].filter(Boolean).join(' '));
-  const keys = normalizedSelectionText([
+  const rawKeys = [
     selection?.marketKey, selection?.market_key,
     selection?.extId, selection?.ext_id,
     selection?.nativeMarketId, selection?.native_market_id,
     outcomeParts.length >= 2 ? outcomeParts[1] : '',
     marketParts.length >= 2 ? marketParts[1] : '',
-  ].filter(Boolean).join(' '));
-  const type = normalizedSelectionText(selection?.marketType ?? selection?.market_type);
-  return {names, keys, text:[names,keys].filter(Boolean).join(' '), type};
+  ].filter(Boolean).join(' ');
+  // Provider IDs are commonly camel-cased (gHomeGoals, gTeamFouls,
+  // gShotsOnTarget). Keep both readable and compact forms: normalizing
+  // camelCase to words alone breaks the native-key recognizers below.
+  const readableKeys = normalizedSelectionText(rawKeys);
+  const compactKeys = readableKeys.replace(/\\s+/g, '');
+  const keys = [readableKeys, compactKeys].filter(Boolean).join(' ');
+  const type = normalizedSelectionText(selection?.marketType ?? selection?.market_type ??
+    selection?.nativeMarketType ?? selection?.native_market_type);
+  return {names, keys, compactKeys, text:[names,keys].filter(Boolean).join(' '), type};
 }
 
 /** Stable statistic identity for totals/ranges across provider market IDs. */
