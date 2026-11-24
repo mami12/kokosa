@@ -634,4 +634,57 @@ assert.doesNotThrow(()=>assertDistinctSelectionMarkets([matchResult,matchTotal])
 // The stricter legacy helper remains available to older callers, but is not used for player slips.
 assert.deepEqual(toggleMatchSelection([matchResult],matchTotal),[matchTotal]);
 
+// Reproduce the actual OddsButton payload: generic display labels, with
+// the native Zizobet market key carried in extId/marketKey and outcomeId.
+const nativeKeyFamilies = [
+  ['goals','gGoals','gHomeGoals','Over/Under','Over/Under'],
+  ['corners','gCorners','gCornerRange','Over/Under','Range'],
+  ['cards','gCards','gCardRange','Over/Under','Range'],
+  ['yellow cards','gYellowCards','gYellowCardRange','Over/Under','Range'],
+  ['red cards','gRedCards','gRedCardRange','Over/Under','Range'],
+  ['booking points','gBookingPoints','gBookingPointsRange','Over/Under','Range'],
+  ['fouls','gFouls','gFoulRange','Over/Under','Range'],
+  ['shots','gShots','gShotsRange','Over/Under','Range'],
+  ['shots on target','gShotsOnTarget','gShotsOnTargetRange','Over/Under','Range'],
+  ['offsides','gOffsides','gOffsideRange','Over/Under','Range'],
+  ['throw-ins','gThrowIns','gThrowInRange','Over/Under','Range'],
+  ['saves','gSaves','gSavesRange','Over/Under','Range'],
+  ['penalties','gPenalties','gPenaltyRange','Over/Under','Range'],
+];
+for (const [family, totalKey, rangeKey, totalLabel, rangeLabel] of nativeKeyFamilies) {
+  const total = pick(`200|${totalKey}|2.5|Over`, {
+    matchId:'200', marketId:`200|${totalKey}|2.5`, extId:totalKey, marketKey:totalKey,
+    marketName:totalLabel, marketType:'over_under', marketLine:'2.5', outcomeName:'Over 2.5'
+  });
+  const range = pick(`200|${rangeKey}|2-3|Range`, {
+    matchId:'200', marketId:`200|${rangeKey}|2-3`, extId:rangeKey, marketKey:rangeKey,
+    marketName:rangeLabel, marketType:'range', marketLine:'2-3', outcomeName:'2-3'
+  });
+  assert.equal(selectionConflict(total,range)?.family,
+    family === 'yellow cards' || family === 'red cards' ? 'cards' : family,
+    `${family}: native camelCase provider keys conflict despite generic display labels`);
+  assert.equal(selectionConflict(range,total)?.family,
+    family === 'yellow cards' || family === 'red cards' ? 'cards' : family,
+    `${family}: native-key conflict works in reverse order`);
+  assert.deepEqual(toggleCompatibleSelection([total],range),[total],
+    `${family}: frontend locks a range market using native keys only`);
+  assert.throws(()=>assertCompatibleSelections([total,range]),
+    error=>error.code==='INCOMPATIBLE_SELECTIONS',
+    `${family}: backend rejects native-key total plus range`);
+}
+
+// Home/away team totals must share the same goals family even when their
+// only identifying evidence is the Zizobet camelCase key.
+for (const teamKey of ['gHomeGoals','gAwayGoals','gHomeTeamGoals','gAwayTeamGoals']) {
+  const team = pick(`200|${teamKey}|1.5|Over`, {
+    matchId:'200',marketId:`200|${teamKey}|1.5`,extId:teamKey,marketKey:teamKey,
+    marketName:'Over/Under',marketType:'over_under',marketLine:'1.5',outcomeName:'Over 1.5'
+  });
+  assert.equal(selectionConflict(matchTotal,team)?.family,'goals',
+    `${teamKey}: team total conflicts with match total using native ID alone`);
+  assert.deepEqual(toggleCompatibleSelection([matchTotal],team),[matchTotal]);
+  assert.throws(()=>assertCompatibleSelections([matchTotal,team]),
+    error=>error.code==='INCOMPATIBLE_SELECTIONS');
+}
+
 console.log('PASS compatible same-match combinations, result-family exclusions, statistic totals, periods, correlated no-goal picks, and backend-resolved contracts.');
