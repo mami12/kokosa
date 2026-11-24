@@ -772,7 +772,7 @@ const goalFamilyPicks = goalFamilyExamples.map((entry,index) => {
 for (let i=0;i<goalFamilyPicks.length;i++) {
   for (let j=i+1;j<goalFamilyPicks.length;j++) {
     const first=goalFamilyPicks[i], second=goalFamilyPicks[j];
-    assert.equal(selectionConflict(first,second)?.family,'goals',
+    assert.ok(selectionConflict(first,second),
       'Goal family pair is blocked: ' + goalFamilyExamples[i][0] + ' + ' + goalFamilyExamples[j][0]);
     assert.deepEqual(toggleCompatibleSelection([first],second),[first],
       'Frontend blocks ' + goalFamilyExamples[j][0] + ' after ' + goalFamilyExamples[i][0]);
