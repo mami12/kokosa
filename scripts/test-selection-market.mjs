@@ -191,6 +191,23 @@ assert.deepEqual(toggleCompatibleSelection([goalsOver],homeGoalsUnder),[goalsOve
 assert.throws(()=>assertCompatibleSelections([goalsOver,homeGoalsUnder]),
   error=>error.code==='INCOMPATIBLE_SELECTIONS');
 
+// Real screenshot case: provider displays the match total simply as "Total".
+const genericMatchUnder = pick('200|zz920@e30|3.5|Under', {
+  matchId:'200',marketId:'200|zz920@e30|3.5',marketKey:'zz920@e30',
+  marketName:'Total',marketType:'OVER_UNDER',marketLine:'3.5',outcomeName:'Under 3.5'
+});
+const genericHomeGoalsOver = pick('200|gHomeGoals|0.5|Over', {
+  matchId:'200',marketId:'200|gHomeGoals|0.5',marketKey:'gHomeGoals',
+  marketName:'Home Team Total Goals',marketType:'OVER_UNDER',marketLine:'0.5',outcomeName:'Over 0.5'
+});
+assert.equal(selectionConflict(genericMatchUnder,genericHomeGoalsOver)?.family,'goals',
+  'Generic Total Under conflicts with Home Team Total Goals Over');
+assert.deepEqual(toggleCompatibleSelection([genericMatchUnder],genericHomeGoalsOver),[genericMatchUnder],
+  'Frontend blocks generic Total + Home Team Total Goals');
+assert.throws(()=>assertCompatibleSelections([genericMatchUnder,genericHomeGoalsOver]),
+  error=>error.code==='INCOMPATIBLE_SELECTIONS',
+  'Backend blocks generic Total + Home Team Total Goals');
+
 // Different statistics and non-total market types remain available.
 const cornersOver = pick('200|gCorners|8.5|Over', {
   matchId:'200',marketId:'200|gCorners|8.5',marketKey:'gCorners',
