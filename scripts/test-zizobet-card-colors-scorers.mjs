@@ -48,7 +48,7 @@ assert.deepEqual(displayedCards.map(e=>[e.type,e.minute,e.player]),[
 // "card" incident is a sending-off.
 const unclassified=normalizeLiveFrame({
  Match:{Score:'0:0',MatchTimeExtended:'75:00',EventStatus:6,CornersTeam1:0,CornersTeam2:0,
-  YellowCardsTeam1:0,YellowCardsTeam2:0,RedCardsTeam1:0,RedCardsTeam2:1},
+  YellowCardsTeam1:0,YellowCardsTeam2:0,RedCardsTeam1:0,RedCardsTeam2:0},
  TimeLines:[{id:'unknown-card',type:'card',team:2,gt:65}]
 });
 assert.equal(unclassified.cardColorsVerified,false);
