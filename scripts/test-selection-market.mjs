@@ -737,4 +737,52 @@ for (const marketName of ['Home team to score in both halves','Away team to scor
     `${marketName}: remains distinct from Match Result`);
 }
 
+// Goal-family offers that have no "Goals" word in the visible title,
+// including period-specific Home/Away team totals. All must conflict.
+const goalFamilyExamples = [
+  ['generic full-time total', 'Total', 'TOTAL', 'Over 3.5', 'zz-goal-total'],
+  ['BTTS', 'Both Teams To Score', 'YES_NO', 'Yes', 'gBtts'],
+  ['Home team total', 'Home Team Total', 'TOTAL', 'Over 0.5', 'gHomeGoals'],
+  ['Away team total', 'Away Team Total', 'TOTAL', 'Over 0.5', 'gAwayGoals'],
+  ['Home team exact goals', 'Home Team Exact Goals 3+', 'OTHER', 'Yes', 'gHomeExactGoals'],
+  ['Away team exact goals', 'Away Team Exact Goals 3+', 'OTHER', 'Yes', 'gAwayExactGoals'],
+  ['Exact goals 5+', 'Exact Goals 5+', 'OTHER', 'Yes', 'gExactGoals5Plus'],
+  ['Exact goals 6+', 'Exact Goals 6+', 'OTHER', 'Yes', 'gExactGoals6Plus'],
+  ['Exact goals 9+', 'Exact Goals 9+', 'OTHER', 'Yes', 'gExactGoals9Plus'],
+  ['Number of Goals 6+', 'Number of Goals 6+', 'OTHER', 'Yes', 'gNumberGoals6Plus'],
+  ['Correct score variant A', 'Correct Score', 'OTHER', '1:0', 'gCorrectScoreA'],
+  ['Correct score variant B', 'Correct score', 'OTHER', '1:0', 'gCorrectScoreB'],
+  ['Correct score variant C', 'Correct Score', 'OTHER', '1:0', 'gCorrectScoreC'],
+  ['Both half goals under', 'Both Half Goals Under', 'OTHER', 'Yes', 'gBothHalfGoalsUnder'],
+  ['Both half goals over', 'Both Half Goals Over', 'OTHER', 'Yes', 'gBothHalfGoalsOver'],
+  ['2nd half Home team total', '2nd Half - Home Team Total', 'TOTAL', 'Over 0.5', 'gHomeGoals2h'],
+  ['2nd half Away team total', '2nd Half - Away Team Total', 'TOTAL', 'Over 0.5', 'gAwayGoals2h'],
+  ['1st half Home team total', '1st Half - Home Team Total', 'TOTAL', 'Over 0.5', 'gHomeGoals1h'],
+  ['1st half Away team total', '1st Half - Away Team Total', 'TOTAL', 'Over 0.5', 'gAwayGoals1h'],
+];
+const goalFamilyPicks = goalFamilyExamples.map((entry,index) => {
+  const [label,marketName,marketType,outcomeName,key] = entry;
+  const period = key.endsWith('1h') ? 1 : key.endsWith('2h') ? 2 : 0;
+  return pick('200|' + key + '|' + index + '|' + outcomeName, {
+    matchId:'200', marketId:'200|' + key + '|' + index,
+    marketKey:key, extId:key, marketName, nativeMarketName:marketName,
+    marketType, marketLine:'0.5', outcomeName, period
+  });
+});
+for (let i=0;i<goalFamilyPicks.length;i++) {
+  for (let j=i+1;j<goalFamilyPicks.length;j++) {
+    const first=goalFamilyPicks[i], second=goalFamilyPicks[j];
+    assert.equal(selectionConflict(first,second)?.family,'goals',
+      'Goal family pair is blocked: ' + goalFamilyExamples[i][0] + ' + ' + goalFamilyExamples[j][0]);
+    assert.deepEqual(toggleCompatibleSelection([first],second),[first],
+      'Frontend blocks ' + goalFamilyExamples[j][0] + ' after ' + goalFamilyExamples[i][0]);
+    assert.throws(()=>assertCompatibleSelections([first,second]),
+      error=>error.code==='INCOMPATIBLE_SELECTIONS',
+      'Backend blocks ' + goalFamilyExamples[i][0] + ' + ' + goalFamilyExamples[j][0]);
+  }
+}
+// Goals selections from either half remain combinable with unrelated families.
+assert.equal(selectionConflict(goalFamilyPicks[0],corners),null);
+assert.equal(selectionConflict(goalFamilyPicks[15],cards),null);
+
 console.log('PASS compatible same-match combinations, result-family exclusions, statistic totals, periods, correlated no-goal picks, and backend-resolved contracts.');
