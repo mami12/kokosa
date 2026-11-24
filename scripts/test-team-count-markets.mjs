@@ -97,6 +97,24 @@ for(const [market,outcome,amount,expected] of [
  assert.equal(hasRequiredSettlementEvidence(quote,finalCorners),true,
   'Final Zizobet team corner counters are enough: '+market+' '+outcome);
 }
+const threeEach={home_team:'Real Madrid U19',away_team:'PSV Eindhoven U19',
+ home_score:3,away_score:3};
+for(const [market,scope] of [
+ ['Total hometeam (4.5)','home'],['Total awayteam (4.5)','away'],
+ ['Total hometeam (3.5)','home'],['Total awayteam (3.5)','away']
+]){
+ const under={...line(market,'Under',''),outcome_key:'under'};
+ const over={...line(market,'Over',''),outcome_key:'over'};
+ assert.equal(goalTotalContract(under)?.scope,scope,
+  'Compact native team-total title preserves '+scope+' scope: '+market);
+ assert.equal(gradeLine(under,threeEach),'WON',
+  'Three goals are below the quoted team-total line: '+market+' Under');
+ assert.equal(gradeLine(over,threeEach),'LOST',
+  'Three goals are below the quoted team-total line: '+market+' Over');
+ assert.equal(hasRequiredSettlementEvidence(under,threeEach),true);
+ assert.equal(hasRequiredSettlementEvidence(over,threeEach),true);
+}
+
 const finalGoals={...finalCorners,home_score:0,away_score:1};
 for(const [market,outcome,expected] of [
  ['Total hometeam (0.5)','Under','WON'],

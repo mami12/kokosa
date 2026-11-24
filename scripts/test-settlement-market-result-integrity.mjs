@@ -70,6 +70,22 @@ assert.equal(grade('Home and Away Clean Sheet','Yes'),null);
 // A DNB code that is not 1 or 2 cannot be silently interpreted as LOST.
 assert.equal(grade('Draw No Bet','Mystery'),null);
 assert.equal(gradeLine(choice('Draw No Bet','Mystery'),{...score,home_score:1,away_score:1}),null);
+const realPsvDraw={...score,home_team:'Real Madrid U19',away_team:'PSV Eindhoven U19',
+ home_score:3,away_score:3,half_home_score:2,half_away_score:3};
+for(const [market,outcome,expected] of [
+ ['Real Madrid U19 to win','No','WON'],
+ ['PSV Eindhoven U19 to win','No','WON'],
+ ['Real Madrid U19 to win','Yes','LOST'],
+ ['PSV Eindhoven U19 to win','Yes','LOST'],
+ ['Real Madrid U19 no bet','X','WON'],
+ ['Real Madrid U19 no bet','2','LOST']
+]){
+ const wager=choice(market,outcome);
+ assert.equal(gradeLine(wager,realPsvDraw),expected,market+' '+outcome);
+ assert.equal(hasRequiredSettlementEvidence(wager,realPsvDraw),true,
+  'The verified 3-3 final score is sufficient for '+market+' '+outcome);
+}
+
 const draw={...score,home_score:1,away_score:1,half_home_score:1,half_away_score:1};
 assert.equal(gradeLine(choice('Draw No Bet','1'),draw),'WON');
 assert.equal(settledOddsFor(choice('Draw No Bet','1'),draw,'WON'),1);

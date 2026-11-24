@@ -3,6 +3,7 @@ import {eventContract,eventInWindow} from './event-contract.mjs';
 const query=async(...args)=>(await import('../db.mjs')).query(...args);
 import {eventMarketRequirement} from './event-market-policy.mjs';
 import {parseTeamGoalMarket} from './live-contract-rules.mjs';
+import {classifyZizobetCardEvents} from '../zizobet/card-events.mjs';
 export const needsEvents=m=>!!eventMarketRequirement(m)||/header|headed|own goal|scoring method|method of.*goal/i.test(m.market_name??m.name??'');
 /** One bounded snapshot per fixture, only while a matching ticket needs it.
  * Only Zizobet event evidence is eligible for financial settlement. */
@@ -102,18 +103,6 @@ export function normalizeEvents(data,source){
  const cornerNotTaken=e=>e.type==='corner_kick'&&
   (e.isTaken===false||e.taken===false||
    /^(?:awarded|not[_ -]?taken|unexecuted|not[_ -]?executed)$/i.test(String(e.status??'').trim()));
- const explicitCardColor=e=>{
-  const type=String(e.type??'').toLowerCase().replace(/[\s-]+/g,'_');
-  // Second-yellow dismissal semantics vary between providers. Do not silently
-  // assign it to either counter without a documented primary event type.
-  if(/second_yellow|yellow_red|yellowred/.test(type))return null;
-  const fromType=/^(?:yellow_card|yellowcard|card_yellow|booking_yellow)$/.test(type)?'yellow':
-   /^(?:red_card|redcard|card_red|booking_red)$/.test(type)?'red':null;
-  const raw=String(e.cardColor??e.card_color??e.color??'').toLowerCase().trim();
-  const fromField=/^yellow$/.test(raw)?'yellow':/^red$/.test(raw)?'red':null;
-  if(fromType&&fromField&&fromType!==fromField)return null;
-  return fromType??fromField;
- };
  const explicitOwnGoal=e=>{
   for(const raw of [e.isOwnGoal,e.ownGoal,e.own_goal,e.own]){
    if(typeof raw==='boolean')return raw;
@@ -133,12 +122,14 @@ export function normalizeEvents(data,source){
    e.pl??null,e.playerId??e.player_id??null,e.cardColor??e.card_color??e.color??null
   ])).digest('hex').slice(0,32);
  };
- if(source==='zizobet')events=(data.TimeLines??[]).map(e=>{
+ const zizoCardEvents=source==='zizobet'?classifyZizobetCardEvents(data.TimeLines??[]):null;
+ if(source==='zizobet')events=(data.TimeLines??[]).map((e,index)=>{
   const type=String(e.type??'').toLowerCase();
-  const eventTime=zizobetEventTime(e.gt??e.minute??e.time,e.clk),minute=eventTime.minute,color=explicitCardColor(e);
+  const eventTime=zizobetEventTime(e.gt??e.minute??e.time,e.clk),minute=eventTime.minute;
+  const card=zizoCardEvents?.cardIndices.has(index)===true;
   return {disabled:!active(e)||cornerNotTaken(e),id:stableZizoId(e),
-   type:type==='score_change'?'goal':(type==='corner_kick'||type==='corner')?'corner':/card|booking/.test(type)?'card':/foul/.test(type)?'foul':/offside/.test(type)?'offside':e.type,
-   cardColor:/card|booking/.test(type)?color:null,
+   type:type==='score_change'?'goal':(type==='corner_kick'||type==='corner')?'corner':card?'card':/foul/.test(type)?'foul':/offside/.test(type)?'offside':e.type,
+   cardColor:card?zizoCardEvents.colors.get(index)??null:null,
    ownGoal:type==='score_change'?explicitOwnGoal(e):null,
    team:/^(?:1|home|h)$/i.test(String(e.team))?'home':/^(?:2|away|a)$/i.test(String(e.team))?'away':null,
    minute:minute??NaN,seconds:eventTime.seconds,
@@ -146,7 +137,7 @@ export function normalizeEvents(data,source){
    player:[e.pl,e.player,e.player_name,e.playerName,e.actor]
      .map(v=>typeof v==='string'?v.trim():v&&typeof v==='object'?
        String(v.name??v.fullName??v.full_name??'').trim():'').find(Boolean)??null,
-   playerId:e.playerId??e.player_id??e.player?.id??null,
+   playerId:e.playerId??e.player_id??e.player?.id??e.pl?.id??null,
    // The provider's 45+N notation unambiguously belongs to first-half
    // stoppage. Keep it as phase evidence: 45+2 must not be treated as 2H.
    phase:e.phase??e.period??e.periodName??e.period_name??e.half??eventTime.phase,

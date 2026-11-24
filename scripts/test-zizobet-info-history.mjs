@@ -61,6 +61,8 @@ assert.match(ui,/className="zshop-tracker-events" role="region" tabIndex=\{0\}/,
 assert.match(css,/\.zshop-tracker-events\{[^}]*max-height:[^}]*overflow-y:auto/,
  'Show approximately eight entries and allow scrolling all the way to minute one');
 
+assert.equal(resolveMarketTitle('Correct score AAMS-logic',{}),'Correct score AAMS-logic',
+ 'AAMS labels are no longer rewritten into the standard Correct Score family');
 assert.equal(resolveMarketTitle('Next Goal 1st',{}),'Next Goal 1st');
 assert.equal(resolveMarketTitle('Next Goal 2nd',{}),'Next Goal 2nd');
 const providerMeta={
@@ -81,6 +83,13 @@ assert.deepEqual(original.map(o=>o.price),[2.1,3.2],
  'Different goal ordinals retain their own quoted prices');
 assert.deepEqual(original.map(o=>o.outcomeKey),['1','2'],
  'Original selection team identity is retained');
+const aamsRows=oddsOf({match_id:8083,home:'Real Madrid U19',away:'PSV Eindhoven U19'},[
+ {mid:75003,id:903,pid:'h',v:2.65}
+],{
+ liveMarkets:new Map([[75003,{Name:'Correct score AAMS-logic'}]]),
+ preMarkets:new Map(),positions:new Map([['h','Any other score']])
+},true);
+assert.equal(aamsRows.length,0,'AAMS-logic offers are excluded before delivery or ticket acceptance');
 assert.equal(original[0].marketKey.split('@').length,2,
  'Unmodified provider market parameters are encoded in the native key');
 

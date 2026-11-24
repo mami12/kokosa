@@ -1,8 +1,11 @@
+import {classifyZizobetCardEvents} from './zizobet/card-events.mjs';
+
 /** Display only provider-timed incidents; reception time is never an event minute. */
 export function providerTimeline(matchId,rows){
  if(!Array.isArray(rows))return undefined;
  const events=new Map();
- for(const row of rows){
+ const cardEvents=classifyZizobetCardEvents(rows);
+ for(const [index,row] of rows.entries()){
   if(row.cancelled||row.canceled||row.disabled||row.isConfirmed===false||/cancelled|canceled|voided/i.test(String(row.status??''))){
    if(row.id!=null)events.delete(String(row.id));
    continue;
@@ -21,9 +24,16 @@ export function providerTimeline(matchId,rows){
   const team=/^(?:home|h|1)$/i.test(String(row.team))?'home':/^(?:away|a|2)$/i.test(String(row.team))?'away':null;
   if(!team)continue;
   const sourceType=String(row.type??'').toLowerCase();
-  const type=sourceType==='score_change'||sourceType==='goal'?'goal':sourceType==='corner_kick'||sourceType==='corner'?'corner':/yellow/.test(sourceType)?'yellow_card':/red/.test(sourceType)?'red_card':/foul/.test(sourceType)?'foul':null;
+  const color=cardEvents.colors.get(index);
+  const type=sourceType==='score_change'||sourceType==='goal'?'goal':
+   sourceType==='corner_kick'||sourceType==='corner'?'corner':
+   /yellow/.test(sourceType)||color==='yellow'?'yellow_card':
+   /red/.test(sourceType)||color==='red'?'red_card':
+   cardEvents.cardIndices.has(index)?'card':
+   /foul/.test(sourceType)?'foul':null;
   if(!type)continue;
-  const text={goal:'Goal',corner:'Corner',yellow_card:'Yellow card',red_card:'Red card',foul:'Foul'}[type];
+  const text={goal:'Goal',corner:'Corner',yellow_card:'Yellow card',
+   red_card:'Red card',card:'Card (colour unknown)',foul:'Foul'}[type];
   // Zizobet incidents may carry a player as "pl", a structured "player",
   // or an explicit actor label. Preserve only a provider-supplied name:
   // never invent an actor from the team, jersey number or scoreboard.

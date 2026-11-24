@@ -5,6 +5,7 @@ export const OFFSET=8_000_000_000_000;
 export const zId=id=>{if(!Number.isSafeInteger(Number(id))||Number(id)<=0||Number(id)>100000000000)throw Error('Invalid Zizobet ID');return OFFSET+Number(id);};
 export const isZizoId=id=>Number(id)>OFFSET&&Number(id)<OFFSET+100000000000;
 const text=v=>String(v??'').trim();
+export const isAamsLogicMarket=value=>/\bAAMS[\s-]*logic\b/i.test(String(value??''));
 const flagTrue=v=>v===true||v===1||/^(?:1|true|yes|on)$/i.test(text(v));
 const flagFalse=v=>v===false||v===0||/^(?:0|false|no|off)$/i.test(text(v));
 const booleanFlag=v=>flagTrue(v)?true:flagFalse(v)?false:undefined;
@@ -148,7 +149,6 @@ export function resolveMarketTitle(raw,q,{intervalWidth,competitors}={}){
   if(!pair(q.p3))return null;
   return 'Correct score rest of match (from '+q.p3+')';
  }
- if(/^(?:(?:1st|2nd) half - )?Correct score AAMS-logic$/i.test(name))name=name.replace(/ AAMS-logic$/i,'');
  const values=Object.fromEntries(Object.entries({...q,from:q.p1,to:q.p2,total:q.h,handicap:q.h,player:q.pl,score:q.p3,'goal!':q.p3,'!scorenr':q.p3,
   competitor1:competitors?.competitor1??competitors?.home,
   competitor2:competitors?.competitor2??competitors?.away
@@ -256,6 +256,9 @@ export function oddsOf(row,quotes,meta,live,open=true,diagnostics){
   const def=dictionary??(rawName?{ID:id,Name:rawName}:null);
   if(!def){note('missingMarketDefinition');continue;}
   if(!rawName){note('missingMarketName');continue;}
+  // AAMS-logic correct-score grids are not part of this sportsbook's offer.
+  // Exclude the native offer before it can be cached, accepted or settled.
+  if(isAamsLogicMarket(rawName)){note('excludedAamsLogic');continue;}
   // Apply the same explicit exclusion policy before key generation and again
   // after native parameters have expanded the provider's title.
   if(isExcludedOfferMarket({name:rawName,nativeMarketId:String(id)})){note('excluded');continue;}
