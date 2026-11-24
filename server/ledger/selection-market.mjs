@@ -403,18 +403,17 @@ function selectionMetricFamilies(selection, seen = new Set()) {
 
   if (!playerMarket && (
       /\b(?:goals?|btts|both teams (?:to )?score|correct score|first goal|next goal|first team to score|next team to score|goal time)\b/.test(text) ||
-      /\b(?:g|zz)?(?:home|away|total)?goals?(?:1h|2h|p1|p2)?\b/.test(evidence.keys) ||
-      /\b(?:g|zz)?(?:btts|correctscore|firstgoal|nextgoal|multigoals?)\b/.test(evidence.keys) ||
+      /(?:g|zz)?(?:home|away|total)?(?:team)?goals?(?:1h|2h|p1|p2)?|(?:g|zz)?(?:home|away|total)?(?:team)?goalrange|(?:g|zz)?(?:btts|correctscore|firstgoal|nextgoal|multigoals?)/.test(evidence.keys) ||
       type === 'btts' || type === 'total goals'
   )) add('goals');
 
   if (/\b(?:corners?|corner kicks?|kendore|goditje kendore)\b/.test(text) ||
       /\b(?:corners?|corner)\b/.test(type) ||
-      /\b(?:g|zz)?(?:corners?|cornerhandicap|racecorners|firstcorner)\b/.test(evidence.keys)) add('corners');
+      /corner/.test(evidence.keys)) add('corners');
 
   if (/\b(?:cards?|yellow cards?|red cards?|bookings?|carded|booking points?|card points?|disciplin)\b/.test(text) ||
       /\b(?:cards?|card|yellow cards?|red cards?|booking points?)\b/.test(type) ||
-      /\b(?:g|zz)?(?:cards?|yellowcards?|redcards?|bookingpoints?)\b/.test(evidence.keys)) add('cards');
+      /(?:cards?|yellowcards?|redcards?|bookingpoints?|cardrange|bookingrange)/.test(evidence.keys)) add('cards');
 
   if (/\b(?:shots?|attempts?|shots on target|on target shots?)\b/.test(text) ||
       /\b(?:shots?|attempts?)\b/.test(type) || /shots?|shotrange/i.test(evidence.keys)) add('shots');
