@@ -168,6 +168,12 @@ export function gradeHeldNativeCombo(line,result){
    return null;
  }
 
+ if(isHalftimeRestMarket(m)){
+  return gradeHalftimeRest({...line,market_name:m,
+    outcome_name:saved.providerOutcomeName,outcome_key:saved.providerOutcomeKey,
+    accepted_contract:saved},result);
+ }
+
  if (/^who\s+wins\s+the\s+rest\s+of\s+the\s+match\?$/i.test(m)) {
    const snap = saved.acceptedLiveSnapshot;
    let baseHome = snap?.scoreHome ?? snap?.counters?.goal?.home;
@@ -654,6 +660,43 @@ function gradeNamedFinalTeamMarket(line,result){
  if(!selectedSide)return null;
  if(draw)return 'WON';
  return decide(selectedSide==='home'?homeWin:awayWin);
+}
+
+/** "Halftime - Who wins the rest" is scoped to the remainder of the FIRST HALF.
+ * Compare the frozen purchase-time score with the confirmed HT score. A
+ * second-half goal must never reverse a first-half market.
+ */
+function isHalftimeRestMarket(value){
+ return /^(?:half\s*time|halftime)\s*[-–.:]?\s*who\s+wins\s+the\s+rest$/i
+  .test(String(value??'').trim());
+}
+function gradeHalftimeRest(line,result){
+ const snapshot=line?.accepted_contract?.acceptedLiveSnapshot;
+ if(!snapshot)return null;
+ const baseHome=scoreValue(snapshot.scoreHome??snapshot.counters?.goal?.home);
+ const baseAway=scoreValue(snapshot.scoreAway??snapshot.counters?.goal?.away);
+ if(baseHome===null||baseAway===null)return null;
+ const phase=String(snapshot.feedPhase??'').toLowerCase()
+  .replace(/[^a-z0-9]+/g,' ').trim();
+ const firstHalf=/^(?:1|1h|h1|1st|1st half|first half|firsthalf|period 1|period1)$/.test(phase);
+ const laterPhase=/^(?:2|2h|h2|2nd|2nd half|second half|secondhalf|halftime|half time|ht|ft|full time|ended|finished)$/.test(phase);
+ const clock=Number(snapshot.clockMilliseconds);
+ if(laterPhase||(!firstHalf&&(!Number.isFinite(clock)||clock>=45*60*1000)))return null;
+ const endHome=scoreValue(result?.half_home_score);
+ const endAway=scoreValue(result?.half_away_score);
+ if(endHome===null||endAway===null)return null;
+ const deltaHome=endHome-baseHome,deltaAway=endAway-baseAway;
+ if(deltaHome<0||deltaAway<0)return null;
+ const selections=[line?.outcome_key,line?.outcome_name]
+  .map(value=>String(value??'').trim().toLowerCase());
+ const decide=value=>value?'WON':'LOST';
+ if(selections.some(value=>value==='1'||value==='home'||value.startsWith('home ')))
+  return decide(deltaHome>deltaAway);
+ if(selections.some(value=>value==='x'||value==='draw'||value==='tie'))
+  return decide(deltaHome===deltaAway);
+ if(selections.some(value=>value==='2'||value==='away'||value.startsWith('away ')))
+  return decide(deltaAway>deltaHome);
+ return null;
 }
 
 const periodScores=(line,result)=>{
@@ -1156,22 +1199,10 @@ export function gradeLine(line, result) {
     }
 
     case 'REST_OF_MATCH': {
+      if(isHalftimeRestMarket(line.market_name))return gradeHalftimeRest(line,result);
       const snap = line.accepted_contract?.acceptedLiveSnapshot;
-      const halftimeRest=/^(?:half\s*time|halftime)\s*[-–.:]?\s*who\s+wins\s+the\s+rest$/i
-        .test(String(line.market_name??'').trim());
       let baseHome = snap?.scoreHome ?? snap?.counters?.goal?.home;
       let baseAway = snap?.scoreAway ?? snap?.counters?.goal?.away;
-      if(halftimeRest){
-        // This is the remainder of the FIRST HALF. A purchase made at 43'
-        // must be graded against the confirmed HT score, not the later FT
-        // score, otherwise a second-half goal can reverse the result.
-        if(!snap)return null;
-        const phase=String(snap.feedPhase??'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-        const firstHalf=/^(?:1|1h|h1|1st|1st half|first half|firsthalf|period 1|period1)$/.test(phase);
-        const laterPhase=/^(?:2|2h|h2|2nd|2nd half|second half|secondhalf|halftime|half time|ht|ft|full time|ended|finished)$/.test(phase);
-        const clock=Number(snap.clockMilliseconds);
-        if(laterPhase||(!firstHalf&&(!Number.isFinite(clock)||clock>=45*60*1000)))return null;
-      }
       if (baseHome == null || baseAway == null) {
         const p3 = line.accepted_contract?.nativeParameters?.p3;
         if (typeof p3 === 'string' && p3.includes(':')) {
