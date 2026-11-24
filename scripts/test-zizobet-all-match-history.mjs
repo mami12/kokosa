@@ -187,4 +187,64 @@ try{
  }finally{liveFeed.stop();await liveFeed.drain();}
 }
 
+
+{
+ // A provider may publish stoppage-time incidents after its first FT frame.
+ // Do not stop chronology polling immediately when the first final timeline
+ // has been confirmed; keep a bounded post-FT window and reset it on updates.
+ const teams=[{ID:1,Name:'Home United',Sport:1},{ID:2,Name:'Away United',Sport:1}];
+ const regions=[{ID:1,Name:'England'}],champs=[{ID:1,Name:'Premier League'}];
+ const finishedHeader=()=>({
+  ID:77,Sport:1,Team1:1,Team2:2,Region:1,Champ:1,MatchStatusID:40,
+  Score:'2:1',MatchTime:90,StartTime:'2026-11-12T12:00:00Z',
+  CornersTeam1:4,CornersTeam2:3,YellowCardsTeam1:1,YellowCardsTeam2:0,
+  RedCardsTeam1:0,RedCardsTeam2:0
+ });
+ let now=Date.parse('2026-11-12T14:00:00Z'),detailReads=0;
+ const archiveCalls=[],infos=[];
+ const request=async url=>{
+  if(url.includes('getheader/teams'))return teams;
+  if(url.includes('getlivemarkets'))return {StatusNames:[{it:'1_10',nm:'1st half'}],PositionNames:[],MarketNames:[]};
+  if(url.includes('getprematchmarketsbysport'))return [Object.fromEntries(Array.from({length:11},(_,i)=>[i+1,{ID:i+1,Name:'Result'}]))];
+  if(url.includes('headerformobilenew'))return {Games:[finishedHeader()],Teams:teams,Regions:regions,Championats:champs};
+  if(url.includes('sport/getheader/en'))return {EN:{Sports:{1:{Regions:{}}}}};
+  if(url.includes('live/gamenew/77')){
+   detailReads++;
+   const timeline=[{id:'goal-90',type:'score_change',gt:89,team:1}];
+   if(detailReads>=3)timeline.push({id:'goal-90-plus-3',type:'score_change',gt:'90+3',team:2});
+   return {Match:{...finishedHeader(),GameID:77,EventStatus:40,
+    MatchStatusID:40,MatchTimeExtended:'90:00'},TimeLines:timeline,gmk:[]};
+  }
+  throw Error('Unexpected post-FT history request '+url);
+ };
+ const feed=startZizoFeed({
+  autoStart:false,historyEnabled:true,now:()=>now,request,
+  archiveHistory:async(id,raw)=>{
+   archiveCalls.push({id,raw});
+   const confirmedKinds=archiveCalls.length>=2?['goal','corner','card']:[];
+   return {stored:archiveCalls.length===1||archiveCalls.length>=3,
+    verifiedKinds:['goal','corner','card'],confirmedKinds};
+  },
+  connectMqtt:()=>({setLiveIds(){},stop(){},pause(){},resume(){}}),
+  getWatchedIds:()=>[],onMatch(){},onInfo:info=>infos.push(info),onOdds(){}
+ });
+ try{
+  await feed.tick();
+  assert.equal(detailReads,1,'FT fixture receives its first native detail snapshot');
+  now+=61000;
+  await feed.tick();
+  assert.equal(detailReads,2,'second FT observation confirms the initial timeline');
+  now+=61000;
+  await feed.tick();
+  assert.equal(detailReads,3,'confirmed FT does not immediately stop chronology polling');
+  assert.ok(archiveCalls[2].raw.TimeLines.some(event=>event.gt==='90+3'),
+   'the delayed 90+ incident is passed to the history archive');
+  assert.ok(infos.at(-1).events.some(event=>event.minuteLabel==='90+3'),
+   'the admin-facing match timeline receives the delayed 90+ event');
+  now+=11*60_000;
+  await feed.tick();
+  assert.equal(detailReads,3,'polling stops after the bounded quiet post-FT grace period');
+ }finally{feed.stop();await feed.drain();}
+}
+
 console.log('PASS all-match Zizobet history, actor minute labels, corrections, odds exclusion and bounded background polling');
