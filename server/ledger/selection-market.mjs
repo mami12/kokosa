@@ -206,7 +206,11 @@ function selectionMetric(selection) {
   if (/\bthrow ins?\b/.test(text) || /throw.?ins?/.test(keys) || type === 'throw ins') return 'throw_ins';
   if (/\b(?:saves?|goalkeeper saves?)\b/.test(text) || /saves?|saverange/.test(keys) || type === 'saves') return 'saves';
   if (/\bpenalt(?:y|ies)\b/.test(text) || /penalt|penaltyrange/.test(keys) || type === 'penalties') return 'penalties';
-  if (/\b(?:goals?|goal total|multigoals?|multi goals?|total in range)\b/.test(text) ||
+  // Some Zizobet full-time goal offers arrive with only the generic title "Total".
+  // After known corners/cards/other statistic keys have been ruled out, an
+  // Over/Under market titled Total is the match-goals total.
+  if ((type === 'over under' && /^total(?:\s|$)/.test(names)) ||
+      /\b(?:goals?|goal total|multigoals?|multi goals?|total in range)\b/.test(text) ||
       /(?:^|\s)(?:g|zz)?(?:home|away|total)?(?:team)?goals?(?:1h|2h|p1|p2)?(?:\s|$)/.test(text) ||
       /(?:g|zz)?(?:home|away|total)?(?:team)?goals?(?:1h|2h|p1|p2)?|(?:g|zz)?(?:home|away|total)?(?:team)?goalrange|(?:g|zz)?multigoals?/.test(keys) ||
       /\b(?:home|away) team (?:total )?range\b|\b(?:home|away) team goal range\b/.test(names) ||
