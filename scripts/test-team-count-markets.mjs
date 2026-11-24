@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {parseTeamCountMarket,liveContract,gradeLiveContract} from '../server/ledger/live-contract-rules.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
 import {gradeLine,hasRequiredSettlementEvidence} from '../server/ledger/settler.mjs';
+import {goalTotalContract} from '../server/ledger/goal-total-contract.mjs';
 const line=(market_name,outcome_name,amount='')=>({market_name,outcome_name,line:amount});
 for(const [market,outcome,amount,event,side,kind] of [
  ['Home Team Total Corners','Over','2.5','corner','home','over'],
@@ -96,6 +97,21 @@ for(const [market,outcome,amount,expected] of [
  assert.equal(hasRequiredSettlementEvidence(quote,finalCorners),true,
   'Final Zizobet team corner counters are enough: '+market+' '+outcome);
 }
+const finalGoals={...finalCorners,home_score:0,away_score:1};
+for(const [market,outcome,expected] of [
+ ['Total hometeam (0.5)','Under','WON'],
+ ['Total hometeam (0.5)','Over','LOST'],
+ ['Total awayteam (0.5)','Over','WON'],
+ ['Total awayteam (0.5)','Under','LOST']
+]){
+ const ticket={...line(market,outcome,'0.5'),outcome_key:outcome};
+ assert.equal(goalTotalContract(ticket)?.scope,market.includes('home')?'home':'away',
+  'Joined Zizobet team label must retain its side: '+market);
+ assert.equal(gradeLine(ticket,finalGoals),expected,market+' '+outcome+' on 0:1');
+ assert.equal(hasRequiredSettlementEvidence(ticket,finalGoals),true,
+  'A verified final score is sufficient for team goal totals: '+market);
+}
+
 // Chronological corner markets are deliberately excluded from aggregate
 // grading. A 5-4 counter cannot identify which team took the first corner
 // in a time window.

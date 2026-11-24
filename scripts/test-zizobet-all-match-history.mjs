@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
 import {LEDGER_SQL} from '../server/ledger/schema.mjs';
 import {projectZizobetHistory,createZizobetHistoryArchive} from '../server/ledger/zizobet-match-history.mjs';
+import {normalizeLiveFrame} from '../server/ledger/live-observation-store.mjs';
 import {startZizoFeed} from '../server/zizobet-feed.mjs';
 
 const game=(score,clock,events,extra={})=>({
@@ -22,6 +23,19 @@ assert.equal(projected.events[0].playerName,'First Scorer',
  'The financial/parser path must recognize the same actor fields as the live UI');
 assert.equal(projected.events[0].minute,10);
 assert.equal(projected.events[0].minuteLabel,'10');
+const lateCorners=normalizeLiveFrame({
+ Match:{...game('0:0','90:00',[]).Match,MatchStatusID:40,EventStatus:40,
+  MatchTimeExtended:'90:00',CornersTeam1:1,CornersTeam2:1},
+ TimeLines:[
+  {id:'late-corner-alias',type:'Corner',gt:'92',clk:'92:15',team:1},
+  {id:'late-corner-native',type:'corner_kick',gt:'95',clk:'95:44',team:2}
+ ]
+});
+assert.deepEqual(lateCorners.events.map(event=>[event.type,event.minute]),
+ [['corner',92],['corner',95]],
+ 'Zizobet corner event types and 92/95-minute incidents enter primary event facts');
+assert.equal(lateCorners.coverage.cornerThrough,130,
+ 'A reconciled FT event list with final 1-1 corner counters covers stoppage time');
 const withFoul=projectZizobetHistory(8000000000007,game('1:0','11:00',[g1,
  {id:'foul-1',type:'foul_committed',team:2,gt:11,player:'Defender'}]),fixture);
 assert.equal(withFoul.events.find(e=>e.kind==='foul')?.playerName,'Defender');

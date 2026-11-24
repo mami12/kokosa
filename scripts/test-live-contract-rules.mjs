@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {parseEventWindow,parseSequenceBet,parseOrdinalGoalTime,parseLastEvent,parseCountMarket,parseSendingOffMarket,parseLeadUpMarket,liveContract,gradeLiveContract,gradeFromAcceptedCounters} from '../server/ledger/live-contract-rules.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
+import {eventContract} from '../server/ledger/event-contract.mjs';
 
 const windowLine=(market,side)=>({market_name:market,outcome_name:side});
 
@@ -14,6 +15,15 @@ assert.equal(parseOrdinalGoalTime({...nextGoalMarket,market_name:'When will goal
  {goal:{home:0,away:0}})?.target,3,'explicit provider ordinal remains absolute');
 assert.equal(parseOrdinalGoalTime(nextGoalMarket),null,
  'unknown accepted score cannot be guessed as goal number one');
+const nextGoalAccepted={market_name:'Next Goal',accepted_contract:{acceptedLiveSnapshot:{
+ isLive:true,scoreHome:0,scoreAway:1,counters:{goal:{home:0,away:1}}
+}}};
+assert.equal(eventContract(nextGoalAccepted).name,'who scores goal 2',
+ 'Legacy event settlement derives bare Next Goal from the frozen 0:1 acceptance score');
+assert.equal(eventContract({market_name:'Next Goal 2nd'}).name,'next goal 2nd',
+ 'An explicitly numbered offer is not rewritten as a relative offer');
+assert.equal(eventContract({market_name:'Next Goal'}).valid,false,
+ 'Without a frozen baseline or saved target, do not assume Next Goal means goal #1');
 
 const nextHome=parseOrdinalGoalTime({market_name:'Next Home Goal Time',outcome_name:'31-45'},
  {goal:{home:2,away:1}});
@@ -225,6 +235,26 @@ assert.equal(await gradeNoNextGoal({version:1,kind:'sequence',event:'goal',targe
  'LOST','Stored Zizobet event facts must settle Next Goal Away as LOST when FT has no second goal');
 assert.equal(await gradeNoNextGoal({version:1,kind:'sequence',event:'goal',target:2,side:'none',noneOffered:true}),
  'WON','Stored Zizobet event facts must settle the quoted No Goal outcome as WON');
+
+// Older accepted tickets may contain stale sequence=1 despite their immutable
+// acceptance snapshot already showing 0:1. Rebase only a bare relative Next Goal.
+const staleNextGoalFacts={...confirmedGoalFacts,
+ home:0,away:1,count_home:0,count_away:1,total:1,normal_home:0,normal_away:1};
+const gradeFrozenNextGoal=async side=>gradeStoredEventContract({
+ id:'line-next-goal-stale-sequence',match_id:77,market_name:'Next Goal',
+ accepted_contract:{providerMarketName:'Next Goal',acceptedLiveSnapshot:{
+  isLive:true,scoreHome:0,scoreAway:1,counters:{goal:{home:0,away:1}}
+ }},
+ live_contract:{version:1,kind:'sequence',event:'goal',target:1,side,noneOffered:true}
+},{home_score:0,away_score:1,corners_home:0,corners_away:0,cards_home:0,cards_away:0},
+ {execute:async(_sql,args)=>{
+  assert.equal(args[7],2,'Relative Next Goal queries goal #2 from the accepted 0:1 snapshot');
+  return {rows:[staleNextGoalFacts]};
+ }});
+assert.equal(await gradeFrozenNextGoal('none'),'WON',
+ 'No Goal wins when no second goal followed the accepted 0:1 score');
+assert.equal(await gradeFrozenNextGoal('away'),'LOST',
+ 'Away loses Next Goal when no goal followed the accepted 0:1 score');
 
 const extraTimeGoalFacts={...confirmedGoalFacts,count_home:0,count_away:1,home:0,away:1,total:1,
  normal_home:0,normal_away:0,phase_ambiguous:false,nth_team:null,nth_minute:null,nth_same_time:null};

@@ -37,9 +37,19 @@ export function eventContract(line={}){
  if(/^(?:player )?(?:exact goals|exact number of goals|exactly goals)$/.test(name)){mode='exactSelection';name=name.startsWith('player')?'player to score':'total goals';}
  const method=/header|headed|with (?:a |the )?head/.test(name)?'header':/left[ -]foot/.test(name)?'leftFoot':/right[ -]foot/.test(name)?'rightFoot':/own goal/.test(name)?'own':/penalty.*goal|goal.*penalty|player to score (?:a )?penalty/.test(name)?'penalty':null;
  const playerMethod=/^player to score (?:a (?:header|headed goal|penalty)|with (?:the |a )?(?:head|left[ -]foot|right[ -]foot))$/.test(name);
- const seq = Number(line.snapshot_target_sequence ?? line.line);
- if (/^(?:next goal|next team to score|goli i radh[eë]s)$/i.test(name) && Number.isFinite(seq) && seq > 0) {
-  name = `who scores goal ${seq}`;
+ const relativeNext=/^(?:next goal|next team to score|goli i radh[eë]s)$/i.test(name);
+ const acceptedSnapshot=line.accepted_contract?.acceptedLiveSnapshot;
+ const whole=value=>value!=null&&value!==''&&Number.isSafeInteger(Number(value))&&Number(value)>=0?Number(value):null;
+ const acceptedHome=whole(acceptedSnapshot?.scoreHome??acceptedSnapshot?.counters?.goal?.home);
+ const acceptedAway=whole(acceptedSnapshot?.scoreAway??acceptedSnapshot?.counters?.goal?.away);
+ const acceptedNextSequence=relativeNext&&acceptedHome!==null&&acceptedAway!==null
+  ?acceptedHome+acceptedAway+1:null;
+ const frozenSequence=acceptedNextSequence??(
+  line.snapshot_target_sequence!=null?Number(line.snapshot_target_sequence):null);
+ if(relativeNext){
+  if(Number.isSafeInteger(frozenSequence)&&frozenSequence>0)
+   name = 'who scores goal '+frozenSequence;
+  else return {valid:false};
  }
  const valid=playerMethod||/^(?:total (?:goals|corners|cards)(?: (?:home|away) team)?|(?:home|away) team total (?:goals|corners|cards)|total (?:home|away) team|who scores most goals|who takes most corners|who receives most cards|who scores goal \d+|first goal|last goal|next goal|next team to score|goli i radh[eë]s|own goals?|(?:headed|header|penalty) goals?|player(?: to assist| to score(?: a goal)?)|(?:first|last|anytime) (?:goalscorer|goal scorer))$/.test(name);
  return {valid:valid&&(amount==null||(Number.isInteger(amount)&&amount>=0&&amount<=100&&(mode!=='atLeast'||amount>0))),name,player,half,window,mode,amount,method};

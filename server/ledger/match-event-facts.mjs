@@ -1088,11 +1088,28 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  return null;
 }
 
+function freezeRelativeNextGoal(line){
+ const title=String(line?.market_name??line?.accepted_contract?.providerMarketName??'')
+  .split(' · ')[0].toLowerCase().replace(/\s+/g,' ').trim();
+ if(!/^(?:next goal|next team to score|goli i radh[eë]s)$/.test(title))return line;
+ const contract=line?.live_contract;
+ if(!contract||!['sequence','nth-time'].includes(contract.kind)||contract.event!=='goal')return line;
+ const snapshot=line?.accepted_contract?.acceptedLiveSnapshot;
+ const whole=value=>value!=null&&value!==''&&Number.isSafeInteger(Number(value))&&Number(value)>=0?Number(value):null;
+ const home=whole(snapshot?.scoreHome??snapshot?.counters?.goal?.home);
+ const away=whole(snapshot?.scoreAway??snapshot?.counters?.goal?.away);
+ if(home===null||away===null)return line;
+ const target=home+away+1;
+ if(contract.target===target)return line;
+ return {...line,live_contract:{...contract,target}};
+}
+
 /** Keep historical incidents in their own provider rows. A verified primary
  * decision wins; a complete historical FT may fill a genuinely missing
  * primary timeline. Conflicting historical verdicts are never paid.
  */
 export async function gradeStoredEventContract(line,result,{execute}={}){
+ line=freezeRelativeNextGoal(line);
  const market=String(line?.market_name??'').trim();
  if(/^full[\s.-]*time[\s:.-]*(?:1up|2up|3up)$/i.test(market)){
   const home=Number(result?.home_score),away=Number(result?.away_score);

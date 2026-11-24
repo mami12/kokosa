@@ -1,7 +1,7 @@
 /** Only explicit whole-match/whole-half goal totals may use goal counters.
  * Named player totals, clock windows and other props are separate contracts.
  */
-const normalized=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+const normalized=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(home|away)team\b/g,'$1 team').replace(/\s+/g,' ').trim();
 export function goalTotalContract(market={},teams={}){
  let name=normalized(market.market_name??market.marketName??market.name);
  name=name.replace(/^(?:(?:full[ .-]*time|match)[ .:-]+|(?:first|1st|second|2nd)[ .-]*half[ .:-]+|(?:1h|2h|ht)[ .:-]+)/,'');
