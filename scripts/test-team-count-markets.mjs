@@ -141,7 +141,7 @@ for(const [market,side] of [
   const contract=liveContract(quote);
   assert.equal(contract?.kind,'team-total-goals',market+' freezes its native goal total');
   assert.equal(contract?.side,side,market+' freezes the correct team');
-  assert.equal(contract?.threshold,Number(market.match(/\\d+\\.\\d+/)?.[0]),market+' freezes the quoted threshold');
+  assert.equal(contract?.threshold,Number(market.match(/\d+\.\d+/)?.[0]),market+' freezes the quoted threshold');
   assert.equal(contract?.choice,outcome.toLowerCase(),market+' retains the quoted direction');
   const wager={id:'00000000-0000-4000-8000-000000000001',match_id:9981,
    market_name:market,outcome_name:outcome,outcome_key:outcome,line:'',
