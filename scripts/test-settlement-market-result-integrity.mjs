@@ -111,6 +111,33 @@ assert.equal(gradeLine(choice('Halftime - Who wins the rest','2',{
 assert.equal(gradeLine(choice('Halftime - Who wins the rest','2'),firstHalfRestResult),null,
  'Without an immutable entry score the first-half-rest winner remains unknown');
 
+// The same rule must repair old native tickets held by a previous parser.
+// Only the accepted quote and its frozen 43-minute score may be used.
+const heldNative=(market,outcome,snapshot=acceptedAt43)=>choice(market,outcome,{
+ market_key:'zz-test-native-market',
+ accepted_contract:{
+  sourceProviderId:'ZIZOBET',settlementHold:'NATIVE_FINAL_RULE_UNMAPPED',
+  providerMarketName:market,providerOutcomeName:outcome,
+  providerMarketKey:'zz-test-native-market',providerOutcomeKey:outcome,
+  line:'',providerPeriod:0,homeTeamName:'Real Madrid U19',
+  awayTeamName:'PSV Eindhoven U19',
+  ...(snapshot?{acceptedLiveSnapshot:snapshot}:{})
+ }
+});
+assert.equal(gradeLine(heldNative('Halftime - Who wins the rest','2'),firstHalfRestResult),'WON',
+ 'A held historical native halftime-rest ticket is repaired from its original accepted snapshot');
+assert.equal(gradeLine(heldNative('Halftime - Who wins the rest','1'),firstHalfRestResult),'LOST');
+
+for(const [market,outcome,expected] of [
+ ['Total awayteam 4.5','Under','WON'],['Total awayteam 4.5','Over','LOST'],
+ ['Total hometeam 3.5','Under','WON'],['Total hometeam 3.5','Over','LOST'],
+ ['Real Madrid U19 to win','No','WON'],['PSV Eindhoven U19 to win','Yes','LOST'],
+ ['Real Madrid U19 no bet','X','WON']
+]){
+ assert.equal(gradeLine(heldNative(market,outcome),realPsvDraw),expected,
+  'A held native ticket is graded only from its immutable quote: '+market+' '+outcome);
+}
+
 const draw={...score,home_score:1,away_score:1,half_home_score:1,half_away_score:1};
 assert.equal(gradeLine(choice('Draw No Bet','1'),draw),'WON');
 assert.equal(settledOddsFor(choice('Draw No Bet','1'),draw,'WON'),1);
