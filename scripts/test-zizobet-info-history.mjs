@@ -44,7 +44,7 @@ assert.deepEqual(officialFinalFrame.cornerPeriods,{
 
 
 const endedTimeline=[
- ...[[1,1],[45,2],[52,2]].map(([minute,team],i)=>({id:'away-c'+i,type:'corner_kick',team,gt:minute})),
+ ...[[1,2],[45,2],[52,2]].map(([minute,team],i)=>({id:'away-c'+i,type:'corner_kick',team,gt:minute})),
  ...[[8,1],[10,1],[19,1],[30,1],[65,1],[69,1],[70,1],[71,1],[77,1],[85,1]].map(([minute,team],i)=>({id:'home-c'+i,type:'corner_kick',team,gt:minute}))
 ];
 const noClockFinal=normalizeLiveFrame({Match:cornerGame,TimeLines:endedTimeline});
