@@ -209,7 +209,12 @@ function selectionMetric(selection) {
   // Some Zizobet full-time goal offers arrive with only the generic title "Total".
   // After known corners/cards/other statistic keys have been ruled out, an
   // Over/Under market titled Total is the match-goals total.
-  if ((type === 'over under' && /^total(?:\s|$)/.test(names)) ||
+  const outcome = normalizedSelectionText(selectionOutcomeName(selection));
+  // The provider can send the match total as "Total (3.5)" with a generic
+  // marketType such as TOTAL, not necessarily OVER_UNDER. Its Over/Under
+  // outcome plus the generic title identifies the match-goals contract.
+  if ((/^total(?:\s|$)/.test(names) &&
+       /^(?:over|under|lart|poshte|mbi|nen)(?:\s|$)/.test(outcome)) ||
       /\b(?:goals?|goal total|multigoals?|multi goals?|total in range)\b/.test(text) ||
       /(?:^|\s)(?:g|zz)?(?:home|away|total)?(?:team)?goals?(?:1h|2h|p1|p2)?(?:\s|$)/.test(text) ||
       /(?:g|zz)?(?:home|away|total)?(?:team)?goals?(?:1h|2h|p1|p2)?|(?:g|zz)?(?:home|away|total)?(?:team)?goalrange|(?:g|zz)?multigoals?/.test(keys) ||
