@@ -716,6 +716,10 @@ export function gradeLiveContract(contract,evidence={}, {ended=false,scopeEnded=
  if(!contract||!['interval-result','team-total-goals','window','sequence','race','last-event','over','under','exact','range','atLeast'].includes(contract.kind))return null;
  const {event}=contract;
  const rawEvents=Array.isArray(evidence.events)?evidence.events:[];
+ // A regulation-time event after 90 without a recognized half/ET label has
+ // unknown scope. It cannot prove either an event or an event's absence.
+ if(contract.normalTimeOnly!==false&&rawEvents.some(e=>
+   Number(e.minute)>90&&eventPeriod(e)==null))return null;
  const ordered=sortEvents(contract.normalTimeOnly===false?rawEvents:rawEvents.filter(isRegularTimeEvent),event);
  const clock=number(evidence.clock);
  // Never use the combined match total for a home/away-only selection.
