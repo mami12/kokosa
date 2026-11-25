@@ -16,7 +16,7 @@ const specs={bsd:{base:'https://sports.bzzoiro.com/api/v2',env:'BSD_API_KEY',hea
 const refreshMs=10*60*1000;
 // Zizobet alone owns score, corners, cards and the event chronology.
 // Secondary APIs may enrich verified actors and missing team statistics.
-const supplementalStats=['shotsOnTarget','fouls','shots','possession','corners','yellow','red'];
+const supplementalStats=['shotsOnTarget','fouls','shots','possession','corners','yellow','red','cards'];
 const requiredStats=['shotsOnTarget','fouls','shots'];
 const supplementalSnapshot=values=>Object.fromEntries(supplementalStats
  .filter(field=>values?.[field]!=null).map(field=>[field,values[field]]));
@@ -367,7 +367,9 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
        for(const field of supplementalStats){
         const pair=values[field];if(!pair)continue;
         const current=entry.values[field]??{};
-        if(['home','away'].some(side=>{const known=primary[side]?.[field]??current[side];return known!=null&&pair[side]!=null&&known!==pair[side];}))continue;
+        // Compare secondary values only with verified final-primary facts already in entry.
+        // A stale live row must not veto a missing FT statistic.
+        if(['home','away'].some(side=>current[side]!=null&&pair[side]!=null&&current[side]!==pair[side]))continue;
         if(current.home==null&&pair.home!=null)current.home=pair.home;
         if(current.away==null&&pair.away!=null)current.away=pair.away;
         entry.values[field]=current;
@@ -435,9 +437,9 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
        shotsOnTarget: parsed.statistics.shotsOnTarget,
        fouls: parsed.statistics.fouls,
        corners: (parsed.cornersHome != null && parsed.cornersAway != null) ? { home: parsed.cornersHome, away: parsed.cornersAway } : null,
-       // FotMob card totals do not distinguish yellow and red cards.
-       yellow: null,
-       red: null
+       cards: (parsed.cardsHome != null && parsed.cardsAway != null) ? {home:parsed.cardsHome,away:parsed.cardsAway} : null,
+       yellow: parsed.yellowCards,
+       red: parsed.redCards
       };
       for (const field of supplementalStats) {
        const pair = fmValues[field];
