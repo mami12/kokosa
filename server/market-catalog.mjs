@@ -1,6 +1,6 @@
 import {isExcludedOfferMarket} from './market-policy.mjs';
 const catalog=new Map(),disabled=new Set(),disabledCategories=new Set();
-export const MARKET_CATEGORY_IDS=['totals','intervals','results','goals','corners','shots','combos','other'];
+export const MARKET_CATEGORY_IDS=['totals','intervals','results','goals','corners','cards','shots','combos','other'];
 
 export const NON_FOOTBALL_PATTERN = new RegExp([
   // Cricket
