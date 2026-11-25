@@ -792,6 +792,38 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
     error.message:'STATS_UNAVAILABLE';
   });
  }
+ // Settlement must not race the periodic, rotating display-statistics batch.
+ // Explicitly warm every finished fixture that still has pending tickets before
+ // the ledger grades it. This is bounded and uses the same fixture validation,
+ // provider quotas, final-score reconciliation and event writers as normal refresh.
+ async function warmFinalPending(){
+  if(!enabled())return {examined:0,warmed:0};
+  const ids=(await runQuery(
+   "select distinct l.match_id from app_ticket_line l join app_ticket t on t.id=l.ticket_id "+
+   "join app_match_result r on r.match_id=l.match_id "+
+   "where l.status='PENDING' and t.status='PENDING' "+
+   "and r.source in ('ZIZOBET','ADMIN') and r.home_score is not null and r.away_score is not null "+
+   "order by l.match_id"
+  )).rows.map(row=>String(row.match_id));
+  let next=0,warmed=0;
+  const workers=Array.from({length:Math.min(2,ids.length)},async()=>{
+   while(next<ids.length){
+    const id=ids[next++];
+    try{
+     const row=await loadMatch?.(Number(id))??(await loadSnapshots?.([Number(id)]))?.[0];
+     if(!row)continue;
+     viewed.set(id,now()+12*60000);
+     await warmStatistics(row);
+     warmed++;
+    }catch(error){
+     health.providers.settlement={...(health.providers.settlement??{}),
+      lastError:/^STATS_[A-Z_0-9]+$/.test(String(error?.message))?error.message:'STATS_FINAL_RECOVERY_FAILED'};
+    }
+   }
+  });
+  await Promise.all(workers);
+  return {examined:ids.length,warmed};
+ }
  let cursor=0,priorityCursor=0;
  async function tick(){
   if(!enabled()||busy)return;busy=true;health.lastRunAt=new Date(now()).toISOString();
@@ -829,7 +861,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    }
   }catch{health.lastError='STATS_UNAVAILABLE';}finally{busy=false;}
  }
- return {warm,observeMatch,warmStatistics,displayStatistics,displayGoalIntervalStats,displayScorers,recoverHistoricalMatch,update,tick,enabled,health:()=>({...health,providers:{...health.providers,fotmob:{...health.providers.fotmob,transport:fotMobTransportStatus()}},enabled:enabled(),observedMatches:observed.size,urgentMatches:urgent.size,cachedMatches:offers.size,cachedStatistics:displayCache.size,refreshIntervalMs:realtime()?Number(env.STATS_LIVE_REFRESH_MS)||30000:refreshMs}),allows(id,market){
+ return {warm,warmFinalPending,observeMatch,warmStatistics,displayStatistics,displayGoalIntervalStats,displayScorers,recoverHistoricalMatch,update,tick,enabled,health:()=>({...health,providers:{...health.providers,fotmob:{...health.providers.fotmob,transport:fotMobTransportStatus()}},enabled:enabled(),observedMatches:observed.size,urgentMatches:urgent.size,cachedMatches:offers.size,cachedStatistics:displayCache.size,refreshIntervalMs:realtime()?Number(env.STATS_LIVE_REFRESH_MS)||30000:refreshMs}),allows(id,market){
   if(!enabled())return false;const s=offers.get(String(id));if(!s?.offer||s.expires<=now())return false;
   const name=String(market.market_name??market.name??'');
   if(!supportedContract(market)||!eventSelectionSupported(market))return false;
