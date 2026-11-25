@@ -165,7 +165,7 @@ try{
   for(const provider of ['bsd','worldcup26','sportapi','goalapi','apifootball']){
    const offset=h.calls.length,service=h.create();await service.tick();
    assert.ok(h.calls.length>offset);assert.ok(h.calls.slice(offset).every(call=>call.provider===provider),provider+' completes the cycle without unnecessary fallback');
-   assert.equal(h.stats(service).home.shotsOnTarget,4);assert.equal(h.stats(service).away.fouls,11);assert.ok(h.stats(service).home.corners==null,'Secondary corners are not imported');h.advance(tenMinutes);
+   assert.equal(h.stats(service).home.shotsOnTarget,4);assert.equal(h.stats(service).away.fouls,11);assert.equal(h.stats(service).home.corners,3,'Secondary live corners may enrich display but are not final settlement evidence');h.advance(tenMinutes);
   }h.verify();
  }
  {
@@ -173,7 +173,7 @@ try{
   await h.service.tick();assert.deepEqual([...new Set(h.calls.map(c=>c.provider))],['bsd']);
   let offset=h.calls.length;h.advance(tenMinutes);await h.service.tick();assert.ok(h.calls.slice(offset).every(c=>c.provider==='worldcup26'));
   offset=h.calls.length;h.advance(tenMinutes);const restarted=h.create();await restarted.tick();assert.ok(h.calls.slice(offset).every(c=>c.provider==='sportapi'));
-  assert.ok(h.stats(restarted).home.corners==null,'Primary corners stay unknown if Zizobet omitted them');assert.equal(h.stats(restarted).away.shots,8);h.verify();
+  assert.equal(h.stats(restarted).home.corners,3,'Supplementary corners may appear in the display snapshot without overwriting Zizobet result fields');assert.equal(h.stats(restarted).away.shots,8);h.verify();
  }
  // Fallback fills only absent facts, and does not fetch already complete stats just for missing events.
  {
