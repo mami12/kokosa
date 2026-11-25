@@ -391,89 +391,89 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    // If the primary score has goals but the SQL event timeline is missing,
    // a detail viewer still needs an advisory FotMob scorer lookup.
    const missingGoalActors=needsFotMobScorerLookup(row,primaryGoal);
-   if (missingGoalActors || needsAnyActors() || !matchStatsReady(entry) || finalReviewNeeded) {
+   if(missingGoalActors||needsAnyActors()||!matchStatsReady(entry)||finalReviewNeeded){
     if(finalReviewNeeded)attempted.push('fotmob');
-    try {
-     const targetDate = row.start_at || row.startAt || new Date().toISOString();
-     const dates = candidateDateStrings(targetDate);
-     const fm = await findFotMobFixture(row.home, row.away, dates,
-       row.start_at??row.startAt);
-     if (!fm?.match) {
-      if(finalReviewNeeded)unavailable.fotmob=fotMobTransportStatus().lastError??'FOTMOB_FIXTURE_NOT_UNIQUELY_MATCHED';
-      // An unmatched fixture is a real integration status, not "FotMob has
-      // no data". Keep transport failures distinct from name/kickoff ambiguity.
-      health.providers.fotmob={...health.providers.fotmob,
-       lastError:fotMobTransportStatus().lastError??'FOTMOB_FIXTURE_NOT_UNIQUELY_MATCHED'};
+    try{
+     const targetDate=row.start_at||row.startAt||new Date().toISOString();
+     const dates=candidateDateStrings(targetDate);
+     const fm=await findFotMobFixture(row.home,row.away,dates,row.start_at??row.startAt);
+     if(!fm?.match){
+      const issue=fotMobTransportStatus().lastError??'FOTMOB_FIXTURE_NOT_UNIQUELY_MATCHED';
+      if(finalReviewNeeded)unavailable.fotmob=issue;
+      health.providers.fotmob={...health.providers.fotmob,lastError:issue};
      }else{
-      const details = await fetchFotMobDetails(fm.match.id,{force:urgent.has(id)});
+      const details=await fetchFotMobDetails(fm.match.id,{force:urgent.has(id)});
       health.providers.fotmob={...health.providers.fotmob,
        lastFixtureId:String(fm.match.id),
        lastError:details?null:(fotMobTransportStatus().lastError??'FOTMOB_DETAILS_UNAVAILABLE'),
        ...(details?{lastSuccessAt:new Date(now()).toISOString()}:{})};
-      const parsed = parseFotMobPayload(fm.match, details);
-      if(details){
-       if(finalReviewNeeded&&!parsed.finished)unavailable.fotmob='STATS_NOT_FINAL';
+      if(!details){
+       if(finalReviewNeeded)unavailable.fotmob=fotMobTransportStatus().lastError??'FOTMOB_DETAILS_UNAVAILABLE';
+      }else{
+       const parsed=parseFotMobPayload(fm.match,details);
        try{
         const incidents=fotMobIncidents(details);
         const eventList=details?.content?.matchFacts?.events?.events;
         const shotList=details?.content?.shotmap?.shots;
         const completeKinds=[...(Array.isArray(eventList)?['goal','card']:[]),
-          ...(Array.isArray(shotList)?['shot']:[])];
+         ...(Array.isArray(shotList)?['shot']:[])];
         await storeSupplementalIncidents(Number(id),'fotmob',fm.match.id,incidents,
-          {execute:runQuery,payload:details,completeKinds});
+         {execute:runQuery,payload:details,completeKinds});
         await enrichPrimaryActors(Number(id),'fotmob',primaryActors,incidents,{execute:runQuery});
         await refreshActors();
-       }catch(error){console.warn('[supplemental incident archive]',String(error?.message??error));}
+       }catch(error){
+        console.warn('[supplemental incident archive]',String(error?.message??error));
+       }
+       if(!primaryGoal?.hasGoals&&parsed.goalEvents.length){
+        const names=displayOnlyFotMobScorers(row,parsed);
+        if(names.length){entry.scorers=names;entry.sources.scorers='fotmob-display-only';}
+       }
+       if(primaryGoal?.hasGoals&&parsed.goalEvents.length){
+        // FotMob may only enrich a one-to-one Zizobet scorer slot.
+        try{
+         await enrichFotMobScorerNames(Number(id),primaryFacts,parsed.goalEvents,{execute:runQuery});
+        }catch(error){
+         console.warn('[fotmob scorer enrichment]',Number(id),String(error?.message??error));
+        }
+        await refreshActors();
+       }
+       const fmValues={
+        possession:parsed.statistics.possession,
+        shots:parsed.statistics.shots,
+        shotsOnTarget:parsed.statistics.shotsOnTarget,
+        fouls:parsed.statistics.fouls,
+        corners:(parsed.cornersHome!=null&&parsed.cornersAway!=null)
+         ?{home:parsed.cornersHome,away:parsed.cornersAway}:null,
+        cards:(parsed.cardsHome!=null&&parsed.cardsAway!=null)
+         ?{home:parsed.cardsHome,away:parsed.cardsAway}:null,
+        yellow:parsed.yellowCards,
+        red:parsed.redCards
+       };
+       if(!final||parsed.finished){
+        for(const field of supplementalStats){
+         const pair=fmValues[field];
+         if(!pair||pair.home==null||pair.away==null)continue;
+         const current=entry.values[field]??{};
+         if(current.home==null)current.home=pair.home;
+         if(current.away==null)current.away=pair.away;
+         entry.values[field]=current;
+         if(!entry.sources[field])entry.sources[field]='fotmob';
+        }
+        if(final&&parsed.finished){
+         observations.push({
+          provider:'fotmob',final:true,values:supplementalSnapshot(fmValues),
+          fixtureId:fm.match.id,observedAt:new Date(now()).toISOString()
+         });
+        }
+       }else if(finalReviewNeeded){
+        unavailable.fotmob='STATS_NOT_FINAL';
+       }
       }
-      if(details&&!primaryGoal?.hasGoals&&parsed.goalEvents.length){
-       const names=displayOnlyFotMobScorers(row,parsed);
-       if(names.length){entry.scorers=names;entry.sources.scorers='fotmob-display-only';}
-      }
-      if (primaryGoal?.hasGoals && parsed.goalEvents.length) {
-       // FotMob names can fill only one-to-one Zizobet scorer slots.
-       // Missing or conflicting goals are never imported as primary events.
-       // Match identity into persistent primary slots, never an unverified UI-only guess.
-       // Persist an actor label only when it matches ONE confirmed primary
-       // goal and primary facts explicitly rule out an own goal.
-       try{await enrichFotMobScorerNames(Number(id),primaryFacts,parsed.goalEvents,{execute:runQuery});}
-       catch(error){console.warn('[fotmob scorer enrichment]',Number(id),String(error?.message??error));}
-       await refreshActors();
-      }
-      const fmValues = {
-       possession: parsed.statistics.possession,
-       shots: parsed.statistics.shots,
-       shotsOnTarget: parsed.statistics.shotsOnTarget,
-       fouls: parsed.statistics.fouls,
-       corners: (parsed.cornersHome != null && parsed.cornersAway != null) ? { home: parsed.cornersHome, away: parsed.cornersAway } : null,
-       cards: (parsed.cardsHome != null && parsed.cardsAway != null) ? {home:parsed.cardsHome,away:parsed.cardsAway} : null,
-       yellow: parsed.yellowCards,
-       red: parsed.redCards
-      };
-      if(!final||parsed.finished){
-      for (const field of supplementalStats) {
-       const pair = fmValues[field];
-       if (!pair || pair.home == null || pair.away == null) continue;
-       const current = entry.values[field] ?? {};
-       if (current.home == null) current.home = pair.home;
-       if (current.away == null) current.away = pair.away;
-       entry.values[field] = current;
-       if (!entry.sources[field]) entry.sources[field] = 'fotmob';
-      }
-      if (final && parsed.finished) {
-       observations.push({
-         provider: 'fotmob',
-         final: true,
-         values: supplementalSnapshot(fmValues),
-         fixtureId: fm.match.id,
-         observedAt: new Date(now()).toISOString()
-       });
-      } else if(finalReviewNeeded)unavailable.fotmob='STATS_NOT_FINAL';
-     } else if(finalReviewNeeded)unavailable.fotmob=fotMobTransportStatus().lastError??'FOTMOB_DETAILS_UNAVAILABLE';
-    } catch(error) {
-      if(finalReviewNeeded)unavailable.fotmob='FOTMOB_ENRICHMENT_ERROR';
-      health.providers.fotmob={...health.providers.fotmob,
-       lastError:'FOTMOB_ENRICHMENT_ERROR'};
-      console.warn('[fotmob] verified fixture enrichment failed:',String(error?.message??error));
+     }
+    }catch(error){
+     if(finalReviewNeeded)unavailable.fotmob='FOTMOB_ENRICHMENT_ERROR';
+     health.providers.fotmob={...health.providers.fotmob,lastError:'FOTMOB_ENRICHMENT_ERROR'};
+     console.warn('[fotmob] verified fixture enrichment failed:',String(error?.message??error));
     }
    }
    // Identity rotation: FotMob first (above), then a confirmed AiScore mapping,
