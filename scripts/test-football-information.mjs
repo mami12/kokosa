@@ -146,7 +146,7 @@ const noMarket=await inspectFootballInformation(101,{
 });
 assert.equal(noMarket.status,'NO_SUPPLEMENTARY_NEEDS');
 let hit=0;
-const disabled=createFootballInformationCollector({env:{},runQuery:async()=>{throw Error('No DB request when disabled');}});
+const disabled=createFootballInformationCollector({env:{AISCORE_INFO_ENABLED:'false'},runQuery:async()=>{throw Error('No DB request when disabled');}});
 assert.equal((await disabled.tick()).enabled,false);
 const enabled=createFootballInformationCollector({
  env:{AISCORE_INFO_ENABLED:'true'},now:()=>Date.parse('2026-11-06T16:30:00Z'),
