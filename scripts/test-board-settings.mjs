@@ -22,6 +22,18 @@ store.clear();console.log('PASS board policy: canonical order, main leagues reta
 for(const [country,name]of [['portugal','Primeira Liga'],['portugal','Segunda Liga'],['portugal','Liga 3']])assert.equal(competitionPriority(row(900,country,name)).protected,true);
 for(const [country,name]of [['japan','J1 League'],['brazil','Serie A'],['asia','AFC Champions League'],['world','FIFA World Cup'],['italy','Coppa Italia']])assert.equal(competitionPriority(row(901,country,name)).protected,false);
 assert.equal(competitionPriority(row(902,'europe','UEFA Champions League')).protected,true);
+assert.equal(competitionPriority(row(903,'international-clubs','Champions League')).priority,1,
+ 'Champions League keeps top prematch priority even when Zizobet labels its category international-clubs');
+const championsFirst=selectPublishedMatches([row(904,'england','Championship'),row(903,'international-clubs','Champions League')],{prematchLimit:1});
+assert.equal(championsFirst.rows[0].match_id,903,'the configured prematch limit is applied after continental competition priority');
+const dateOrdered=selectPublishedMatches([
+ {...row(905,'england','Championship'),start_at:'2026-11-25T19:00:00+01:00'},
+ {...row(906,'international-clubs','Champions League'),start_at:'2026-11-26T10:00:00+01:00'},
+ {...row(907,'international-clubs','Champions League'),start_at:'2026-11-25T21:00:00+01:00'},
+ {...row(908,'england','Premier League'),start_at:'2026-11-25T20:00:00+01:00'},
+],{prematchLimit:0});
+assert.deepEqual(dateOrdered.rows.map(item=>item.match_id),[907,908,905,906],
+ 'server sorts by Tirana date first, then competition priority within each date');
 const capped=selectPublishedMatches([row(1,'england','Premier League'),row(2,'japan','J1 League'),row(3,'brazil','Serie A')],{prematchLimit:2});assert.equal(capped.rows.length,2);assert.equal(capped.rows.filter(r=>r.protected_prematch).length,1);
 const plan={prematch:[1,2,3],prematchSoon:[1,3],prematchLater:[2],unpriced:[3],live:[99],boosted:[3],pendingResults:[3]};const filtered=filterBoardSubscriptionPlan(plan,capped.rows);assert.equal(filtered.prematch.length,2);assert.deepEqual(filtered.live,[99]);assert.deepEqual(filtered.boosted,[3]);assert.deepEqual(filtered.pendingResults,[3]);assert.equal(plan.prematch.length,3);
 console.log('PASS explicit administrator limit, preserved source fixtures, priority ordering and independent pending-result subscriptions');

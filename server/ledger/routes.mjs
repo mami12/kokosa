@@ -324,15 +324,28 @@ ledgerRouter.put('/admin/market-catalog/scopes',requireLedger,requireAuth,requir
 ledgerRouter.get('/admin/market-catalog/matches',requireLedger,requireAuth,requireAdmin,guard(async(req,res)=>{
  const family=String(req.query.family??'').trim();
  if(!family)return res.status(400).json({message:'Zgjidh nje treg.'});
- const selected=await publishedBoard();
- const rows=filterPublishedRows(selected.rows,{});
+ const nativeScope=family.startsWith('zizobet:prematch:')?'PREMATCH':family.startsWith('zizobet:live:')?'LIVE':null;
+ // Admin inspection is not limited by the public board quota. Show every active
+ // fixture carrying this native/family market, including PREMATCH fixtures that
+ // are not currently within the public display cap.
+ const rows=(await getMatchRows({catalog:true})).filter(row=>
+  !isSyntheticFootballMatch(row)&&!isMatchHidden(row)&&
+  !/^(?:ended|finished|cancelled|closed|uncovered)$/i.test(String(row.status??''))&&
+  !/^(?:ft|finished|ended|full.?time)$/i.test(String(row.feed_status??''))&&
+  (!nativeScope||String(row.service??'').toUpperCase()===nativeScope));
  const serialized=await withOdds(rows,Date.now(),{board:false});
  const matches=[];
  for(const row of serialized){
-  const match=toClientMatch(row);
-  const hits=(match.markets??[]).filter(m=>marketFamily(m)?.key===family||nativeMarketPolicyKeys(m,match).includes(family));
+  // Use the provider-shaped offers here, not the public client projection.
+  // Admin must still be able to inspect source fixtures for a market it has
+  // disabled; toClientMatch intentionally removes disabled offers for players.
+  const hits=(row.markets??[]).filter(m=>
+   marketFamily(m)?.key===family||nativeMarketPolicyKeys(m,{service:row.service}).includes(family));
   if(!hits.length)continue;
-  matches.push({id:match.id,home:match.home?.name??'',away:match.away?.name??'',league:match.tournament?.name??'',country:match.tournament?.category?.name??'',startTime:match.startTime??null,live:match.status==='LIVE',markets:hits.length,outcomes:hits.reduce((n,m)=>n+(m.outcomes??[]).length,0)});
+  matches.push({id:String(row.id),home:row.home??'',away:row.away??'',
+   league:row.tournament?.name??'',country:row.league?.name??'',
+   startTime:row.startAt??null,live:row.live===true||String(row.service).toUpperCase()==='LIVE',
+   markets:hits.length,outcomes:hits.reduce((n,m)=>n+(m.outcomes??[]).length,0)});
  }
  matches.sort((a,b)=>Number(b.live)-Number(a.live)||String(a.startTime??'').localeCompare(String(b.startTime??'')));
  res.json({family,count:matches.length,matches});
