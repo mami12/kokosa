@@ -8,12 +8,12 @@ const kickoffDay = (value: unknown) => {
   }).formatToParts(date).map(part => [part.type, part.value]));
   return Number(parts.year + parts.month + parts.day);
 };
-/** Keep all consumers aligned with the server: Tirana kickoff date, competition priority, then stable competition listing order. */
+/** LIVE first; PREMATCH competition priority globally, then Tirana kickoff date within each priority. */
 export function compareMatchDisplay(a: Match, b: Match): number {
   const aLive=a.status==='LIVE', bLive=b.status==='LIVE';
   return Number(bLive) - Number(aLive)
-    || (!aLive ? kickoffDay(a.startTime) - kickoffDay(b.startTime) : 0)
     || (!aLive ? ordinal(a.listingPriority)-ordinal(b.listingPriority) : 0)
+    || (!aLive ? kickoffDay(a.startTime) - kickoffDay(b.startTime) : 0)
     || ordinal(a.competitionOrder) - ordinal(b.competitionOrder)
     || String(a.tournament?.id ?? a.tournamentId ?? '').localeCompare(String(b.tournament?.id ?? b.tournamentId ?? ''), 'en', { numeric: true })
     || ordinal(a.displayOrder) - ordinal(b.displayOrder)

@@ -47,8 +47,8 @@ const dateOrdered=selectPublishedMatches([
  {...row(907,'international-clubs','Champions League'),start_at:'2026-11-25T21:00:00+01:00'},
  {...row(908,'england','Premier League'),start_at:'2026-11-25T20:00:00+01:00'},
 ],{prematchLimit:0});
-assert.deepEqual(dateOrdered.rows.map(item=>item.match_id),[907,908,905,906],
- 'server sorts by Tirana date first, then competition priority within each date');
+assert.deepEqual(dateOrdered.rows.map(item=>item.match_id),[907,906,908,905],
+ 'server ranks UEFA Champions League globally before domestic leagues, then sorts by Tirana date within each competition priority');
 const capped=selectPublishedMatches([row(1,'england','Premier League'),row(2,'japan','J1 League'),row(3,'brazil','Serie A')],{prematchLimit:2});assert.equal(capped.rows.length,2);assert.equal(capped.rows.filter(r=>r.protected_prematch).length,1);
 const plan={prematch:[1,2,3],prematchSoon:[1,3],prematchLater:[2],unpriced:[3],live:[99],boosted:[3],pendingResults:[3]};const filtered=filterBoardSubscriptionPlan(plan,capped.rows);assert.equal(filtered.prematch.length,2);assert.deepEqual(filtered.live,[99]);assert.deepEqual(filtered.boosted,[3]);assert.deepEqual(filtered.pendingResults,[3]);assert.equal(plan.prematch.length,3);
 console.log('PASS explicit administrator limit, preserved source fixtures, priority ordering and independent pending-result subscriptions');

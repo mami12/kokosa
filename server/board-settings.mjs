@@ -41,8 +41,8 @@ const live=row=>String(row.service??row.status).toUpperCase()==='LIVE';
 function compare(a,b){
  const aLive=live(a),bLive=live(b);
  return Number(bLive)-Number(aLive)
-  ||(!aLive?kickoffDay(a.start_at)-kickoffDay(b.start_at):0)
   ||(!aLive?a.listing_priority-b.listing_priority:0)
+  ||(!aLive?kickoffDay(a.start_at)-kickoffDay(b.start_at):0)
   ||time(a.competition_first_seen_at??a.first_seen_at)-time(b.competition_first_seen_at??b.first_seen_at)
   ||String(a.tournament_id??'').localeCompare(String(b.tournament_id??''),'en',{numeric:true})
   ||time(aLive?a.live_first_seen_at:a.prematch_first_seen_at??a.first_seen_at)-time(bLive?b.live_first_seen_at:b.prematch_first_seen_at??b.first_seen_at)

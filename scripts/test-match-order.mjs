@@ -43,8 +43,8 @@ try {
     {id:'today-premier',status:'PREMATCH',startTime:'2026-11-25T20:00:00+01:00',listingPriority:10,competitionOrder:4,displayOrder:4,tournamentId:4},
   ];
   assert.deepEqual(scheduled.sort(compareMatchDisplay).map(m=>m.id),
-    ['today-cl','today-premier','today-championship','tomorrow-cl'],
-    'Tirana date groups come first; within the same date Champions League and domestic league priority apply before kickoff');
+    ['today-cl','tomorrow-cl','today-premier','today-championship'],
+    'UEFA Champions League has global PREMATCH priority regardless of kickoff date; date then orders fixtures within each priority');
   const future = Date.now() + 4 * 60000;
   memory.getById(500).score_at = new Date(future); memory.getById(500).home_score = 3; memory.getById(500).away_score = 0;
   memory.expireStale(150, future);
