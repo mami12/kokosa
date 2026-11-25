@@ -83,6 +83,6 @@ try{
  assert.equal(manualAudit.facts.reason,manualOverride.reason);
  const retry=await updatePendingLinesBulk(proposals,{database:pool});
  assert.equal(retry.length,0,'a retry cannot regrade a line or create another audit');
- assert.equal((await db.query('select count(*)::int as count from app_settlement_audit')).rows[0].count,1);
+ assert.equal((await db.query('select count(*)::int as count from app_settlement_audit')).rows[0].count,2,'automatic and manual decisions each retain their own audit row');
 }finally{await db.close();}
 console.log('PASS transactional bulk grading, duplicate prevention, manual override protection, source audit, and safe retries');
