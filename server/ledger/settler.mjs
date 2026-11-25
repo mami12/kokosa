@@ -803,6 +803,17 @@ function gradeFinalAggregateCornerTotal(line,result){
  * Keep those lines pending for more authoritative feed evidence instead of
  * inventing a win/loss or immediately refunding a valid winning proposition.
  */
+/** Only supported aggregate statistic contracts bypass the event-fact grader.
+ * Interval/race/sequence card markets share words with aggregate card totals,
+ * but require their frozen chronological contract instead.
+ */
+export function isAggregateStatisticSettlement(line,result){
+ const statistic=statisticMarketContract(line);
+ return statistic?.supported===true||
+  !!fullTimeAggregateCornerContract(line)||
+  gradeFinalTeamCornerMarket(line,result)!==undefined;
+}
+
 export function hasRequiredSettlementEvidence(line, result) {
   if(String(result?.source??'').toUpperCase()==='FEED'&&settlementStatisticFields(line).length&&!result?._zizobetVerified)return false;
   // A native quote awaiting rule review must never be graded by a
@@ -1917,8 +1928,7 @@ export async function settleMatch(matchId) {
     // Simple full-time corner Over/Under quotes use the final aggregate
     // counters, never a recovered event-timeline contract.
     const aggregateCornerTotal=!!fullTimeAggregateCornerContract(settlementLine);
-    const aggregateStatistic=isStatisticMarket(settlementLine)||aggregateCornerTotal||
-      gradeFinalTeamCornerMarket(settlementLine,result)!==undefined;
+    const aggregateStatistic=isAggregateStatisticSettlement(settlementLine,result);
     if(!aggregateStatistic&&settlementLine.live_contract&&
        SUPPORTED_FACT_KINDS.has(settlementLine.live_contract.kind)){
       status=await gradeStoredEventContract(settlementLine,result,{execute:query});
