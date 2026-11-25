@@ -266,7 +266,7 @@ export function oddsOf(row,quotes,meta,live,open=true,diagnostics){
   if(isAamsLogicMarket(rawName)){note('excludedAamsLogic');continue;}
   // Apply the same explicit exclusion policy before key generation and again
   // after native parameters have expanded the provider's title.
-  if(isExcludedOfferMarket({name:rawName,nativeMarketId:String(id)})){note('excluded');continue;}
+  if(isExcludedOfferMarket({name:rawName,providerId:'ZIZOBET',nativeMarketId:String(id)})){note('excluded');continue;}
   // Keep every quoted total line, including quarter thresholds (0.25/0.75).
   // Unsupported split-settlement contracts are held for review after placement;
   // they must not disappear from the native Zizobet offer at ingestion.
