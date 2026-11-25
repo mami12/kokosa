@@ -1407,6 +1407,69 @@ export async function recalcTicket(ticketId, { database = pool } = {}) {
   }
 }
 
+/** Admin may decide only an unresolved individual line. Manual decisions
+ * are recorded with the exact stored provider facts, then the normal locked
+ * ticket recalculation performs any wallet movement exactly once.
+ */
+export async function manualSettleLine(lineId,status,{actorId,reason,database=pool,recalc=recalcTicket}={}){
+ const selected=String(status??'').toUpperCase();
+ if(!['WON','LOST','PENDING'].includes(selected))throw Object.assign(new Error('Statusi manual duhet të jetë WON, LOST ose PENDING.'),{status:400});
+ if(!actorId)throw Object.assign(new Error('Mungon administratori përgjegjës.'),{status:400});
+ const note=String(reason??'').trim();
+ if(note.length<8||note.length>500)throw Object.assign(new Error('Arsyeja duhet të ketë 8 deri në 500 karaktere.'),{status:400});
+ const client=await database.connect();
+ let ticketId;
+ try{
+  await client.query('begin');
+  const found=await client.query(`select l.*,t.status as ticket_status
+   from app_ticket_line l join app_ticket t on t.id=l.ticket_id
+   where l.id=$1 for update of t,l`,[lineId]);
+  const line=found.rows[0];
+  if(!line)throw Object.assign(new Error('Përzgjedhja nuk u gjet.'),{status:404});
+  if(line.ticket_status!=='PENDING'||line.status!=='PENDING')
+   throw Object.assign(new Error('Mund të vendoset manualisht vetëm një përzgjedhje ende PENDING.'),{status:409});
+  ticketId=line.ticket_id;
+  await client.query(`insert into app_settlement_override(line_id,status,actor_id,reason,source,updated_at)
+   values($1,$2,$3,$4,'ADMIN',now())
+   on conflict(line_id) do update set status=excluded.status,actor_id=excluded.actor_id,
+    reason=excluded.reason,source='ADMIN',updated_at=now()`,
+   [line.id,selected,actorId,note]);
+  if(selected==='PENDING'){
+   await client.query('update app_ticket_line set settlement_reason=$2 where id=$1 and status=$3',
+    [line.id,note,'PENDING']);
+  }else{
+   const result=(await client.query('select * from app_match_result where match_id=$1',[Number(line.match_id)])).rows[0]??null;
+   const review=(await client.query('select payload from app_stat_review where match_id=$1',[Number(line.match_id)])).rows[0]?.payload??null;
+   const facts={
+    decision:'MANUAL',actorId:String(actorId),reason:note,decidedAt:new Date().toISOString(),
+    match:result?{source:result.source??null,homeScore:result.home_score??null,awayScore:result.away_score??null,
+     corners:{home:result.corners_home??null,away:result.corners_away??null},
+     cards:{home:result.cards_home??null,away:result.cards_away??null},
+     statistics:result.statistics??{}}:null,
+    statisticsReview:review,
+    selection:{marketKey:line.market_key??null,marketName:line.market_name,
+     line:line.line??null,outcomeKey:line.outcome_key??null,outcomeName:line.outcome_name,
+     acceptedContract:line.accepted_contract??null,liveContract:line.live_contract??null}
+   };
+   const evidenceHash=createHash('sha256').update(JSON.stringify(facts)).digest('hex');
+   await client.query('update app_ticket_line set status=$2,settlement_reason=null where id=$1 and status=$3',
+    [line.id,selected,'PENDING']);
+   await client.query(`insert into app_settlement_audit
+    (line_id,ticket_id,match_id,status,market_key,market_name,outcome_name,source,reason,facts,evidence_hash)
+    values($1,$2,$3,$4,$5,$6,$7,'ADMIN',$8,$9::jsonb,$10)
+    on conflict(line_id,status,evidence_hash) do nothing`,
+    [line.id,line.ticket_id,line.match_id,selected,line.market_key??null,line.market_name,
+     line.outcome_name??'',note,JSON.stringify(facts),evidenceHash]);
+  }
+  await client.query('commit');
+ }catch(error){
+  await client.query('rollback').catch(()=>{});
+  throw error;
+ }finally{client.release();}
+ const ticket=selected==='PENDING'?null:await recalc(ticketId);
+ return {lineId:String(lineId),ticketId:String(ticketId),status:selected,ticket};
+}
+
 /**
  * A legacy VOID can mean unsupported parsing. Refund only a confirmed
  * two-way full-integer total push, never an unknown market or outcome.
@@ -1550,7 +1613,8 @@ export async function updatePendingLine(lineId,status,ticketId,{database=pool,se
 function settlementAuditForLine(line,result,status){
  const fields=settlementStatisticFields(line),review=result?.statistics_review??{};
  const statistics={};
- const sources=new Set([String(result?.source??'ZIZOBET').toUpperCase()]);
+ const primarySource=String(result?.source??'ZIZOBET').toUpperCase();
+ const sources=new Set([primarySource==='FEED'?'ZIZOBET':primarySource]);
  for(const field of fields){
   const stat=result?.statistics?.[field]??(field==='corners'?{home:result?.corners_home,away:result?.corners_away}:field==='cards'?{home:result?.cards_home,away:result?.cards_away}:null);
   const providerFacts=result?._settlementSources?.[field]??[];
