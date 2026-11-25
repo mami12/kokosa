@@ -6,6 +6,7 @@ import {SUPPLEMENTAL_INCIDENT_SQL,fotMobIncidents,backupIncidents,rawProviderInc
 import {teamStatisticsFromRow,verifiedFinalStatistics} from '../match-statistics.mjs';
 import {compareFinalStatistics,settlementStatisticFields} from '../ledger/settlement-review.mjs';
 import {eventContract,eventSelectionSupported} from '../ledger/event-contract.mjs';
+import {isPlayerOfferMarket} from '../market-policy.mjs';
 import {supportedContract} from '../ledger/event-evidence.mjs';
 import {canonical,uniqueFixture,teamsMatch,goalCapabilities,normalizeBsd,normalizeApiFootball,normalizeSportApi,normalizeWorld,normalizeGoalApi} from './adapters.mjs';
 import {findFotMobFixture,fetchFotMobDetails,parseFotMobPayload,candidateDateStrings,fotMobTransportStatus} from './match-recovery.mjs';
@@ -283,10 +284,13 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    if(final){
     try{
      pendingEventRows=(await runQuery(
-      "select distinct l.live_contract->>'event' as kind,coalesce(l.live_contract->>'cardColor','') as card_color,l.market_name "+
+      "select distinct l.live_contract->>'event' as event,l.live_contract->>'kind' as contract_kind,"+
+      "coalesce(l.live_contract->>'cardColor','') as card_color,l.market_name,l.live_contract "+
       "from app_ticket_line l join app_ticket t on t.id=l.ticket_id "+
       "where l.match_id=$1 and l.status='PENDING' and t.status='PENDING' "+
-      "and l.live_contract->>'event' in ('goal','corner','card')",[Number(id)])).rows;
+      "and l.live_contract->>'event' in ('goal','corner','card')",[Number(id)])).rows
+      .filter(line=>!isPlayerOfferMarket(line)&&!/^player-/i.test(String(line.contract_kind??line.live_contract?.kind??'')))
+      .map(line=>({...line,kind:line.event}));
     }catch(error){
      // Older test/import schemas may not yet contain frozen native contracts.
      // They simply have no native event-timeline fallback candidates.
