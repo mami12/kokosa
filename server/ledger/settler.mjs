@@ -11,6 +11,7 @@
  * corners and cards, those markets can be graded instead of always being voided.
  */
 import { pool, query } from '../db.mjs';
+import {createHash} from 'node:crypto';
 import {isPlayerOfferMarket} from '../market-policy.mjs';
 import {gradeEventLine,needsEvents,gradeClosedCornerWindow,loadEventEvidence} from './event-evidence.mjs';
 import { getMatchById } from '../matches.mjs';
@@ -1517,18 +1518,18 @@ export async function settleVerifiedHalftimes({
   "and exists(select 1 from app_match_snapshot s where s.match_id=h.match_id and s.snapshot->'raw'->>'provider'='ZIZOBET' and s.snapshot->'periods_score'->0->>'t1'=h.half_home_score::text and s.snapshot->'periods_score'->0->>'t2'=h.half_away_score::text)",
   'and not exists(select 1 from app_settlement_override o where o.line_id=l.id)'
  ].join(' '),5000);
- const tickets=new Set();let graded=0,held=0;
+ const proposals=[];let held=0;
  for(const line of rows){
   const status=gradeAtVerifiedHalfTime(line,line);
   if(!status){held++;continue;}
-  const settledOdds=settledOddsFor(line,line,status);
-  if(await update(line.id,status,line.ticket_id,{settledOdds})){graded++;tickets.add(line.ticket_id);}
+  proposals.push({lineId:line.id,ticketId:line.ticket_id,status,
+   settledOdds:settledOddsFor(line,line,status),line,result:line,
+   audit:settlementAuditForLine(line,line,status)});
  }
- const closed=[];
- for(const ticketId of tickets){
-  const result=await recalc(ticketId);
-  if(result)closed.push(result);
- }
+ const changed=await applyLineUpdates(proposals,{update});
+ const tickets=new Set(changed.map(row=>row.ticket_id));
+ const closed=(await mapLimit([...tickets],4,recalc)).filter(Boolean);
+ const graded=changed.length;
  return {examined:rows.length,graded,held,closed};
 }
 
@@ -1542,6 +1543,98 @@ export async function updatePendingLine(lineId,status,ticketId,{database=pool,se
     await client.query('commit');return changed.rowCount;
   }catch(error){await client.query('rollback').catch(()=>{});throw error;}finally{client.release();}
 }
+function settlementAuditForLine(line,result,status){
+ const fields=settlementStatisticFields(line),review=result?.statistics_review??{};
+ const statistics={};
+ const sources=new Set([String(result?.source??'ZIZOBET').toUpperCase()]);
+ for(const field of fields){
+  const stat=result?.statistics?.[field]??(field==='corners'?{home:result?.corners_home,away:result?.corners_away}:field==='cards'?{home:result?.cards_home,away:result?.cards_away}:null);
+  const providerFacts=result?._settlementSources?.[field]??[];
+  for(const item of providerFacts)sources.add(typeof item==='string'?item:String(item?.provider??''));
+  statistics[field]={value:stat??null,sources:providerFacts,
+   consensus:review.consensus?.[field]??null,conflict:review.conflicts?.[field]??null};
+ }
+ const evidence=result?.event_evidence;
+ const facts={
+  status,match:{id:line.match_id,source:result?.source??null,
+   score:{home:result?.home_score??null,away:result?.away_score??null},
+   halfScore:{home:result?.half_home_score??null,away:result?.half_away_score??null},
+   corners:{home:result?.corners_home??null,away:result?.corners_away??null},
+   cards:{home:result?.cards_home??null,away:result?.cards_away??null}},
+  selection:{marketKey:line.market_key,marketName:line.market_name,line:line.line,
+   outcomeKey:line.outcome_key,outcomeName:line.outcome_name,period:line.period??null,
+   acceptedContract:line.accepted_contract??null,liveContract:line.live_contract??null},
+  statistics,statisticsReview:{status:review.status??null,checkedAt:review.checkedAt??null,
+   conflicts:Object.fromEntries(fields.filter(field=>review.conflicts?.[field]).map(field=>[field,review.conflicts[field]]))},
+  events:evidence?{source:evidence.source??null,complete:evidence.complete===true,
+   coverage:evidence.coverage??null,eventCount:Array.isArray(evidence.events)?evidence.events.length:null}:null
+ };
+ const source=[...sources].filter(Boolean).join('+')||'ZIZOBET';
+ return {source,reason:'VERIFIED_FACTS_MATCHED_ACCEPTED_MARKET_RULE',facts,
+  evidenceHash:createHash('sha256').update(JSON.stringify(facts)).digest('hex')};
+}
+/** One transaction applies all resolved legs for a match and records their provenance.
+ * Ticket locks are taken in stable order; only still-pending, non-overridden lines move.
+ */
+export async function updatePendingLinesBulk(items,{database=pool}={}){
+ const rows=(items??[]).filter(item=>item&&['WON','LOST','VOID'].includes(item.status)&&item.lineId&&item.ticketId);
+ if(!rows.length)return [];
+ const unique=new Map();for(const item of rows)unique.set(String(item.lineId),item);
+ const batch=[...unique.values()];
+ const ticketIds=[...new Set(batch.map(item=>String(item.ticketId)))].sort();
+ const client=await database.connect();
+ try{
+  await client.query('begin');
+  await client.query("select id from app_ticket where id=any($1::uuid[]) and status='PENDING' order by id for update",[ticketIds]);
+  const changed=await client.query(`update app_ticket_line l
+   set status=x.status,settled_odds=x.settled_odds,settlement_reason=null
+   from jsonb_to_recordset($1::jsonb) as x(id uuid,ticket_id uuid,status text,settled_odds numeric)
+   join app_ticket t on t.id=x.ticket_id and t.status='PENDING'
+   where l.id=x.id and l.ticket_id=x.ticket_id and l.status='PENDING'
+    and x.status in ('WON','LOST','VOID')
+    and not exists(select 1 from app_settlement_override o where o.line_id=l.id)
+   returning l.id,l.ticket_id,l.match_id,l.status`,
+   [JSON.stringify(batch.map(item=>({id:item.lineId,ticket_id:item.ticketId,status:item.status,settled_odds:item.settledOdds??null})))]);
+  if(changed.rows.length){
+   const byId=new Map(batch.map(item=>[String(item.lineId),item]));
+   const auditRows=changed.rows.map(row=>{
+    const item=byId.get(String(row.id)),audit=item.audit??settlementAuditForLine(item.line,item.result,row.status);
+    return {line_id:row.id,ticket_id:row.ticket_id,match_id:row.match_id,status:row.status,
+     market_key:item.line?.market_key??null,market_name:item.line?.market_name??'Unknown market',
+     outcome_name:item.line?.outcome_name??'',source:audit.source,reason:audit.reason,
+     facts:audit.facts,evidence_hash:audit.evidenceHash};
+   });
+   await client.query(`insert into app_settlement_audit
+    (line_id,ticket_id,match_id,status,market_key,market_name,outcome_name,source,reason,facts,evidence_hash)
+    select x.line_id,x.ticket_id,x.match_id,x.status,x.market_key,x.market_name,x.outcome_name,
+     x.source,x.reason,x.facts,x.evidence_hash
+    from jsonb_to_recordset($1::jsonb) as x(
+     line_id uuid,ticket_id uuid,match_id bigint,status text,market_key text,market_name text,
+     outcome_name text,source text,reason text,facts jsonb,evidence_hash text)
+    on conflict(line_id,status,evidence_hash) do nothing`,[JSON.stringify(auditRows)]);
+  }
+  await client.query('commit');
+  return changed.rows;
+ }catch(error){await client.query('rollback').catch(()=>{});throw error;}
+ finally{client.release();}
+}
+async function applyLineUpdates(items,{update=updatePendingLine,database=pool}={}){
+ if(update===updatePendingLine)return updatePendingLinesBulk(items,{database});
+ const changed=[];
+ for(const item of items){
+  if(await update(item.lineId,item.status,item.ticketId,{settledOdds:item.settledOdds??null}))
+   changed.push({id:item.lineId,ticket_id:item.ticketId,match_id:item.line?.match_id,status:item.status});
+ }
+ return changed;
+}
+async function mapLimit(items,limit,fn){
+ const list=[...items],out=new Array(list.length);let next=0;
+ const workers=Array.from({length:Math.min(list.length,Math.max(1,limit))},async()=>{
+  while(true){const index=next++;if(index>=list.length)return;out[index]=await fn(list[index],index);}
+ });
+ await Promise.all(workers);return out;
+}
+
 /** Informational only. Never use these labels as evidence or financial decisions.
  * The codes deliberately describe unproven prerequisites, not a guessed cause.
  */
