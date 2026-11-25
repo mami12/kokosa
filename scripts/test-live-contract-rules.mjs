@@ -86,7 +86,7 @@ assert.equal(gradeLiveContract(w,obs('goal',[],46,46)),'LOST','No goal by elapse
 assert.equal(gradeLiveContract(w,obs('goal',[],43,43)),null,'Do not settle no-event early');
 assert.equal(gradeLiveContract(w,obs('goal',[],46,30)),null,'Missing coverage is pending');
 const normal90Window=parseEventWindow(windowLine('Goal in minutes 76-90','Yes'));
-const lateSecondHalf={type:'goal',minute:92,minuteLabel:'90+2',phase:'2nd half',team:'home'};
+const lateSecondHalf={id:'goal-90-plus-2',type:'goal',minute:92,minuteLabel:'90+2',phase:'2nd half',team:'home'};
 assert.equal(gradeLiveContract(normal90Window,{
  clock:130,counts:{goal:1},events:[lateSecondHalf],coverage:{goalThrough:130}
 }),'WON','90+2 is included in the conventional 76-90 interval');
