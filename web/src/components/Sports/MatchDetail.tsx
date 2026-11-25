@@ -6,7 +6,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Trophy, Sparkles, Flame, Clock, Flag, 
   ChevronDown, ChevronUp, Star, Bell, BellRing, 
-  Search, X, Layers, Layers2
+  Search, X, Layers, Layers2, CreditCard
 } from 'lucide-react';
 import { apiClient } from '../../api/client';
 import { Match, Market } from '../../types';
@@ -32,7 +32,7 @@ import {retainEventPlayerNames} from '../../utils/eventPlayers';
 // classification and localized labels as MarketPanel.
 const CATEGORY_KEY: Record<string, MarketCategory> = {
   Popular: 'main', Goals: 'goals', Mixed: 'mixed', Halves: 'htft',
-  Corners: 'corners', Other: 'other',
+  Corners: 'corners', Cards: 'cards', Other: 'other',
 };
 const getGroupCategory = (market: Market): string => {
   const category = marketCategoryOf(market);
@@ -40,7 +40,7 @@ const getGroupCategory = (market: Market): string => {
 };
 const categoryLabel = (category: string, lang: MarketLanguage): string =>
   marketCategoryLabel(CATEGORY_KEY[category] ?? 'other', lang);
-const CATEGORY_ORDER = ['Popular', 'Goals', 'Mixed', 'Halves', 'Corners', 'Other'];
+const CATEGORY_ORDER = ['Popular', 'Goals', 'Mixed', 'Halves', 'Corners', 'Cards', 'Other'];
 
 const getCategoryIcon = (catId: string) => {
   switch (catId) {
@@ -49,6 +49,7 @@ const getCategoryIcon = (catId: string) => {
     case 'Mixed': return <Layers size={13} className="text-amber-300" />;
     case 'Halves': return <Clock size={13} className="text-purple-400" />;
     case 'Corners': return <Flag size={13} className="text-blue-400" />;
+    case 'Cards': return <CreditCard size={13} className="text-red-400" />;
     default: return <Sparkles size={13} className="text-accent-green" />;
   }
 };
@@ -57,6 +58,7 @@ const getMarketIcon = (category: string, title: string) => {
   const t = title.toLowerCase();
   if (category === 'Mixed') return <Layers size={14} className="text-amber-300 shrink-0" />;
   if (category === 'Corners' || /corner|kënd/i.test(t)) return <Flag size={14} className="text-blue-400 shrink-0" />;
+  if (category === 'Cards') return <CreditCard size={14} className="text-red-400 shrink-0" />;
   if (category === 'Halves' || /half|pjes/i.test(t)) return <Clock size={14} className="text-purple-400 shrink-0" />;
   if (category === 'Goals' || /goal|score|gola/i.test(t)) return <Flame size={14} className="text-orange-400 shrink-0" />;
   return <Trophy size={14} className="text-accent-yellow shrink-0" />;
