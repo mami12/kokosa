@@ -607,42 +607,6 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
   // Missing/stale LIVE counters stay null. Only an unstarted PREMATCH
   // fixture has a known 0-0 baseline.
   const acceptedCounters=acceptedCountersForMatch(match,{at:snapshotAt,unstartedPrematch});
-  return { home: Number(h), away: Number(a), source: 'match-score' };
-      }
-    }
-    const teams = teamStatisticsFromRow(match);
-    if (teams?.home || teams?.away) {
-      if (event === 'corner') {
-        const h = teams?.home?.corners;
-        const a = teams?.away?.corners;
-        if (h != null && a != null && Number.isFinite(Number(h)) && Number.isFinite(Number(a))) {
-          return { home: Number(h), away: Number(a), source: 'match-stats' };
-        }
-      }
-      if (event === 'card') {
-        const hy = teams?.home?.yellow ?? 0, hr = teams?.home?.red ?? 0;
-        const ay = teams?.away?.yellow ?? 0, ar = teams?.away?.red ?? 0;
-        if (teams?.home && teams?.away) {
-          return { home: Number(hy) + Number(hr), away: Number(ay) + Number(ar), source: 'match-stats' };
-        }
-      }
-      if (event === 'foul') {
-        const h = teams?.home?.fouls;
-        const a = teams?.away?.fouls;
-        if (h != null && a != null && Number.isFinite(Number(h)) && Number.isFinite(Number(a))) {
-          return { home: Number(h), away: Number(a), source: 'match-stats' };
-        }
-      }
-    }
-    return null;
-  };
-
-  const acceptedCounters={
-    goal:unstartedPrematch?zero:(extractStatCounters('goal') ?? { home: match.home_score ?? 0, away: match.away_score ?? 0 }),
-    corner:unstartedPrematch?zero:extractStatCounters('corner'),
-    card:unstartedPrematch?zero:extractStatCounters('card'),
-    foul:unstartedPrematch?zero:extractStatCounters('foul')
-  };
   return {
     matchId: String(matchId),
     marketKey: parsed.marketKey,
