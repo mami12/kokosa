@@ -141,7 +141,7 @@ try{
   try{await h.service.tick();}finally{globalThis.fetch=oldFetch;}
   assert.ok(h.calls.length>0,'finished watched fixtures with an aggregate-stat market receive a final statistics check');h.verify();
  }
- // Round-robin starting providers persist across restart; a success stops the chain.
+ // Final aggregate-stat review attempts every configured provider and preserves conflicts instead of choosing a majority.
  {
   const h=await harness({env:{BSD_API_KEY:'test-key',SPORTAPI_API_KEY:'test-key',GOALAPI_API_KEY:'test-key',APIFOOTBALL_API_KEY:'test-key'},rows:[row(101,{feed_status:'FT'})],
    stats:provider=>provider==='worldcup26'?{...totals,home:{...totals.home,corners:4}}:totals});
@@ -151,11 +151,13 @@ try{
   const oldFetch=globalThis.fetch;globalThis.fetch=async()=>new Response('{}',{status:503});
   try{await h.service.tick();}finally{globalThis.fetch=oldFetch;}
   const review=(await database.query('select payload from app_stat_review where match_id=101')).rows[0].payload;
-  assert.deepEqual(new Set(review.attempted),new Set(['bsd']),'Stop after first provider fills missing FT statistics');
-  assert.deepEqual(new Set(review.sources.map(s=>s.provider)),new Set(['primary','bsd']));
-  assert.equal(review.status,'VERIFIED');assert.equal(review.conflicts.corners,undefined,
-   'Foreign corner counts are ignored for Zizobet settlement');
-  assert.equal(review.consensus.fouls.home,7);
+  const configured=new Set(['bsd','worldcup26','sportapi','goalapi','apifootball']);
+  assert.deepEqual(new Set(review.attempted),configured,'Every configured final-stat provider gets an independent attempt');
+  assert.ok(review.sources.some(source=>source.provider==='ZIZOBET'));
+  assert.ok(review.sources.some(source=>source.provider==='bsd'));
+  assert.equal(review.status,'MANUAL_REVIEW');
+  assert.ok(review.conflicts.corners,'Conflicting complete final corner counts must remain unresolved');
+  assert.equal(review.consensus.fouls.home,7,'Uncontested statistics can still reach consensus');
   const count=h.calls.length;await h.service.tick();assert.equal(h.calls.length,count,'final review is cached and shared across viewers');h.verify();
  }
  {
