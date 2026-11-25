@@ -30,7 +30,10 @@ export function extractConfirmedHalfTimeCandidate(row){
  // A half-time scoreboard is financial evidence only when it came from Zizobet.
  if(String(row.raw?.provider??'').toUpperCase()!=='ZIZOBET')return null;
  const phase=phaseOf(row.feed_status);
- if(!phase)return null;
+ // Only the actual HT transition is a safe cutoff for live bet eligibility.
+ // A later 2H/FT snapshot may contain the old half score, but cannot prove
+ // whether a wager was placed before or after that period had already ended.
+ if(phase!=='HT')return null;
  let periods=row.periods_score;
  if(typeof periods==='string'){try{periods=JSON.parse(periods);}catch{return null;}}
  if(!Array.isArray(periods)||periods.length===0)return null;
