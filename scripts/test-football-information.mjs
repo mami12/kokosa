@@ -22,7 +22,7 @@ const corners=marketInformationNeeds([{market_name:'Race to 7 Corners'},
  {market_name:'Race to 6 Goals'},{market_name:'Goal in minutes 10-20'},
  {market_name:'Total Fouls'},{market_name:'Red Cards'},{market_name:'Shots on Target'}]);
 assert.deepEqual(corners,['red'],'Only supported full-match card/corner aggregates qualify; fouls and shots are excluded');
-assert.deepEqual(marketInformationNeeds([{market_name:'Total Corners'},{market_name:'Total Cards'},{market_name:'Yellow Cards'}]),['cards','corners','yellow']);
+assert.deepEqual(marketInformationNeeds([{market_name:'Total Corners'},{market_name:'Total Cards'},{market_name:'Yellow Cards'}]),['corners','cards','yellow']);
 assert.deepEqual(marketInformationNeeds([{market_name:'Full Time Result'}]),[]);
 const map={aiscore_id:'j374oi0xz04sgqo',thesports01_id:'4578950',mapping_status:'ADMIN_SUPPLIED_UNVERIFIED'};
 assert.deepEqual(selectedInformationEndpoints(map,[]),[]);
