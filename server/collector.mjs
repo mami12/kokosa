@@ -354,7 +354,7 @@ export function buildMarkets(oddsRows,{includeRemoved=false}={}) {
 
   // Hide handicap and early payout offers from every public market view, never from stored
   // provider odds or historical ticket settlement.
-  visible = visible.filter((m) => !isExcludedOfferMarket({ name: m.name, marketType: m.column, nativeMarketId: String(m.key).split('@')[0].replace(/^zz/, '') }));
+  visible = visible.filter((m) => !isExcludedOfferMarket({ name: m.name, key: m.key, marketType: m.column, nativeMarketId: String(m.key).split('@')[0].replace(/^zz/, '') }));
 
   visible.sort(
     (a, b) =>
