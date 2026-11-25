@@ -40,46 +40,67 @@ const resultStatistics=result=>{
  if(typeof value==='string'){try{value=JSON.parse(value);}catch{value={};}}
  return value??{};
 };
+const primaryValues=(result,field)=>{
+ const stats=resultStatistics(result),raw=field==='corners'?
+  {home:result?.corners_home??stats.corners?.home,away:result?.corners_away??stats.corners?.away}:
+  field==='cards'?
+  {home:result?.cards_home??stats.cards?.home,away:result?.cards_away??stats.cards?.away}:
+  stats[field]??{};
+ return {home:valid(raw.home)?Number(raw.home):null,away:valid(raw.away)?Number(raw.away):null};
+};
 const primaryPair=(result,field)=>{
- const stats=resultStatistics(result);
- if(field==='corners')return pair({home:result?.corners_home??stats.corners?.home,away:result?.corners_away??stats.corners?.away});
- if(field==='cards')return pair({home:result?.cards_home??stats.cards?.home,away:result?.cards_away??stats.cards?.away});
- return pair(stats[field]);
+ const values=primaryValues(result,field);
+ return values.home===null||values.away===null?null:values;
 };
 const hasAnyPrimary=(result,field)=>{
- const stats=resultStatistics(result);
- if(field==='corners')return result?.corners_home!=null||result?.corners_away!=null||stats.corners?.home!=null||stats.corners?.away!=null;
- if(field==='cards')return result?.cards_home!=null||result?.cards_away!=null||stats.cards?.home!=null||stats.cards?.away!=null;
- return stats[field]?.home!=null||stats[field]?.away!=null;
+ const values=primaryValues(result,field);
+ return values.home!==null||values.away!==null;
+};
+const reviewCandidate=(review,field)=>{
+ let candidate=pair(review?.consensus?.[field]),providers=[];
+ providers=(review?.sources??[]).filter(source=>source.final===true&&same(pair(source.values?.[field]),candidate))
+  .map(source=>({provider:source.provider,observedAt:source.observedAt??null,fixtureId:source.fixtureId??null}));
+ if(!candidate&&field==='cards'){
+  const yellow=pair(review?.consensus?.yellow),red=pair(review?.consensus?.red);
+  const y=(review?.sources??[]).filter(source=>source.final===true&&same(pair(source.values?.yellow),yellow)).map(source=>source.provider);
+  const r=(review?.sources??[]).filter(source=>source.final===true&&same(pair(source.values?.red),red)).map(source=>source.provider);
+  const shared=y.filter(provider=>r.includes(provider));
+  if(yellow&&red&&shared.length){
+   candidate={home:yellow.home+red.home,away:yellow.away+red.away};
+   providers=shared.map(provider=>({provider,observedAt:review.checkedAt??null,fixtureId:null}));
+  }
+ }
+ return {candidate,providers};
 };
 /** Attach only missing secondary consensus facts to a copy of the primary result.
- * Never overwrite either side of a partial primary value or a conflicting field.
+ * A partial primary pair may be completed only when the secondary source agrees
+ * with every side already known. The original score/source are never replaced.
  */
 export function resolveSettlementStatistics(result){
  if(!result||typeof result!=='object')return result;
- const review=result.statistics_review;
- if(!review||typeof review!=='object')return result;
+ const review=result.statistics_review&&typeof result.statistics_review==='object'?result.statistics_review:null;
  const statistics={...resultStatistics(result)},resolved={...(result._settlementSources??{})};
  const output={...result,statistics};
  for(const field of REVIEW_FIELDS){
-  const primary=primaryPair(result,field);
-  if(primary){
-   if(field==='cards')statistics.cards=primary;
-   if(field==='corners')statistics.corners=primary;
-   resolved[field]=[String(result.source??'ZIZOBET').toUpperCase()];continue;
+  let primary=primaryValues(result,field);
+  // Full-time total cards can be reconstructed only from both verified Zizobet
+  // color counts; an aggregate-only count cannot identify yellow vs red.
+  if(field==='cards'&&primary.home===null&&primary.away===null){
+   const yellow=primaryPair(result,'yellow'),red=primaryPair(result,'red');
+   if(yellow&&red)primary={home:yellow.home+red.home,away:yellow.away+red.away};
   }
-  if(hasAnyPrimary(result,field))continue;
-  let candidate=pair(review.consensus?.[field]),providers=[];
-  providers=(review.sources??[]).filter(source=>source.final===true&&same(pair(source.values?.[field]),candidate))
-   .map(source=>({provider:source.provider,observedAt:source.observedAt??null,fixtureId:source.fixtureId??null}));
-  if(!candidate&&field==='cards'){
-   const yellow=pair(review.consensus?.yellow),red=pair(review.consensus?.red);
-   const yProviders=(review.sources??[]).filter(source=>source.final===true&&same(pair(source.values?.yellow),yellow)).map(source=>source.provider);
-   const rProviders=(review.sources??[]).filter(source=>source.final===true&&same(pair(source.values?.red),red)).map(source=>source.provider);
-   const shared=yProviders.filter(provider=>rProviders.includes(provider));
-   if(yellow&&red&&shared.length){candidate={home:yellow.home+red.home,away:yellow.away+red.away};providers=shared.map(provider=>({provider,observedAt:review.checkedAt??null,fixtureId:null}));}
+  if(primary.home!==null&&primary.away!==null){
+   if(field==='corners'){output.corners_home=primary.home;output.corners_away=primary.away;statistics.corners=primary;}
+   else if(field==='cards'){output.cards_home=primary.home;output.cards_away=primary.away;statistics.cards=primary;}
+   else statistics[field]=primary;
+   const source=String(result.source??'ZIZOBET').toUpperCase();
+   resolved[field]=[source==='FEED'?'ZIZOBET':source];continue;
   }
-  if(!candidate||review.conflicts?.[field]||!providers.length)continue;
+  if(!review||review.conflicts?.[field])continue;
+  const {candidate,providers}=reviewCandidate(review,field);
+  if(!candidate||!providers.length)continue;
+  if((primary.home!==null&&primary.home!==candidate.home)||
+     (primary.away!==null&&primary.away!==candidate.away))continue;
   if(field==='corners'){output.corners_home=candidate.home;output.corners_away=candidate.away;statistics.corners=candidate;}
   else if(field==='cards'){output.cards_home=candidate.home;output.cards_away=candidate.away;statistics.cards=candidate;}
   else statistics[field]=candidate;
@@ -91,12 +112,22 @@ export function resolveSettlementStatistics(result){
 export function statisticsNeedReview(line,result){
  const fields=settlementStatisticFields(line);if(!fields.length)return false;
  const review=result?.statistics_review;
- if(fields.some(field=>review?.conflicts?.[field]))return true;
  for(const field of fields){
-  if(primaryPair(result,field))continue;
-  if(hasAnyPrimary(result,field))return true;
+  if(review?.conflicts?.[field])return true;
+  let primary=primaryValues(result,field);
+  if(field==='cards'&&primary.home===null&&primary.away===null){
+   const yellow=primaryPair(result,'yellow'),red=primaryPair(result,'red');
+   if(yellow&&red)primary={home:yellow.home+red.home,away:yellow.away+red.away};
+  }
+  if(primary.home!==null&&primary.away!==null)continue;
+  const {candidate}=reviewCandidate(review,field);
+  if(primary.home!==null||primary.away!==null){
+   if(!candidate||(primary.home!==null&&primary.home!==candidate.home)||
+      (primary.away!==null&&primary.away!==candidate.away))return true;
+   continue;
+  }
   if(result?.statistics_review_pending&&!review)return true;
-  if(review&&(!review.complete||!pair(review.consensus?.[field])))return true;
+  if(review&&(!review.complete||!candidate))return true;
  }
  return false;
 }
