@@ -33,6 +33,16 @@ assert.deepEqual(interval,{
  version:1,kind:'nth-time',event:'goal',target:2,choice:'range',from:50,to:130
 });
 
+const totalCardsContract=liveContract({market_name:'Total Cards',outcome_name:'Over',line:'2.5'});
+assert.deepEqual(totalCardsContract,{version:1,kind:'over',event:'card',threshold:2.5},
+ 'the native Total Cards offer must retain a Zizobet event-settlement contract');
+const yellowCardsContract=liveContract({market_name:'Total Yellow Cards',outcome_name:'Over',line:'0.5'});
+assert.equal(yellowCardsContract?.event,'card');
+assert.equal(yellowCardsContract?.cardColor,'yellow');
+const redCardsContract=liveContract({market_name:'Total Red Cards',outcome_name:'Over',line:'0.5'});
+assert.equal(redCardsContract?.event,'card');
+assert.equal(redCardsContract?.cardColor,'red');
+
 // At half-time, the first goal exists but goal #2 has not happened. The 50+
 // interval is still ahead, so a half-time snapshot cannot mark it LOST.
 const observed=new Date('2026-11-16T19:00:00.000Z');
@@ -258,6 +268,7 @@ const nativeCardRows=buildMarkets([{
  line:'2.5',outcome_key:'over',outcome_name:'Over',price:1.9,suspended:false
 }]);
 assert.equal(nativeCardRows.length,1,'native Zizobet card markets must reach the match detail catalogue');
+assert.equal(nativeCardRows[0].column,'cards','the Zizobet card quote must be categorized as Cards');
 const foreignCardRows=buildMarkets([{
  match_id:123,market_key:'yb18639@e30',market_name:'Total Cards',
  line:'2.5',outcome_key:'over',outcome_name:'Over',price:1.9,suspended:false
