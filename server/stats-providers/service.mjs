@@ -276,11 +276,20 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    if(result)final=true;
    const pendingMarkets=final?(await runQuery("select distinct l.market_name from app_ticket_line l join app_ticket t on t.id=l.ticket_id where l.match_id=$1 and l.status='PENDING' and t.status='PENDING'",[Number(id)])).rows:[];
    const settlementFields=[...new Set(pendingMarkets.flatMap(line=>settlementStatisticFields(line)))];
-   const pendingEventRows=final?(await runQuery(
-    "select distinct l.live_contract->>'event' as kind,coalesce(l.live_contract->>'cardColor','') as card_color,l.market_name "+
-    "from app_ticket_line l join app_ticket t on t.id=l.ticket_id "+
-    "where l.match_id=$1 and l.status='PENDING' and t.status='PENDING' "+
-    "and l.live_contract->>'event' in ('corner','card')",[Number(id)])).rows:[];
+   let pendingEventRows=[];
+   if(final){
+    try{
+     pendingEventRows=(await runQuery(
+      "select distinct l.live_contract->>'event' as kind,coalesce(l.live_contract->>'cardColor','') as card_color,l.market_name "+
+      "from app_ticket_line l join app_ticket t on t.id=l.ticket_id "+
+      "where l.match_id=$1 and l.status='PENDING' and t.status='PENDING' "+
+      "and l.live_contract->>'event' in ('corner','card')",[Number(id)])).rows;
+    }catch(error){
+     // Older test/import schemas may not yet contain frozen native contracts.
+     // They simply have no native event-timeline fallback candidates.
+     if(String(error?.code??'')!=='42703')throw error;
+    }
+   }
    const pendingEventKinds=[...new Set(pendingEventRows.map(row=>String(row.kind)))];
    const statsPayload=typeof result?.statistics==='string'?(()=>{try{return JSON.parse(result.statistics);}catch{return {};}})():result?.statistics??{};
    const statReviewRow=pendingEventKinds.length?(await runQuery(
