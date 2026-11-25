@@ -110,9 +110,12 @@ try{
   await h.service.tick();assert.equal(h.calls.length,0);h.verify();
  }
  {
-  const h=await harness();await h.bet(101);
+  const h=await harness({rows:[row(101,{feed_status:'FT'})]});await h.bet(101);
+  await database.query("update app_ticket_line set market_name='Total Corners Over/Under' where match_id=101");
   await database.query('insert into app_match_result values(101,0,0)');
-  await h.service.tick();assert.ok(h.calls.length>0,'an archived FT result starts final verification even when the catalog lags');h.verify();
+  const oldFetch=globalThis.fetch;globalThis.fetch=async()=>new Response('{}',{status:503});
+  try{await h.service.tick();}finally{globalThis.fetch=oldFetch;}
+  assert.ok(h.calls.length>0,'a pending aggregate-stat market starts final verification even when the catalog lags');h.verify();
  }
  // Shared 10-minute schedule works without viewers, through restart and without duplicate tickets.
  {
