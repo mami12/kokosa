@@ -279,6 +279,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    // A finished match should trigger secondary requests only for facts used by its pending markets.
    const requiredForMatch=[...new Set([...(final?[]:requiredStats),...settlementFields])];
    const matchStatsReady=entry=>statsReady(entry,requiredForMatch);
+   const finalReviewNeeded=final&&settlementFields.length>0;
    await init();const old=cached??await read('display:'+id);
    const requiredKey=[...requiredForMatch].sort().join('|');
    const cachedKey=[...(old?.settlementFields??[])].sort().join('|');
@@ -349,13 +350,14 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    // required statistics. FT independent audit remains unchanged.
    // At FT request only MISSING shots/fouls; the primary archive is authoritative.
    // their goals, corners or cards into the PRIMARY settlement ledger.
-   for(const provider of (!matchStatsReady(entry)?await providerOrder('statistics'):[])){
-    if(matchStatsReady(entry))break;
+   const statisticsProviders=finalReviewNeeded||!matchStatsReady(entry)?await providerOrder('statistics'):[];
+   for(const provider of statisticsProviders){
+    if(!final&&matchStatsReady(entry))break;
     if(specs[provider].env&&!env[specs[provider].env])continue;
     if(final)attempted.push(provider);
     try{
      const m=mapping[provider]??await discover(provider,row);if(!m){if(final)unavailable[provider]='STATS_NO_FIXTURE';continue;}mapping[provider]=m;
-     if(!matchStatsReady(entry)){
+     if(final||!matchStatsReady(entry)){
       try{
        const path=provider==='bsd'?'/events/'+m.id+'/stats/':provider==='goalapi'?'/fixtures/'+m.id+'/statistics':provider==='sportapi'?'/fixtures/'+m.id+'/stats':provider==='apifootball'?'/fixtures/statistics?fixture='+m.id:'/get/soccer/'+m.league+'/scoreboard?dates='+String(m.start).slice(0,10).replaceAll('-','');
        const payload=await api(provider,path,final?0:dataTtl),values=displayTeamStatistics(provider,payload,m);
@@ -383,19 +385,21 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
        }
       }catch(e){unavailable[provider]=/^STATS_[A-Z_0-9]+$/.test(e.message)?e.message:'STATS_UNAVAILABLE';health.providers[provider]={...(health.providers[provider]??{}),lastError:unavailable[provider]};}
      }
-     if(matchStatsReady(entry))break;
+     if(!final&&matchStatsReady(entry))break;
     }catch(e){unavailable[provider]=/^STATS_[A-Z_0-9]+$/.test(e.message)?e.message:'STATS_UNAVAILABLE';health.providers[provider]={...(health.providers[provider]??{}),lastError:unavailable[provider]};}
    }
    // If the primary score has goals but the SQL event timeline is missing,
    // a detail viewer still needs an advisory FotMob scorer lookup.
    const missingGoalActors=needsFotMobScorerLookup(row,primaryGoal);
-   if (missingGoalActors || needsAnyActors() || !matchStatsReady(entry)) {
+   if (missingGoalActors || needsAnyActors() || !matchStatsReady(entry) || finalReviewNeeded) {
+    if(finalReviewNeeded)attempted.push('fotmob');
     try {
      const targetDate = row.start_at || row.startAt || new Date().toISOString();
      const dates = candidateDateStrings(targetDate);
      const fm = await findFotMobFixture(row.home, row.away, dates,
        row.start_at??row.startAt);
      if (!fm?.match) {
+      if(finalReviewNeeded)unavailable.fotmob=fotMobTransportStatus().lastError??'FOTMOB_FIXTURE_NOT_UNIQUELY_MATCHED';
       // An unmatched fixture is a real integration status, not "FotMob has
       // no data". Keep transport failures distinct from name/kickoff ambiguity.
       health.providers.fotmob={...health.providers.fotmob,
@@ -408,6 +412,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
        ...(details?{lastSuccessAt:new Date(now()).toISOString()}:{})};
       const parsed = parseFotMobPayload(fm.match, details);
       if(details){
+       if(finalReviewNeeded&&!parsed.finished)unavailable.fotmob='STATS_NOT_FINAL';
        try{
         const incidents=fotMobIncidents(details);
         const eventList=details?.content?.matchFacts?.events?.events;
@@ -463,9 +468,10 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
          observedAt: new Date(now()).toISOString()
        });
       }
-      }
+      } else if(finalReviewNeeded)unavailable.fotmob=fotMobTransportStatus().lastError??'FOTMOB_DETAILS_UNAVAILABLE';
      }
     } catch(error) {
+      if(finalReviewNeeded)unavailable.fotmob='FOTMOB_ENRICHMENT_ERROR';
       health.providers.fotmob={...health.providers.fotmob,
        lastError:'FOTMOB_ENRICHMENT_ERROR'};
       console.warn('[fotmob] verified fixture enrichment failed:',String(error?.message??error));
@@ -523,7 +529,8 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    }
    entry.settlementFields=requiredForMatch;
    const finalRetryMs=Math.max(15000,Number(env.STATS_FINAL_RETRY_MS)||60000);
-   entry.next=now()+(final&&!matchStatsReady(entry)?Math.min(localTtl,finalRetryMs):localTtl);
+   const finalReviewRetry=final&&(!matchStatsReady(entry)||Object.keys(unavailable).length>0);
+   entry.next=now()+(finalReviewRetry?Math.min(localTtl,finalRetryMs):localTtl);
    entry.at=now();entry.mapping=mapping;
    await write('display:'+id,entry);displayCache.set(id,entry);if(displayCache.size>3000)displayCache.delete(displayCache.keys().next().value);
   })().finally(()=>{displayFlights.delete(id);const next=displayWaiters.shift();if(next)next();else displayActive--;});displayFlights.set(id,flight);return flight;
