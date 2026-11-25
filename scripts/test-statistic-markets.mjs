@@ -105,6 +105,29 @@ assert.equal(statisticMarketContract(totalYellow).stat,'yellow');
 assert.equal(statisticMarketContract(totalRed).stat,'red');
 assert.equal(hasRequiredSettlementEvidence(totalCorners,fallbackResult),true);
 assert.equal(gradeLine(totalCorners,fallbackResult),'WON', 'the existing total-corner parser uses the resolved final Zizobet/FotMob counters');
+const authoritativeCornerResult={
+ source:'ZIZOBET',corners_home:13,corners_away:0,
+ statistics:{corners:{home:13,away:0}},
+ // A secondary-feed disagreement must not veto the primary final counters.
+ statistics_review:{conflicts:{corners:{
+  ZIZOBET:{home:13,away:0},fotmob:{home:12,away:0}
+ }}}
+};
+const settledCornerOver={
+ market_name:'Total corners (12.5)',line:'12.5',outcome_key:'over',
+ outcome_name:'Over',period:0,
+ // Legacy event contracts must not force this aggregate total through timeline confirmation.
+ live_contract:{kind:'window-total',event:'corner',choice:'over',threshold:12.5}
+};
+assert.equal(hasRequiredSettlementEvidence(settledCornerOver,authoritativeCornerResult),true,
+ 'a completed Zizobet match plus its final aggregate corner count is sufficient');
+assert.equal(gradeLine(settledCornerOver,authoritativeCornerResult),'WON',
+ '13 total corners wins Over 12.5 even when event timeline confirmation is absent or secondary stats conflict');
+assert.equal(gradeLine({...settledCornerOver,outcome_key:'under',outcome_name:'Under'},authoritativeCornerResult),'LOST');
+assert.equal(gradeLine({...settledCornerOver,period:1},authoritativeCornerResult),null,
+ 'first-half corner markets cannot use full-time totals');
+assert.equal(gradeLine({...settledCornerOver,market_name:'Next Corner',line:'',live_contract:null},authoritativeCornerResult),null,
+ 'next-corner markets still require event evidence');
 assert.equal(gradeStatisticLine(totalCards,fallbackResult),'WON');
 assert.equal(gradeStatisticLine(totalYellow,fallbackResult),'WON');
 assert.equal(gradeStatisticLine(totalRed,fallbackResult),'WON');
