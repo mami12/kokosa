@@ -667,7 +667,7 @@ function gradeNamedFinalTeamMarket(line,result){
  * second-half goal must never reverse a first-half market.
  */
 function isHalftimeRestMarket(value){
- return /^(?:half\s*time|halftime)\s*[-–.:]?\s*who\s+wins\s+the\s+rest$/i
+ return /^(?:half\s*time|halftime)\s*[-–.:]?\s*who\s+wins\s+the\s+rest\??$/i
   .test(String(value??'').trim());
 }
 function gradeHalftimeRest(line,result){
@@ -1228,8 +1228,8 @@ export function gradeLine(line, result) {
         }
       }
       if (baseHome == null || baseAway == null) return null;
-      const endHome=scoreValue(halftimeRest?result.half_home_score:result.home_score);
-      const endAway=scoreValue(halftimeRest?result.half_away_score:result.away_score);
+      const endHome=scoreValue(result.home_score);
+      const endAway=scoreValue(result.away_score);
       if(endHome===null||endAway===null)return null;
       const deltaHome = endHome - Number(baseHome), deltaAway = endAway - Number(baseAway);
       if (deltaHome < 0 || deltaAway < 0) return null;

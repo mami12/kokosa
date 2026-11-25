@@ -10,6 +10,7 @@ import {parseHandicapContract} from './handicap-contracts.mjs';
 import {parsePlayerOrdinalScorer} from './player-ordinal-scorer.mjs';
 import {parsePlayerGoalSpecial} from './player-goal-specials.mjs';
 import {parseHalfExactMarket} from './half-exact-markets.mjs';
+import {isRegularTimeEvent,normalTimeMinute} from './event-contract.mjs';
 const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(home|away)team\b/g,'$1 team').replace(/\s+/g,' ').trim();
 const number=v=>v==null||v===''||!Number.isFinite(Number(v))?null:Number(v);
 const yesNo=line=>{
@@ -704,13 +705,18 @@ const fullCoverage=(evidence,event,through)=>{
  const covered=number(evidence?.coverage?.[event+'Through']);
  return covered!==null&&covered>=through;
 };
+const eventPhaseUnknown=event=>{
+ const phase=String(event?.phase??event?.period??'').toLowerCase().replace(/[^a-z0-9]/g,'');
+ return !phase||(!isRegularTimeEvent(event)&&!/(?:extratime|overtime|shootout|penalty)/.test(phase));
+};
 /** Returns WON, LOST or null. Never infers an absence from a missing event.
  * 'ended' requires a confirmed terminal feed phase, not wall-clock time.
  */
 export function gradeLiveContract(contract,evidence={}, {ended=false,scopeEnded=false}={}){
  if(!contract||!['interval-result','team-total-goals','window','sequence','race','last-event','over','under','exact','range','atLeast'].includes(contract.kind))return null;
  const {event}=contract;
- const ordered=sortEvents(Array.isArray(evidence.events)?evidence.events:[],event);
+ const rawEvents=Array.isArray(evidence.events)?evidence.events:[];
+ const ordered=sortEvents(contract.normalTimeOnly===false?rawEvents:rawEvents.filter(isRegularTimeEvent),event);
  const clock=number(evidence.clock);
  // Never use the combined match total for a home/away-only selection.
  // A color-qualified card also requires an independently verified colored
@@ -757,6 +763,7 @@ export function gradeLiveContract(contract,evidence={}, {ended=false,scopeEnded=
   if(contract.cardColor||!ordered)return null; // use verified color-specific SQL facts
   if(contract.side&&ordered.events.some(e=>!['home','away'].includes(e.team)))return null;
   const events=contract.side?ordered.events.filter(e=>e.team===contract.side):ordered.events;
+  if(contract.normalTimeOnly!==false&&Number(contract.to)>=90&&rawEvents.some(e=>Number(e.minute)>90&&eventPhaseUnknown(e)))return null;
   // A positive event can be proven by an event that is individually verified.
   // Rolling markets are anchored to an exact acceptance clock. Providers
   // frequently return ONLY an integer event minute: an event in the opening
@@ -767,7 +774,9 @@ export function gradeLiveContract(contract,evidence={}, {ended=false,scopeEnded=
    const lo=Math.floor(contract.from),hi=Math.floor(contract.to);
    if(events.some(e=>e.minute===lo||e.minute===hi))return null;
    relevant=events.filter(e=>e.minute>lo&&e.minute<hi);
-  }else relevant=events.filter(e=>Number(e.minute)>=contract.from&&Number(e.minute)<=contract.to);
+  }else relevant=events.filter(e=>{
+   const minute=normalTimeMinute(e);return minute!==null&&minute>=contract.from&&minute<=contract.to;
+  });
   // A named, non-cancelled primary event with a valid time is positive proof
   // even when the short incident list omits older corners/cards. Never infer
   // "no event" from that short list; those decisions still require coverage.

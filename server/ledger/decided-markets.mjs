@@ -218,7 +218,7 @@ export function isDecidedLiveOutcome(match, market) {
   }
   // A correct-score selection below a confirmed score can no longer win.
   // Reaching the target itself is still reversible until the final whistle.
-  if (/^(?:(?:full time|match)\s+)?correct score$|^exact score$/.test(name)) {
+  if (/^(?:(?:full time|match)\s+)?correct score$|^exact score$/.test(countName)) {
     const exact = labels.map(label => label.match(/^(\d+)\s*[-:]\s*(\d+)$/)).find(Boolean);
     if (exact && (score.home > Number(exact[1]) || score.away > Number(exact[2]))) return true;
   }

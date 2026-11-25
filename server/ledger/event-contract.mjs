@@ -54,9 +54,38 @@ export function eventContract(line={}){
  const valid=playerMethod||/^(?:total (?:goals|corners|cards)(?: (?:home|away) team)?|(?:home|away) team total (?:goals|corners|cards)|total (?:home|away) team|who scores most goals|who takes most corners|who receives most cards|who scores goal \d+|first goal|last goal|next goal|next team to score|goli i radh[eë]s|own goals?|(?:headed|header|penalty) goals?|player(?: to assist| to score(?: a goal)?)|(?:first|last|anytime) (?:goalscorer|goal scorer))$/.test(name);
  return {valid:valid&&(amount==null||(Number.isInteger(amount)&&amount>=0&&amount<=100&&(mode!=='atLeast'||amount>0))),name,player,half,window,mode,amount,method};
 }
+const firstHalfPhases=new Set(['1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1']);
+const secondHalfPhases=new Set(['2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2']);
+const extraTimePhase=phase=>/(?:^et$|extratime|overtime|shootout|penalty)/.test(phase);
+const normalPhase=phase=>new Set(['regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime','90','stoppage','stoppagetime','injurytime']).has(phase);
+export function eventPeriod(event={}){
+ const phase=String(event.phase??event.period??'').toLowerCase().replace(/[^a-z0-9]/g,'');
+ const label=String(event.minuteLabel??event.minute_label??'').trim(),minute=Number(event.minute);
+ if(extraTimePhase(phase))return 3;
+ if(firstHalfPhases.has(phase)||/^45[0-9]{1,2}$/.test(phase)||/^45\s*\+\s*\d+$/i.test(label))return 1;
+ if(secondHalfPhases.has(phase)||/^90[0-9]{1,2}$/.test(phase)||/^90\s*\+\s*\d+$/i.test(label))return 2;
+ if(normalPhase(phase)&&Number.isFinite(minute)&&minute>90)return 2;
+ return null;
+}
+export function normalTimeMinute(event={}){
+ const minute=Number(event.minute);if(!Number.isFinite(minute))return null;
+ const period=eventPeriod(event);if(period===1&&minute>45)return 45;if(period===2&&minute>90)return 90;return minute;
+}
+export function isRegularTimeEvent(event={}){
+ const minute=Number(event.minute);if(!Number.isFinite(minute)||minute<0)return false;
+ const phase=String(event.phase??event.period??'').toLowerCase().replace(/[^a-z0-9]/g,'');
+ if(extraTimePhase(phase)||eventPeriod(event)===3)return false;
+ if(eventPeriod(event)===1||eventPeriod(event)===2||normalPhase(phase))return true;
+ return minute<=90;
+}
 export function eventInWindow(event,contract){
- if(contract.half){const first=/^(?:H1|FIRST_HALF|1st half)$/i.test(event.phase??''),second=/^(?:H2|SECOND_HALF|2nd half)$/i.test(event.phase??'');if(contract.half===1?(second||(!first&&event.minute>45)):(first||(!second&&event.minute<=45)))return false;}
- return !contract.window||(event.minute>=contract.window.from&&event.minute<=contract.window.to);
+ const minute=normalTimeMinute(event);
+ if(contract.half){
+  const period=eventPeriod(event),rawMinute=Number(event.minute);
+  if(period===3)return false;
+  if(contract.half===1?(period===2||(period==null&&rawMinute>45)):(period===1||(period==null&&rawMinute<=45)))return false;
+ }
+ return !contract.window||(minute!==null&&minute>=contract.window.from&&minute<=contract.window.to);
 }
 export function eventSelectionSupported(line={}){
  const c=eventContract(line);if(!c.valid)return false;

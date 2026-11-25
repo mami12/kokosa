@@ -4,6 +4,7 @@ const query=async(...args)=>(await import('../db.mjs')).query(...args);
 import {eventMarketRequirement} from './event-market-policy.mjs';
 import {parseTeamGoalMarket} from './live-contract-rules.mjs';
 import {classifyZizobetCardEvents} from '../zizobet/card-events.mjs';
+import {isRegularTimeEvent} from './event-contract.mjs';
 export const needsEvents=m=>!!eventMarketRequirement(m)||/header|headed|own goal|scoring method|method of.*goal/i.test(m.market_name??m.name??'');
 /** One bounded snapshot per fixture, only while a matching ticket needs it.
  * Only Zizobet event evidence is eligible for financial settlement. */
@@ -184,7 +185,7 @@ function gradeSingleEventLine(line,result){
  const contract=eventContract(line),name=contract.name??'',label=String(line.outcome_name??''),key=String(line.outcome_key??'').toLowerCase();
  if(!supportedContract(line))return null;
  if(/extra time|overtime|shootout|early payout|scoring type|scoring method|shots?|fouls?/i.test(name))return null;
- const regular=ev.events.filter(e=>!e.shootout&&Number.isFinite(e.minute)&&e.minute>=0&&e.minute<=90&&!/extra|shoot/i.test(e.phase??'')).sort((a,b)=>a.minute-b.minute||(a.injury??0)-(b.injury??0)||(a.seconds??0)-(b.seconds??0));
+ const regular=ev.events.filter(e=>!e.shootout&&isRegularTimeEvent(e)).sort((a,b)=>a.minute-b.minute||(a.injury??0)-(b.injury??0)||(a.seconds??0)-(b.seconds??0));
  let all=regular.filter(e=>e.type==='goal');
  // Stable provider IDs identify one physical event, even if a source repeats it.
  const eventIds=all.filter(e=>e.id!=null&&String(e.id)!=='').map(e=>String(e.id));
