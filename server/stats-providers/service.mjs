@@ -264,7 +264,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
   const primary=teamStatisticsFromRow(row),id=String(row.match_id??row.id),identity=identityOf(row),localTtl=refreshFor(row);
   const dataTtl=urgent.has(id)?0:localTtl;
   const cached=displayCache.get(id);
-  const statsReady=(entry,fields=requiredStats)=>fields.every(field=>['home','away'].every(side=>entry.values[field]?.[side]!=null||primary[side]?.[field]!=null));
+  const statsReady=(entry,fields=requiredStats)=>fields.every(field=>['home','away'].every(side=>entry.values[field]?.[side]!=null));
   // Check the durable FT archive before reusing a live timer: the catalogue
   // can still say LIVE after the final result has already been verified.
   if(displayFlights.has(id))return displayFlights.get(id);
@@ -279,16 +279,19 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    const requiredForMatch=[...new Set([...requiredStats,...settlementFields])];
    const matchStatsReady=entry=>statsReady(entry,requiredForMatch);
    await init();const old=cached??await read('display:'+id);
-   if(old?.version===3&&old.identity===identity&&old.next>now()&&Number.isFinite(Number(old.at))&&now()-Number(old.at)<localTtl&&!urgent.has(id)&&(!final||old.finalReview)){displayCache.set(id,old);return;}
+   if(old?.version===4&&old.identity===identity&&old.next>now()&&Number.isFinite(Number(old.at))&&now()-Number(old.at)<localTtl&&!urgent.has(id)&&(!final||old.finalReview)){displayCache.set(id,old);return;}
    // Start each refresh with new facts. Keeping non-null values froze live totals forever.
-   const entry={version:3,identity,values:{},goalIntervals:null,sources:{},at:now()};
+   const entry={version:4,identity,values:{},goalIntervals:null,sources:{},at:now()};
    // Reuse Zizobet's persisted full-time team stats before any extra request.
    let archivedStats=result?.statistics??{};if(typeof archivedStats==='string'){try{archivedStats=JSON.parse(archivedStats);}catch{archivedStats={};}}
    const primaryArchive={...archivedStats,
     corners:{home:result?.corners_home,away:result?.corners_away},
     cards:{home:result?.cards_home,away:result?.cards_away},
-    yellow:{home:primary.home?.yellow,away:primary.away?.yellow},
-    red:{home:primary.home?.red,away:primary.away?.red}};
+    yellow:{home:archivedStats.yellow?.home,away:archivedStats.yellow?.away},
+    red:{home:archivedStats.red?.home,away:archivedStats.red?.away}};
+   if(primaryArchive.cards.home==null&&primaryArchive.cards.away==null&&
+      ['home','away'].every(side=>primaryArchive.yellow[side]!=null&&primaryArchive.red[side]!=null))
+    primaryArchive.cards={home:Number(primaryArchive.yellow.home)+Number(primaryArchive.red.home),away:Number(primaryArchive.yellow.away)+Number(primaryArchive.red.away)};
    for(const field of [...supplementalStats,'cards']){
     const value=primaryArchive[field];
     if(value&&['home','away'].some(side=>value[side]!=null&&Number.isFinite(Number(value[side])))){
