@@ -276,7 +276,8 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    if(result)final=true;
    const pendingMarkets=final?(await runQuery("select distinct l.market_name from app_ticket_line l join app_ticket t on t.id=l.ticket_id where l.match_id=$1 and l.status='PENDING' and t.status='PENDING'",[Number(id)])).rows:[];
    const settlementFields=[...new Set(pendingMarkets.flatMap(line=>settlementStatisticFields(line)))];
-   const requiredForMatch=[...new Set([...requiredStats,...settlementFields])];
+   // A finished match should trigger secondary requests only for facts used by its pending markets.
+   const requiredForMatch=[...new Set([...(final?[]:requiredStats),...settlementFields])];
    const matchStatsReady=entry=>statsReady(entry,requiredForMatch);
    await init();const old=cached??await read('display:'+id);
    const requiredKey=[...requiredForMatch].sort().join('|');
