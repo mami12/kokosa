@@ -33,6 +33,7 @@ const retired=[
  'Player - yellow cards',
  'Away team to be carded',
  'Team fouls','Total Fouls','Asian Handicap','Total Tackles','Total Saves','Total Throw-ins',
+ 'Total Booking Points','Card Point Range','Second Yellow Cards','Yellow Red Cards',
  'Total Shots','Total Shots on Goal','Total Shots on Target','Shots on Goal','Shots on Target','Anytime Goalscorer',
 ];
 const nativeCards=['Total yellow cards','Total red cards'];
