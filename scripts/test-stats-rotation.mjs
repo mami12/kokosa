@@ -151,7 +151,7 @@ try{
   const oldFetch=globalThis.fetch;globalThis.fetch=async()=>new Response('{}',{status:503});
   try{await h.service.tick();}finally{globalThis.fetch=oldFetch;}
   const review=(await database.query('select payload from app_stat_review where match_id=101')).rows[0].payload;
-  const configured=new Set(['bsd','worldcup26','sportapi','goalapi','apifootball']);
+  const configured=new Set(['bsd','worldcup26','sportapi','goalapi','apifootball','fotmob']);
   assert.deepEqual(new Set(review.attempted),configured,'Every configured final-stat provider gets an independent attempt');
   assert.ok(review.sources.some(source=>source.provider==='ZIZOBET'));
   assert.ok(review.sources.some(source=>source.provider==='bsd'));
