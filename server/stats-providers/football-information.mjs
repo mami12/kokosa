@@ -59,23 +59,20 @@ export function isFootballFixture(row){
  * requested only for final statistic fields still missing after configured
  * statistics providers have completed their own comparison.
  */
-const SETTLEMENT_STAT_FIELDS=['corners','cards','yellow','red','shots','shotsOnTarget','fouls'];
+// AiScore is a last-resort source only for aggregate markets that kokosa
+// actually offers. Player props, fouls, shots and shots-on-target are excluded;
+// period/event-order markets require their own verified evidence, not FT totals.
+const SETTLEMENT_STAT_FIELDS=['corners','cards','yellow','red'];
 const aggregateMarketName=name=>!(/\b(?:first|last|next|race|interval|window|minute|minutes|half|1h|2h|period|player|scorer|assist|exact|range|handicap|asian|between|before|after)\b/.test(name));
 export function marketInformationNeeds(markets=[]){
  const needs=new Set();
  for(const market of markets){
   const name=String(market.market_name??market.marketName??market.name??'').toLowerCase();
-  if(market.live_contract?.kind==='player-goal'){needs.add('player');continue;}
-  if(/\b(?:goalscorer|goal scorer|scorer|player)\b.*\b(?:goal|score|scoring|sh[eë]non)\b|\b(?:first|last|anytime)\s+goalscorer/i.test(name))
-   needs.add('player');
   if(!aggregateMarketName(name))continue;
   if(/\byellow\b/.test(name))needs.add('yellow');
   else if(/\bred\b/.test(name))needs.add('red');
   else if(/\b(?:cards?|bookings?|karton)\b/.test(name))needs.add('cards');
   if(/\bcorners?|korner/.test(name))needs.add('corners');
-  if(/shots?\s+(?:on\s+)?(?:target|goal)|goditj.*port/.test(name))needs.add('shotsOnTarget');
-  else if(/\bshots?\b|goditj/.test(name))needs.add('shots');
-  if(/\bfouls?|faulle?/.test(name))needs.add('fouls');
  }
  return [...needs];
 }
