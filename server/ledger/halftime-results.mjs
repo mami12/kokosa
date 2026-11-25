@@ -6,10 +6,12 @@
 import {getMatches,getMatchById} from '../matches.mjs';
 import {matchSnapshots} from './match-snapshots.mjs';
 import {query} from '../db.mjs';
+import {verifiedFinalStatistics} from '../match-statistics.mjs';
 
 export const HALFTIME_RESULT_SQL=[
- 'create table if not exists app_match_half_result (match_id bigint primary key, home_team text not null, away_team text not null, half_home_score integer not null check(half_home_score between 0 and 200), half_away_score integer not null check(half_away_score between 0 and 200), signature text not null, first_seen_at timestamptz not null default now(), observed_at timestamptz not null default now(), confirmed_at timestamptz, correction_count integer not null default 0, source text not null default ' + "'UNVERIFIED_LEGACY');",
+ 'create table if not exists app_match_half_result (match_id bigint primary key, home_team text not null, away_team text not null, half_home_score integer not null check(half_home_score between 0 and 200), half_away_score integer not null check(half_away_score between 0 and 200), signature text not null, first_seen_at timestamptz not null default now(), observed_at timestamptz not null default now(), confirmed_at timestamptz, correction_count integer not null default 0, source text not null default ' + "'UNVERIFIED_LEGACY', statistics jsonb not null default '{}'::jsonb);",
  'alter table app_match_half_result alter column source set default ' + "'UNVERIFIED_LEGACY';",
+ 'alter table app_match_half_result add column if not exists statistics jsonb not null default ''{}''::jsonb;',
  ''
 ].join('\n');
 
@@ -47,15 +49,21 @@ export function extractConfirmedHalfTimeCandidate(row){
  const at=clockAt;
  const primaryHome=String(row.home??'').trim(),primaryAway=String(row.away??'').trim();
  if(!primaryHome||!primaryAway||primaryHome===primaryAway)return null;
+ const rawStats=verifiedFinalStatistics(row),statistics={};
+ for(const [field,pair] of Object.entries(rawStats))
+  if(pair?.home!=null&&pair?.away!=null)statistics[field]=pair;
+ if(statistics.yellow&&statistics.red)statistics.cards={
+  home:statistics.yellow.home+statistics.red.home,
+  away:statistics.yellow.away+statistics.red.away};
  return {source:'ZIZOBET',matchId:Number(row.match_id),homeTeam:primaryHome,awayTeam:primaryAway,
-  home,away,observedAt:new Date(at).toISOString(),
-  signature:JSON.stringify([primaryHome,primaryAway,home,away])};
+  home,away,statistics,observedAt:new Date(at).toISOString(),
+  signature:JSON.stringify([primaryHome,primaryAway,home,away,statistics])};
 }
 export async function persistHalfTimeCandidate(candidate,{execute=query}={}){
  if(!candidate||candidate.source!=='ZIZOBET')return {stored:false,confirmed:false};
  const statement=[
- 'insert into app_match_half_result (match_id,home_team,away_team,half_home_score,half_away_score,signature,observed_at,source,confirmed_at)',
- "values ($1,$2,$3,$4,$5,$6,$7::timestamptz,'ZIZOBET',now())",
+ 'insert into app_match_half_result (match_id,home_team,away_team,half_home_score,half_away_score,signature,observed_at,source,confirmed_at,statistics)',
+ "values ($1,$2,$3,$4,$5,$6,$7::timestamptz,'ZIZOBET',now(),$8::jsonb)",
  'on conflict(match_id) do update set',
  'home_team=excluded.home_team, away_team=excluded.away_team,',
  'half_home_score=excluded.half_home_score,half_away_score=excluded.half_away_score,',
@@ -70,7 +78,7 @@ export async function persistHalfTimeCandidate(candidate,{execute=query}={}){
  'returning confirmed_at,correction_count'
  ].join(' ');
  const r=await execute(statement,[candidate.matchId,candidate.homeTeam,candidate.awayTeam,
-    candidate.home,candidate.away,candidate.signature,candidate.observedAt]);
+    candidate.home,candidate.away,candidate.signature,candidate.observedAt,JSON.stringify(candidate.statistics??{})]);
  return {stored:r.rowCount>0,confirmed:r.rows[0]?.confirmed_at!=null,
    corrections:Number(r.rows[0]?.correction_count??0)};
 }
