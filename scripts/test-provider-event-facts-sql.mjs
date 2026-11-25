@@ -308,5 +308,18 @@ try{
  assert.equal(await gradeStoredEventContract({...lateLine,id:'00000000-0000-4000-8000-000000000014',
   match_id:unknownPhaseMatch},{...lateResult,home_score:1},{execute:run}),null,
   'An unlabelled event after 90 remains pending');
+  const unknown45Match=lateMatch+4;
+  await run(\`insert into app_match_event_fact
+   (match_id,provider,provider_event_id,kind,team,minute,phase,active)
+   values($1,'zizobet','goal-45-no-phase','goal','home',45,null,true)\`,[unknown45Match]);
+  await run(\`insert into app_match_event_coverage
+   (match_id,provider,kind,through_minute,count_home,count_away,complete,observed_at,confirmed_at)
+   values($1,'zizobet','goal',91,1,0,true,$2,$2)\`,[unknown45Match,now]);
+  await run('insert into app_live_event_cursor(match_id,last_seen_at) values($1,$2)',[unknown45Match,now]);
+  const unknown45Race={id:'00000000-0000-4000-8000-000000000015',match_id:unknown45Match,
+   live_contract:{version:1,kind:'race',event:'goal',target:1,side:'home'}};
+  assert.equal(await gradeStoredEventContract(unknown45Race,{...lateResult,home_score:1},{execute:run}),null,
+   'An unlabelled 45th-minute event cannot decide event-race ordering');
+
  console.log('PASS real PostgreSQL engine: taken-corner evidence, primary event races/windows/interval totals, stoppage-time and extra-time phase safeguards');
 }finally{await db.close();}
