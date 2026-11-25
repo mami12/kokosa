@@ -14,7 +14,7 @@ let cases=0;
 async function harness({env={},rows=[row()],stats=()=>totals,override=()=>null,events=()=>[],persistFacts=false}={}){
  await database.exec(`truncate app_ticket,app_ticket_line,app_match_result,app_stats_cache,app_stats_usage,app_stat_review`);
  let at=start;const calls=[],unexpected=[],matches=new Map(rows.map(r=>[Number(r.match_id),r])),saved=[],persistedGoals=[],persistedTimed=[];
- const config={STATS_PROVIDERS_ENABLED:'true',STATS_REALTIME_ENABLED:'false',WORLDCUP26_LEAGUES:'eng.1',...env};
+ const config={STATS_REALTIME_ENABLED:'false',WORLDCUP26_LEAGUES:'eng.1',...env};
  const request=async(value,options)=>{
   const url=new URL(value),path=url.pathname;
   const provider=url.host==='sports.bzzoiro.com'?'bsd':url.host==='worldcup26.ir'?'worldcup26':url.host==='sportapi.ai'?'sportapi':url.host==='api.goal-api.com'?'goalapi':'apifootball';
@@ -58,18 +58,18 @@ async function harness({env={},rows=[row()],stats=()=>totals,override=()=>null,e
  };
  const create=()=>createStatsService({runQuery:(...args)=>database.query(...args),env:config,request,now:()=>at,loadMatch:async id=>matches.get(id),loadSnapshots:async()=>[],
   getEventWatchIds:async()=>new Set((await database.query("select distinct match_id from app_ticket_line where status='PENDING' and market_name='Total goals in minutes 1-15'")).rows.map(r=>String(r.match_id))),saveEvidence:async(id,evidence)=>saved.push({id,evidence}),
-  ...(persistFacts?{persistGoalFacts:async(id,evidence)=>persistedGoals.push({id,evidence}),
-   persistTimedFacts:async(id,evidence)=>persistedTimed.push({id,evidence})}:{})});
- const bet=async(id,ticket='ticket-'+id,status='PENDING',lineStatus='PENDING')=>{
+  ...(persistFacts?{persistGoalFacts:async(id,evidence)=>{persistedGoals.push({id,evidence});return {stored:true};},
+   persistTimedFacts:async(id,evidence)=>{persistedTimed.push({id,evidence});return {stored:true};}}:{})});
+ const bet=async(id,ticket='ticket-'+id,status='PENDING',lineStatus='PENDING',liveContract=null)=>{
   await database.query('insert into app_ticket(id,status) values($1,$2) on conflict(id) do update set status=excluded.status',[ticket,status]);
-  await database.query('insert into app_ticket_line(ticket_id,match_id,status,market_name) values($1,$2,$3,$4)',[ticket,id,lineStatus,'1X2']);
+  await database.query('insert into app_ticket_line(ticket_id,match_id,status,market_name,live_contract) values($1,$2,$3,$4,$5::jsonb)',[ticket,id,lineStatus,'1X2',liveContract?JSON.stringify(liveContract):null]);
  };
  return {service:create(),create,calls,matches,config,saved,persistedGoals,persistedTimed,bet,advance:ms=>{at+=ms;},setTime:value=>{at=Date.parse(value);},stats:(service,r=rows[0])=>teamStatisticsFromRow({...r,stats:service.displayStatistics(r)}),verify:()=>{assert.deepEqual(unexpected,[]);cases++;}};
 }
 
 try{
  await database.exec(`create table app_ticket(id text primary key,status text);
-  create table app_ticket_line(ticket_id text,match_id bigint,status text,market_name text);
+  create table app_ticket_line(ticket_id text,match_id bigint,status text,market_name text,live_contract jsonb);
   create table app_match_result(match_id bigint primary key,home_score int,away_score int);
   create table app_stats_cache(cache_key text primary key,payload jsonb not null,updated_at timestamptz not null default now());
   create table app_stats_usage(provider text,period text,calls int,primary key(provider,period));
@@ -95,6 +95,8 @@ try{
    'Supplementary incident collection must not fetch bookmaker odds');
   h.verify();
  }
+ // Provider recovery is enabled by default for watched tickets; operators can still disable it explicitly.
+ {const h=await harness({env:{STATS_PROVIDERS_ENABLED:'false',BSD_API_KEY:'test-key'}});await h.bet(101);await h.service.tick();assert.equal(h.calls.length,0,'Explicit false disables supplementary providers');h.verify();}
  // Opening a single detail opts that match into shared enrichment without a bet.
  {const h=await harness();h.service.warm(row());await h.service.warmStatistics(row());assert.ok(h.calls.length>0);const count=h.calls.length;h.service.warm(row());await h.service.warmStatistics(row());assert.equal(h.calls.length,count,'repeat viewers share the ten-minute cache');h.advance(tenMinutes);h.service.warm(row());await h.service.warmStatistics(row());assert.ok(h.calls.length>count,'viewed fixture refreshes after ten minutes');h.verify();}
  // Three concurrent viewed fixtures are queued, never silently dropped by the two-job limit.
@@ -225,6 +227,21 @@ try{
  {
   const h=await harness({env:{BSD_API_KEY:'test-key'},override:call=>call.provider==='bsd'&&call.path==='/api/v2/events/'&&call.url.searchParams.get('offset')==='0'?json({results:[],next:'page-2'}):null});await h.bet(101);
   await h.service.tick();assert.equal(h.stats(h.service).home.fouls,7);assert.ok(h.calls.some(c=>c.url.searchParams.get('offset')==='200'));h.verify();
+ }
+ // A Finished Zizobet match triggers complete secondary goal-timeline recovery for a pending Next Goal contract.
+ {
+  const h=await harness({env:{BSD_API_KEY:'test-key',WORLDCUP26_DAY_LIMIT:'0'},
+   rows:[row(101,{feed_status:'FT',home_score:1,away_score:0})],
+   events:()=>[{id:'g1',type:'goal',is_home:true,minute:22,goal_type:'regular',player:{id:'p1',name:'Home Scorer'}}],persistFacts:true});
+  await h.bet(101,'goal-history-ticket','PENDING','PENDING',{kind:'sequence',event:'goal',target:1,side:'home'});
+  await database.query('insert into app_match_result(match_id,home_score,away_score) values(101,1,0)');
+  const oldFetch=globalThis.fetch;globalThis.fetch=async()=>new Response('{}',{status:503});
+  try{await h.service.tick();}finally{globalThis.fetch=oldFetch;}
+  assert.equal(h.persistedGoals.length,1,'FotMob or a configured historical provider must persist a complete final goal timeline');
+  assert.equal(h.persistedGoals[0].evidence.source,'bsd');
+  assert.equal(h.persistedGoals[0].evidence.events.length,1);
+  assert.equal(h.persistedGoals[0].evidence.homeScore,1);
+  h.verify();
  }
  // Independent event evidence is still verified after FT, bypassing the live ten-minute wait.
  {
