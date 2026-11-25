@@ -47,11 +47,32 @@ assert.equal(statisticMarketContract(intervalCards).supported,false,'Interval ca
 assert.equal(isAggregateStatisticSettlement(intervalCards,result),false,
  'Interval card markets must reach their chronological event-fact grader');
 const fullCards={market_name:'Total Cards',line:'3.5',outcome_key:'Over',outcome_name:'Over'};
-assert.equal(isAggregateStatisticSettlement(fullCards,result),true,
- 'Full-match card totals use verified aggregate counters');
 const halfCards={market_name:'1st half - Total Cards',line:'1.5',outcome_key:'Over',outcome_name:'Over',period:1};
-assert.equal(isAggregateStatisticSettlement(halfCards,result),true,
- 'Half-time card aggregates use their period statistics');
+const cardResult={...result,source:'ZIZOBET',statistics:{
+ ...result.statistics,cards:{home:2,away:1},
+ periods:{firstHalf:{cards:{home:1,away:0}}}
+}};
+assert.equal(isAggregateStatisticSettlement(fullCards,cardResult),true,
+ 'Full-match card totals use verified aggregate counters');
+assert.equal(isAggregateStatisticSettlement(halfCards,cardResult),true,
+ 'Half-time card aggregates use their verified period counters');
+assert.equal(isAggregateStatisticSettlement(fullCards,result),false,
+ 'A missing aggregate card counter must allow a complete card timeline fallback');
+assert.equal(isAggregateStatisticSettlement(halfCards,result),false,
+ 'A missing half-time card counter must allow a period-scoped card timeline fallback');
+
+const fullCorners={market_name:'Total Corners',line:'8.5',outcome_key:'Over',outcome_name:'Over'};
+const halfCorners={market_name:'1st half - Total Corners',line:'2.5',outcome_key:'Over',outcome_name:'Over',period:1};
+const cornerResult={...result,source:'ZIZOBET',corners_home:5,corners_away:4,
+ statistics:{corners:{home:5,away:4},periods:{firstHalf:{corners:{home:2,away:1}}}}};
+assert.equal(isAggregateStatisticSettlement(fullCorners,cornerResult),true,
+ 'Full-match corners use verified final counters');
+assert.equal(isAggregateStatisticSettlement(halfCorners,cornerResult),true,
+ 'First-half corners use their verified period counters');
+assert.equal(isAggregateStatisticSettlement(halfCorners,{...cornerResult,statistics:{corners:{home:5,away:4}}}),false,
+ 'Missing half-corner counters must allow verified event chronology fallback');
+assert.equal(isAggregateStatisticSettlement(fullCorners,{...cornerResult,corners_home:null,corners_away:null,statistics:{}}),false,
+ 'Missing full-time corner counters must allow verified event chronology fallback');
 
 const total={market_name:'Total Shots on Target - Over/Under',line:'8.5',outcome_key:'over',outcome_name:'Over'};
 assert.equal(statisticMarketContract({market_name:'Full time result'}),null);
