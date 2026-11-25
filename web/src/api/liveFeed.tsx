@@ -13,6 +13,7 @@ import { frozenSelectionPrice } from '../../../server/ledger/system-columns.mjs'
 import { mergeMatchFacts, snapshotTime, timestamp } from './matchSync';
 import {optionalFeedNumber} from './feedNumbers';
 import {retainEventPlayerNames} from '../utils/eventPlayers';
+import {collectLiveIncidentDeltas, type LiveIncidentAlert, type LiveIncidentSnapshot, type LiveIncidentBaseline} from './liveIncidentDeltas.mjs';
 
 /**
  * One shared Socket.IO connection for the whole board.
@@ -63,6 +64,8 @@ interface LiveFeedValue {
   oddsDeltas: Record<string, OddsDelta>;
   livePatches: Record<string, LivePatch>;
   matchEvents: MatchEvent[];
+  liveAlerts: LiveIncidentAlert[];
+  dismissLiveAlert: (id:string) => void;
   connected: boolean;
   /**
    * 'live'   the feed is running: prices are fresh and bets are accepted
@@ -91,6 +94,8 @@ const EMPTY: LiveFeedValue = {
   oddsDeltas: {},
   livePatches: {},
   matchEvents: [],
+  liveAlerts: [],
+  dismissLiveAlert: () => {},
   connected: false,
   feedMode: 'live',
   lockedOutcomes: {},
@@ -137,6 +142,7 @@ export function LiveFeedProvider({ children }: { children: ReactNode }) {
    const publishedOddsAt=useRef<Record<string,number>>({});
   const [livePatches, setLivePatches] = useState<Record<string, LivePatch>>({});
   const [matchEvents, setMatchEvents] = useState<MatchEvent[]>([]);
+  const [liveAlerts,setLiveAlerts]=useState<LiveIncidentAlert[]>([]);
   const [connected, setConnected] = useState(false);
   const [lockedOutcomes, setLockedOutcomes] = useState<Record<string, boolean>>({});
   const [riskLockedOutcomes, setRiskLockedOutcomes] = useState<Record<string, boolean>>({});
@@ -160,6 +166,13 @@ export function LiveFeedProvider({ children }: { children: ReactNode }) {
   const reopenRefresh=useRef<(id:string)=>void>(()=>{});
   const reopenTracker=useRef(createSourceReopenTracker(id=>reopenRefresh.current(id)));
   const knownScores=useRef<Record<string,{score:string;at:number}>>({});
+  const incidentBaselines=useRef<Record<string,LiveIncidentBaseline>>({});
+  const observeLiveIncidents=useCallback((snapshot:LiveIncidentSnapshot)=>{
+    const observed=collectLiveIncidentDeltas(snapshot,incidentBaselines.current[snapshot.matchId]??null);
+    incidentBaselines.current[snapshot.matchId]=observed.baseline;
+    if(observed.alerts.length)setLiveAlerts(previous=>[...previous,...observed.alerts].slice(-60));
+  },[]);
+  const dismissLiveAlert=useCallback((id:string)=>setLiveAlerts(previous=>previous.filter(alert=>alert.id!==id)),[]);
   const observeScore=useCallback((id:string,home:unknown,away:unknown,at:number,notify=true)=>{
     if(typeof home!=='number'||typeof away!=='number'||!Number.isFinite(home)||!Number.isFinite(away)||!at)return;
     const previous=knownScores.current[id];if(previous&&at<previous.at)return;
@@ -189,6 +202,10 @@ export function LiveFeedProvider({ children }: { children: ReactNode }) {
       const at = snapshotTime(match);
       const id = String(match.id);
       observeScore(id,match.homeScore,match.awayScore,timestamp(match.scoreAt),false);
+      observeLiveIncidents({matchId:id,at,homeScore:match.homeScore,awayScore:match.awayScore,
+        homeTeam:match.homeTeam,awayTeam:match.awayTeam,minute:match.currentMinute,
+        counters:{corners:match.corners,yellowCards:match.yellowCards,redCards:match.redCards,
+          fouls:match.fouls,shotsOnTarget:match.shotsOnTarget,offsides:(match as any).offsides,shots:match.shots}});
       patches[id] = compact({
         displayOrder: match.displayOrder, competitionOrder: match.competitionOrder, listingStale: match.listingStale,
         status: match.status, currentMinute: match.currentMinute, currentSecond: (match as any).currentSecond,
@@ -244,7 +261,7 @@ export function LiveFeedProvider({ children }: { children: ReactNode }) {
       }
       return next;
     });
-  }, []);
+  }, [observeLiveIncidents]);
 
   useEffect(() => {
     // The casino, transactions and login routes must not wake the global
@@ -412,7 +429,14 @@ export function LiveFeedProvider({ children }: { children: ReactNode }) {
         const minute = optionalFeedNumber(m.minute);
         const home = optionalFeedNumber(m?.score?.home);
         const away = optionalFeedNumber(m?.score?.away);
+        const snapshotAt=timestamp(m.snapshotAt ?? (payload as any).at)||Date.now();
         observeScore(String(m.id),m?.score?.home,m?.score?.away,timestamp(m.scoreAt));
+        observeLiveIncidents({matchId:String(m.id),at:snapshotAt,homeScore:home,awayScore:away,
+          homeTeam:m.homeTeam??m.home,awayTeam:m.away,minute,
+          counters:{corners:cornersOf(m.stats),yellowCards:counterOf(m.stats,'yellow'),
+            redCards:counterOf(m.stats,'red'),fouls:counterOf(m.stats,'fouls'),
+            shotsOnTarget:counterOf(m.stats,'shotsOnTarget'),offsides:counterOf(m.stats,'offsides'),
+            shots:counterOf(m.stats,'shots')}});
         patches[String(m.id)] = compact({
           displayOrder: m.displayOrder, competitionOrder: m.competitionOrder, listingStale: m.listingStale,
           status: m.status === 'live' ? 'LIVE' : m.status === 'ended' ? 'ENDED' : undefined,
@@ -487,6 +511,11 @@ export function LiveFeedProvider({ children }: { children: ReactNode }) {
 
       const key = String(id);
       observeScore(key,patch.homeScore,patch.awayScore,timestamp(patch.scoreAt));
+      observeLiveIncidents({matchId:key,at:timestamp(at)||Date.now(),homeScore:patch.homeScore,awayScore:patch.awayScore,
+        minute:patch.currentMinute,homeTeam:info.home_team??info.homeTeam,awayTeam:info.away_team??info.awayTeam,
+        counters:{corners:patch.corners,yellowCards:patch.yellowCards,redCards:patch.redCards,
+          fouls:patch.fouls,shotsOnTarget:patch.shotsOnTarget,offsides:counterOf(info.stats,'offsides'),
+          shots:patch.shots}});
       // the feed's own "this match has no open odds" flag locks every price on it
       if (typeof info.has_open_odds === 'boolean' && snapshotTime(patch) >= (prevMatchAt.current[key] ?? 0)) {
         prevMatchAt.current[key] = snapshotTime(patch);
@@ -512,10 +541,10 @@ export function LiveFeedProvider({ children }: { children: ReactNode }) {
   }, [needsSportsFeed]);
 
   const value = useMemo<LiveFeedValue>(
-    () => ({ oddsDeltas, livePatches, matchEvents, connected, feedMode,
+    () => ({ oddsDeltas, livePatches, matchEvents, liveAlerts, dismissLiveAlert, connected, feedMode,
       lockedOutcomes:{...lockedOutcomes,...Object.fromEntries(Object.keys(rejectedOutcomes).map(id=>[id,true]))},
       riskLockedOutcomes, lockedMarkets, lockedMatches, combosEnabled, invalidateSelections, refreshVersion, acceptMatches }),
-    [oddsDeltas, livePatches, matchEvents, connected, feedMode, lockedOutcomes, riskLockedOutcomes, lockedMarkets, lockedMatches, combosEnabled, rejectedOutcomes,invalidateSelections, refreshVersion, acceptMatches],
+    [oddsDeltas, livePatches, matchEvents, liveAlerts, dismissLiveAlert, connected, feedMode, lockedOutcomes, riskLockedOutcomes, lockedMarkets, lockedMatches, combosEnabled, rejectedOutcomes,invalidateSelections, refreshVersion, acceptMatches],
   );
 
   useLayoutEffect(()=>outcomeStore.current.publish(value),[value]);
