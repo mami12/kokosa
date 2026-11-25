@@ -286,6 +286,8 @@ export function parseFotMobPayload(summary, details = null) {
     cornersAway: cornersA,
     cardsHome: yellowVerified&&redVerified ? totalCardsH : null,
     cardsAway: yellowVerified&&redVerified ? totalCardsA : null,
+    yellowCards: yellowVerified ? {home:yellowH,away:yellowA} : null,
+    redCards: redVerified ? {home:redH,away:redA} : null,
     statistics: {
       shots: (shotsH != null && shotsA != null) ? { home: shotsH, away: shotsA } : {},
       shotsOnTarget: (sOnTargetH != null && sOnTargetA != null) ? { home: sOnTargetH, away: sOnTargetA } : {},
