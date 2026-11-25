@@ -271,8 +271,13 @@ async function runSettlement(why = 'periodic') {
   settlementHealth.lastAttemptAt = new Date().toISOString();
   try {
     trackBackground(statsProviders.tick().catch(()=>{}));
-    // Optional read-only football enrichment: only mapped primary matches
-    // with pending bets and available upstream market names are eligible.
+    // Finished pending fixtures get a dedicated, awaited final-data pass.
+    // Do not grade them in the same cycle before FotMob/API-Football/SportAPI/
+    // GoalAPI/BSD/WorldCup26 (and confirmed AiScore data) have had a chance to
+    // fill missing, fixture-matched statistics and allowed event chronology.
+    try { await statsProviders.warmFinalPending(); }
+    catch(error) { console.warn('[stats] final settlement recovery:',error.message); }
+    // Optional read-only football enrichment remains independent of prices/offers.
     trackBackground(footballInformation.tick().catch(error=>console.warn('[football information] tick:',error.message)));
     const out = await settleAll();
     settlementHealth.lastSuccessAt = new Date().toISOString();
