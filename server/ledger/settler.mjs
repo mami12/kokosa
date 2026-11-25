@@ -734,6 +734,9 @@ export function hasRequiredSettlementEvidence(line, result) {
   if (!result||scoreValue(result.home_score)===null||scoreValue(result.away_score)===null)return false;
   // Conflicts block only selections whose settlement depends on that statistic.
   if(statisticsNeedReview(line,result))return false;
+  // Aggregate team-stat contracts use their own final statistic evidence;
+  // do not route yellow/red cards through the legacy generic CARDS family.
+  if(isStatisticMarket(line))return hasStatisticEvidence(line,result);
   const cornerResult=gradeFinalTeamCornerMarket(line,result);
   if(cornerResult!==undefined)return ['WON','LOST','VOID'].includes(cornerResult);
   const namedResult=gradeNamedFinalTeamMarket(line,result);
