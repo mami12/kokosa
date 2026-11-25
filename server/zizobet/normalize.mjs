@@ -145,6 +145,11 @@ export function resolveMarketTitle(raw,q,{intervalWidth,competitors}={}){
   if(/^Who scores the/i.test(interval[1])){if(!/^\d+$/.test(text(q.p3)))return null;subject='Who scores goal '+q.p3;}
   return subject+' in minutes '+from+'-'+to+' ('+interval[2]+'-minute interval)';
  }
+ const halfCorrectScore=name.match(/^((?:1st|first|2nd|second)\s+half\s*[-–.:]\s*)correct score \[\{score\}\]$/i);
+ if(halfCorrectScore){
+  if(!pair(q.p3))return null;
+  return halfCorrectScore[1]+'correct score '+q.p3;
+ }
  if(/^Correct score \[\{score\}\]$/i.test(name)){
   if(!pair(q.p3))return null;
   return 'Correct score rest of match (from '+q.p3+')';
