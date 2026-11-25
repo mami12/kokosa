@@ -8,7 +8,7 @@ import {LEDGER_SQL} from '../server/ledger/schema.mjs';
 import {decodePushMessage} from '../server/push-decode.mjs';
 import {normalizeTeamStatistics,mergeTeamStats,teamStatisticsFromRow,verifiedFinalStatistics,trackerTeamStatistics} from '../server/match-statistics.mjs';
 import {isStatisticMarket,statisticMarketContract,hasStatisticEvidence,gradeStatisticLine} from '../server/ledger/statistic-markets.mjs';
-import {hasRequiredSettlementEvidence,gradeLine} from '../server/ledger/settler.mjs';
+import {hasRequiredSettlementEvidence,gradeLine,isAggregateStatisticSettlement} from '../server/ledger/settler.mjs';
 import {compareFinalStatistics,resolveSettlementStatistics,statisticsNeedReview,settlementStatisticFields} from '../server/ledger/settlement-review.mjs';
 const {FINISHED_RESULT_INSERT,finishedResultParameters,getResult}=await import('../server/ledger/results.mjs');
 const {createMatchSnapshotStore}=await import('../server/ledger/match-snapshots.mjs');
@@ -40,6 +40,19 @@ const recentBeforeFinal={...base,stats:{
 assert.deepEqual(verifiedFinalStatistics(recentBeforeFinal),{corners:{home:13,away:0}},
  'the latest cumulative counters from the match remain usable when no stat update arrives in the final two minutes');
 const result={home_team:'Home',away_team:'Away',home_score:7,away_score:4,statistics:verifiedFinalStatistics(row)};
+const intervalCards={market_name:'Total Cards in minutes 16-20 (5-minute interval)',
+ line:'0.5',outcome_key:'Over',outcome_name:'Over'};
+assert.equal(isStatisticMarket(intervalCards),true,'Card interval shares the generic statistic name family');
+assert.equal(statisticMarketContract(intervalCards).supported,false,'Interval cards are not an aggregate statistic contract');
+assert.equal(isAggregateStatisticSettlement(intervalCards,result),false,
+ 'Interval card markets must reach their chronological event-fact grader');
+const fullCards={market_name:'Total Cards',line:'3.5',outcome_key:'Over',outcome_name:'Over'};
+assert.equal(isAggregateStatisticSettlement(fullCards,result),true,
+ 'Full-match card totals use verified aggregate counters');
+const halfCards={market_name:'1st half - Total Cards',line:'1.5',outcome_key:'Over',outcome_name:'Over',period:1};
+assert.equal(isAggregateStatisticSettlement(halfCards,result),true,
+ 'Half-time card aggregates use their period statistics');
+
 const total={market_name:'Total Shots on Target - Over/Under',line:'8.5',outcome_key:'over',outcome_name:'Over'};
 assert.equal(statisticMarketContract({market_name:'Full time result'}),null);
 assert.equal(statisticMarketContract(total).stat,'shotsOnTarget');assert.equal(gradeStatisticLine(total,result),'LOST','eightshots, not elevengoals');
