@@ -758,13 +758,12 @@ export function hasRequiredSettlementEvidence(line, result) {
   if(isParityLikeMarket(line))return gradeParityMarket(line,result)!==null;
   if(isHandicapMarket(line))return legacyHandicapResult(line,result)!==null;
   // A final aggregate card count cannot tell red from yellow cards.
-  if(/\b(?:yellow|red)\s+cards?\b/i.test(String(line?.market_name??'')))return false;
   // Zizobet is the declared settlement authority. A missing secondary-provider
   // comparison must not hold a verified Zizobet final corner/statistics result
   // in PENDING; secondary feeds are enrichment only, not payout vetoes.
   if(String(result?.source??'').toUpperCase()!=='ZIZOBET'&&statisticsNeedReview(line,result))return false;
   if (Array.isArray(line.builder_legs)) return line.builder_legs.every(leg => hasRequiredSettlementEvidence(leg, result));
-  if (needsEvents(line)) return ['WON','LOST','VOID'].includes(gradeEventLine(line,result));
+  if (needsEvents(line)&&!isStatisticMarket(line)) return ['WON','LOST','VOID'].includes(gradeEventLine(line,result));
   if (isStatisticMarket(line)) return hasStatisticEvidence(line,result);
   const marketName = String(line.market_name ?? '');
   const period=scorePeriodOf(line);
@@ -875,7 +874,7 @@ export function gradeLine(line, result) {
     return gradePeriodGoalTotal(parsePeriodGoalTotal(line,result),result);
   if(!Array.isArray(line.builder_legs)&&isScoringPropMarket(line))
     return gradeScoringPropMarket(line,result);
-  if(needsEvents(line)&&!Array.isArray(line.builder_legs))return gradeEventLine(line,result)??null;
+  if(needsEvents(line)&&!isStatisticMarket(line)&&!Array.isArray(line.builder_legs))return gradeEventLine(line,result)??null;
   if (line.builder_legs !== null && line.builder_legs !== undefined) {
     const legs = line.builder_legs;
     if (!Array.isArray(legs) || legs.length < 2 || legs.length > 5 || legs.some(l => l.builder_legs)) return null;
