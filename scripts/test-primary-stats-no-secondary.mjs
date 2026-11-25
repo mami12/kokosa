@@ -34,6 +34,6 @@ try{
  const data=(await database.query('select payload from app_stat_review where match_id=$1',[101])).rows[0]?.payload;
  assert.equal(data?.status,'VERIFIED');
  assert.deepEqual(data?.attempted,[]);
- assert.deepEqual(data?.sources.map(x=>x.provider),['primary']);
+ assert.deepEqual(data?.sources.map(x=>x.provider),['ZIZOBET']);
 }finally{await database.close();}
 console.log('PASS no secondary statistics request when Zizobet final stats are complete');
