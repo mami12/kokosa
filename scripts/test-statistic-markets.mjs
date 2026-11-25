@@ -13,7 +13,7 @@ import {compareFinalStatistics,resolveSettlementStatistics,statisticsNeedReview,
 const {FINISHED_RESULT_INSERT,finishedResultParameters}=await import('../server/ledger/results.mjs');
 const {createMatchSnapshotStore}=await import('../server/ledger/match-snapshots.mjs');
 const {pool}=await import('../server/db.mjs');
-const now=Date.now(),at=new Date(now).toISOString(),old=new Date(now-300000).toISOString();
+const now=Date.now(),at=new Date(now).toISOString(),old=new Date(now-300000).toISOString(),staleAt=new Date(now-4*60*60*1000).toISOString();
 const raw=normalizeTeamStatistics({shotsOnTarget:'3',shots:'9',foulsCommitted:'12',yellowCards:'0',redCards:'0',corners:'0',offTarget:6,freeKicks:20,attacks:90},{observedAt:at});
 assert.equal(raw.shotsOnTarget,3);assert.equal(raw.shots,9);assert.equal(raw.fouls,12);assert.equal(raw.corners,0);assert.equal(raw.yellow,0);assert.equal(raw.freeKicks,undefined);assert.equal(raw.offTarget,undefined);
 for(const invalid of [null,undefined,'',false,true,{},-1,1.5,Infinity])assert.equal(normalizeTeamStatistics({shotsOnTarget:invalid}).shotsOnTarget,undefined);
@@ -31,8 +31,14 @@ assert.equal(teamStatisticsFromRow(row).home.shotsOnTarget,3);
 assert.equal(teamStatisticsFromRow({...row,raw:{competitors:[{id:10},{id:20}]}}).away.fouls,11);
 assert.equal(trackerTeamStatistics({}).home.shotsOnTarget,null,'unknown never displays aszero');
 assert.deepEqual(verifiedFinalStatistics(row),{shots:{home:10,away:12},shotsOnTarget:{home:3,away:5},fouls:{home:8,away:11}});
-const stale={...base,stats:{home:normalizeTeamStatistics({shotsOnTarget:4},{observedAt:old}),away:normalizeTeamStatistics({fouls:2},{observedAt:at})}};
+const stale={...base,stats:{home:normalizeTeamStatistics({shotsOnTarget:4},{observedAt:staleAt}),away:normalizeTeamStatistics({fouls:2},{observedAt:at})}};
 assert.deepEqual(verifiedFinalStatistics(stale),{fouls:{away:2}},'a final-phase flag does not refresh an oldstat');
+const recentBeforeFinal={...base,stats:{
+  10:normalizeTeamStatistics({corners:13},{observedAt:new Date(now-5*60*1000).toISOString()}),
+  20:normalizeTeamStatistics({corners:0},{observedAt:new Date(now-5*60*1000).toISOString()})
+}};
+assert.deepEqual(verifiedFinalStatistics(recentBeforeFinal),{corners:{home:13,away:0}},
+ 'the latest cumulative counters from the match remain usable when no stat update arrives in the final two minutes');
 const result={home_team:'Home',away_team:'Away',home_score:7,away_score:4,statistics:verifiedFinalStatistics(row)};
 const total={market_name:'Total Shots on Target - Over/Under',line:'8.5',outcome_key:'over',outcome_name:'Over'};
 assert.equal(statisticMarketContract({market_name:'Full time result'}),null);
@@ -66,8 +72,8 @@ assert.deepEqual(verifiedFinalStatistics(freshCards),{
  corners:{home:6,away:4},yellow:{home:2,away:1},red:{home:1,away:0}
 });
 const staleCards={...base,stats:{
-  10:normalizeTeamStatistics({corners:6,yellow:2,red:1},{observedAt:old}),
-  20:normalizeTeamStatistics({corners:4,yellow:1,red:0},{observedAt:old})
+  10:normalizeTeamStatistics({corners:6,yellow:2,red:1},{observedAt:staleAt}),
+  20:normalizeTeamStatistics({corners:4,yellow:1,red:0},{observedAt:staleAt})
 }};
 assert.deepEqual(verifiedFinalStatistics(staleCards),{},
  'old LIVE corners and card colors are not promoted into the FT archive');
