@@ -146,7 +146,8 @@ assert.equal(gradeLine(totalRed,fallbackResult),'WON',
  'yellow and red totals must bypass the legacy generic CARDS-family gate');
 const zizoFinalStats={
  source:'ZIZOBET',home_score:2,away_score:1,
- statistics:{shots:{home:8,away:5},shotsOnTarget:{home:4,away:2},
+ corners_home:13,corners_away:0,
+ statistics:{corners:{home:13,away:0},shots:{home:8,away:5},shotsOnTarget:{home:4,away:2},
   fouls:{home:9,away:11},offsides:{home:3,away:1},
   yellow:{home:2,away:1},red:{home:0,away:0},cards:{home:2,away:1}},
  statistics_review:{conflicts:{
@@ -155,6 +156,7 @@ const zizoFinalStats={
  }}
 };
 const fullTimeMarkets=[
+ {market_name:'Total Corners',line:'12.5',outcome_key:'over',outcome_name:'Over'},
  {market_name:'Total Shots',line:'12.5',outcome_key:'over',outcome_name:'Over'},
  {market_name:'Total Shots on Target',line:'5.5',outcome_key:'over',outcome_name:'Over'},
  {market_name:'Total Fouls',line:'19.5',outcome_key:'over',outcome_name:'Over'},
