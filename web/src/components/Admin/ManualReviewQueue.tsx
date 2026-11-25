@@ -59,13 +59,14 @@ type ReviewItem = {
   marketLine: string;
   lineStatus: string;
   ticketStatus: string;
+  requiresReview: boolean;
   username: string | null;
   placedAt: string;
   stake: string | number;
   odds: string | number;
   potentialPayout?: string | number;
   notificationActive: boolean;
-  noticeExpiresAt: string;
+  noticeExpiresAt: string | null;
   finalScore: string | null;
   reason: string;
   conflicts?: Record<string, unknown> | null;
@@ -87,6 +88,7 @@ const labels: Record<string, string> = {
   MISSING_MARKET_STATISTICS: 'Mungojnë statistikat e nevojshme për mbylljen e tregut',
   UNRESOLVED_FINAL_SELECTION: 'Ndeshja ka përfunduar, por përzgjedhja ende nuk është zgjidhur automatikisht',
   MISSING_FINAL_RESULT: 'Mungon rezultati përfundimtar i konfirmuar nga burimi sportiv',
+  AWAITING_RESULT: 'Në pritje të rezultatit ose provës së mjaftueshme nga burimi sportiv',
 };
 
 const fresh: Decision = { status: 'PENDING', reason: '', source: '' };
@@ -385,15 +387,25 @@ export default function ManualReviewQueue({ onlyLineId, onSaved }: { onlyLineId?
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [hasMore, setHasMore] = useState(false);
+  const [nextOffset, setNextOffset] = useState(0);
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
 
-  async function load() {
+  async function load(append = false) {
     setRefreshing(true);
+    const offset = append ? nextOffset : 0;
     try {
-      const res = await apiClient.get('/admin/settlement-review-queue', { params: { limit: 2000 } });
-      setItems(Array.isArray(res.data?.items)
+      const res = await apiClient.get('/admin/settlement-review-queue', { params: { limit: 2000, offset } });
+      const incoming: ReviewItem[] = Array.isArray(res.data?.items)
         ? res.data.items.filter((item: ReviewItem) => !onlyLineId || item.lineId === onlyLineId)
-        : []);
+        : [];
+      setItems(previous => {
+        if (append) {
+          const seen = new Set(previous.map(item => item.lineId));
+          return [...previous, ...incoming.filter(item => !seen.has(item.lineId))];
+        }
+        return incoming;
+      });
+      setNextOffset(Number(res.data?.nextOffset ?? (offset + incoming.length)));
       setHasMore(res.data?.hasMore === true);
       setError('');
     } catch (e: any) {
@@ -464,10 +476,10 @@ export default function ManualReviewQueue({ onlyLineId, onSaved }: { onlyLineId?
         <div>
           <div className="flex items-center gap-2 text-lg font-bold text-white sm:text-xl">
             <ShieldCheck size={21} className="text-sky-400" />
-            Njoftime: Bileta për kontroll
+            Bileta Pending · të gjithë lojtarët
           </div>
           <p className="mt-1 max-w-3xl text-xs leading-relaxed text-text-secondary">
-            Kontroll i rasteve që kërkojnë verifikim manual. Çdo biletë përmban snapshot-in në vendosje dhe kronologjinë e konfirmuar që ekziston në arkiv.
+            Lista përfshin të gjitha biletat Pending të çdo lojtari. Rastet që kërkojnë ndërhyrje manuale dallohen veçmas; biletat normale që presin rezultatin nuk shënohen si gabim.
           </p>
         </div>
         <button
@@ -483,7 +495,7 @@ export default function ManualReviewQueue({ onlyLineId, onSaved }: { onlyLineId?
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-tertiary bg-secondary/60 p-3.5">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">Raste për kontroll</div>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">Bileta në listë</div>
           <div className="mt-1 text-2xl font-black tabular-nums text-white">{items.length.toLocaleString('sq-AL')}</div>
         </div>
         <div className="rounded-xl border border-tertiary bg-secondary/60 p-3.5">
@@ -519,8 +531,12 @@ export default function ManualReviewQueue({ onlyLineId, onSaved }: { onlyLineId?
       </div>
 
       {hasMore && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
-          Lista ka arritur kufirin prej 2,000 rastesh. Mund të ketë raste të tjera që nuk shfaqen në këtë ngarkim.
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-tertiary bg-secondary/60 px-3 py-3">
+          <span className="text-xs text-text-secondary">Ka bileta të tjera jashtë kësaj faqeje.</span>
+          <button type="button" onClick={() => void load(true)} disabled={refreshing}
+            className="rounded-lg border border-tertiary bg-primary px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+            {refreshing ? 'Duke ngarkuar…' : 'Ngarko më shumë bileta'}
+          </button>
         </div>
       )}
       {error && <p role="alert" className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-sm font-semibold text-rose-200">{error}</p>}
@@ -633,16 +649,16 @@ export default function ManualReviewQueue({ onlyLineId, onSaved }: { onlyLineId?
                   </div>
                 )}
 
-                <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3.5">
+                <div className={"rounded-lg p-3.5 " + (item.requiresReview ? 'border border-amber-500/25 bg-amber-500/5' : 'border border-tertiary bg-primary/40')}>
                   <div className="flex items-start gap-2.5">
-                    <AlertTriangle size={17} className="mt-0.5 shrink-0 text-amber-400" />
+                    {item.requiresReview ? <AlertTriangle size={17} className="mt-0.5 shrink-0 text-amber-400" /> : <Clock size={17} className="mt-0.5 shrink-0 text-text-secondary" />}
                     <div className="min-w-0">
-                      <div className="text-xs font-bold text-amber-100">{labels[item.reason] ?? item.reason}</div>
-                      <div className="mt-1 text-[10px] text-text-secondary">
-                        {item.notificationActive
-                          ? 'Njoftimi aktiv deri më ' + formatDateTime(item.noticeExpiresAt)
-                          : 'Njoftimi ka skaduar · Verifikimi mbetet i hapur'}
+                      <div className={"text-xs font-bold " + (item.requiresReview ? 'text-amber-100' : 'text-text-secondary')}>
+                        {labels[item.reason] ?? item.reason}
                       </div>
+                      {item.requiresReview && <div className="mt-1 text-[10px] text-text-secondary">
+                        {item.notificationActive ? 'Njoftimi aktiv deri më ' + formatDateTime(item.noticeExpiresAt) : 'Njoftimi ka skaduar · Verifikimi mbetet i hapur'}
+                      </div>}
                       {item.conflicts && Object.keys(item.conflicts).length > 0 && (
                         <div className="mt-1 text-[11px] font-semibold text-rose-300">Statistika kontradiktore: {Object.keys(item.conflicts).join(', ')}</div>
                       )}
@@ -650,7 +666,7 @@ export default function ManualReviewQueue({ onlyLineId, onSaved }: { onlyLineId?
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-3 border-t border-tertiary pt-3 lg:flex-row lg:items-center lg:justify-between">
+                {item.requiresReview && <div className="flex flex-col gap-3 border-t border-tertiary pt-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="mr-1 text-xs font-semibold text-text-secondary">Vendimi:</span>
                     {[
@@ -685,7 +701,7 @@ export default function ManualReviewQueue({ onlyLineId, onSaved }: { onlyLineId?
                     <ShieldCheck size={14} />
                     {busy === item.lineId ? 'Duke ruajtur…' : 'Ruaj vendimin'}
                   </button>
-                </div>
+                </div>}
               </div>
             </article>
           );

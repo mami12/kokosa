@@ -55,7 +55,7 @@ export default function StitchSportsDesk({sections}:{sections:DeskSection[]}) {
    setChecking(true);
    try {
     const [noticesResult,overviewResult,previewResult]=await Promise.allSettled([
-     apiClient.get('/admin/settlement-review-queue',{params:{limit:100}}),
+     apiClient.get('/admin/settlement-review-queue',{params:{limit:100,reviewOnly:true}}),
      apiClient.get<Overview>('/admin/stitch-overview'),
      apiClient.get<{previews:LivePreview[]}>('/admin/live-event-test'),
     ]);
@@ -88,7 +88,7 @@ export default function StitchSportsDesk({sections}:{sections:DeskSection[]}) {
   try{
    const [fixture,queue]=await Promise.all([
     apiClient.get('/admin/matches/'+encodeURIComponent(item.matchId)),
-    apiClient.get('/admin/settlement-review-queue',{params:{limit:100}}),
+    apiClient.get('/admin/settlement-review-queue',{params:{limit:100,reviewOnly:true}}),
    ]);
    const current=(Array.isArray(queue.data.items)?queue.data.items:[]).find((row:Review)=>row.lineId===item.lineId);
    const marketId=marketIdFor(item);

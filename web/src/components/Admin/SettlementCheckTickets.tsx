@@ -3,9 +3,10 @@ import {AlertTriangle,CheckCircle2,Play,RefreshCw,Ticket} from 'lucide-react';
 import {apiClient} from '../../api/client';
 import {createClientRequestId} from '../../utils/clientRequestId.mjs';
 import {useLanguage} from '../../context/LanguageContext';
+import {isSettlementCheckFixture} from '../../../server/fixture-dates.mjs';
 
 type Player={id:string;username:string;role:string;status:string;balance:number};
-type Match={id:string;homeTeam?:{name?:string}|string;awayTeam?:{name?:string}|string;status:string};
+type Match={id:string;homeTeam?:{name?:string}|string;awayTeam?:{name?:string}|string;status:string;service?:string;startTime?:string;start_at?:string;startAt?:string;live?:boolean};
 type Preview={stakePerTicket:number;ticketCount:number;totalStake:number;matches:{id:string;name:string;status:string;marketCount:number;ticketCount:number}[]};
 type Result={stakePerTicket:number;totalStake:number;placed:{id:string;bookingCode:string;matchId:string}[];skipped:{matchId:string;outcomeId:string;reason:string}[]};
 const teamName=(team:Match['homeTeam'])=>typeof team==='string'?team:team?.name??'';
@@ -16,7 +17,7 @@ export default function SettlementCheckTickets(){
  const [players,setPlayers]=useState<Player[]>([]),[matches,setMatches]=useState<Match[]>([]),[playerId,setPlayerId]=useState(''),[first,setFirst]=useState(''),[second,setSecond]=useState('');
  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[preview,setPreview]=useState<Preview|null>(null),[result,setResult]=useState<Result|null>(null),[error,setError]=useState('');
  const matchIds=[first,second].filter(Boolean),ready=Boolean(playerId&&first&&second&&first!==second);
- const load=async()=>{setLoading(true);setError('');try{const [users,live,prematch]=await Promise.all([apiClient.get<Player[]>('/admin/users'),apiClient.get<Match[]>('/matches',{params:{status:'LIVE'}}),apiClient.get<Match[]>('/matches',{params:{status:'PREMATCH'}})]);setPlayers(users.data.filter(user=>user.role==='PLAYER'&&user.status==='ACTIVE'));setMatches([...live.data,...prematch.data]);}catch(e:any){setError(e.response?.data?.message||tr('Nuk u ngarkuan llogaritë ose ndeshjet.','Accounts or matches could not be loaded.'));}finally{setLoading(false);}};
+ const load=async()=>{setLoading(true);setError('');try{const [users,live,prematch]=await Promise.all([apiClient.get<Player[]>('/admin/users'),apiClient.get<Match[]>('/matches',{params:{status:'LIVE'}}),apiClient.get<Match[]>('/matches',{params:{status:'PREMATCH'}})]);setPlayers(users.data.filter(user=>user.role==='PLAYER'&&user.status==='ACTIVE'));setMatches([...live.data,...prematch.data].filter(match=>isSettlementCheckFixture(match)));}catch(e:any){setError(e.response?.data?.message||tr('Nuk u ngarkuan llogaritë ose ndeshjet.','Accounts or matches could not be loaded.'));}finally{setLoading(false);}};
  useEffect(()=>{void load();},[]);
  const previewTickets=async()=>{if(!ready||busy)return;setBusy(true);setError('');setResult(null);try{const response=await apiClient.post<Preview>('/admin/settlement-check/preview',{matchIds});setPreview(response.data);}catch(e:any){setPreview(null);setError(e.response?.data?.message||tr('Kontrolli nuk u krijua.','The preview could not be created.'));}finally{setBusy(false);}};
  const place=async()=>{if(!ready||!preview||busy)return;setBusy(true);setError('');try{const response=await apiClient.post<Result>('/admin/settlement-check/place',{playerId,matchIds,runId:createClientRequestId()});setResult(response.data);}catch(e:any){setError(e.response?.data?.message||tr('Biletat nuk u krijuan.','Tickets could not be created.'));}finally{setBusy(false);}};

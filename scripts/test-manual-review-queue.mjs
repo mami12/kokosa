@@ -49,6 +49,8 @@ assert.equal(reviewReason(unknownVoid,now),'MISSING_GOAL_METHOD_EVIDENCE',
  'Scoring Type VOID keeps its precise missing method-evidence review reason');
 assert.equal(reviewReason({...base,result_id:null,match_status:'live',feed_status:'live'},now),null,'active fixtures are not invalid');
 assert.equal(reviewReason({...base,result_id:null,match_status:'ended',feed_status:'ended'},now),'MISSING_FINAL_RESULT');
+assert.equal(reviewReason({...base,result_id:null,start_at:new Date(now+86400000).toISOString(),match_status:'ended',feed_status:'ended'},now),null,
+ 'a scheduled future match must not create a missing-final-result review');
 
 const rows=[
  base,
@@ -109,10 +111,14 @@ const justBefore=await manualReviewQueue({runQuery,now:now+48*3600000-1,limit:25
 assert.equal(justBefore.notificationCount,4);
 const expired=await manualReviewQueue({runQuery,now:now+48*3600000,limit:25});
 assert.equal(expired.notificationCount,0);
-assert.equal(expired.items.length,4,'expiry does not close unresolved cases');
+assert.equal(expired.items.length,5,'expiry does not close unresolved cases and ordinary Pending tickets stay listed');
+assert.equal(expired.items.find(item=>item.lineId==='line-d').reason,'AWAITING_RESULT');
+assert.equal(expired.items.find(item=>item.lineId==='line-d').requiresReview,false);
+assert.equal(expired.items.find(item=>item.lineId==='line-d').notificationActive,false);
 assert.match(observedSql,/o.status='PENDING'/,'an explicit pending decision keeps the review open');
-assert.equal(queue.items.length,4);
-assert.deepEqual(queue.items.map(r=>r.lineId),['line-a','line-b','line-c','line-g']);
+assert.equal(queue.items.length,5,'all Pending players are listed, even when no manual-review reason exists');
+assert.deepEqual(queue.items.map(r=>r.lineId),['line-a','line-b','line-c','line-d','line-g']);
+assert.deepEqual(queue.items.filter(item=>item.requiresReview).map(item=>item.lineId),['line-a','line-b','line-c','line-g']);
 assert.equal(queue.items[0].finalScore,'2 - 1');
 assert.equal(queue.items[0].finalCounters.corners.home,4);
 assert.equal(queue.items[0].finalCounters.cards.away,1);
@@ -138,10 +144,16 @@ assert.equal(queue.items[0].eventCoverage.find(item=>item.kind==='goal').countHo
 assert.equal(queue.items[0].eventTimelineSource,'ZIZOBET_ARCHIVED');
 assert.equal(queue.items[2].lineStatus,'VOID');
 assert.match(observedSql,/app_settlement_override/);
-assert.deepEqual(observedParams,[250]);
+assert.deepEqual(observedParams,[25,0,false]);
 const expanded=await manualReviewQueue({runQuery,now,limit:1800});
-assert.equal(expanded.items.length,4);
-assert.deepEqual(observedParams,[18000],'review queue scans up to ten times the requested 1,800-item result cap');
+assert.equal(expanded.items.length,5);
+assert.deepEqual(observedParams,[1800,0,false],'regular Pending view pages the requested 1,800 rows');
+const reviewOnly=await manualReviewQueue({runQuery,now,limit:25,reviewOnly:true});
+assert.equal(reviewOnly.items.length,4,'Stitch alert queue stays limited to actual review cases');
+assert.ok(reviewOnly.items.every(item=>item.requiresReview));
+assert.deepEqual(observedParams,[250,0,true]);
+await manualReviewQueue({runQuery,now,limit:25,offset:25});
+assert.deepEqual(observedParams,[25,25,false],'Pending list supports offset pagination');
 
 // Simulate one approved selection only, in a two-line ticket. No live DB
 // or wallet is used; assert that only the selected UUID is changed.

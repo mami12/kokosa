@@ -1,8 +1,18 @@
 import assert from 'node:assert/strict';
 import {isCurrentSettlementCheckQuote} from '../server/ledger/settlement-check.mjs';
 import {isDecidedLiveNumberedGoalWindow} from '../server/ledger/decided-markets.mjs';
+import {isSettlementCheckFixture} from '../server/fixture-dates.mjs';
 
 const now=1000;
+const dateNow=new Date('2026-11-25T12:00:00+01:00');
+assert.equal(isSettlementCheckFixture({start_at:'2026-11-25T22:00:00+01:00',service:'PREMATCH'},dateNow),true,
+ 'Tirane calendar date permits fixtures scheduled later today');
+assert.equal(isSettlementCheckFixture({start_at:'2026-11-26T10:00:00+01:00',service:'PREMATCH'},dateNow),false,
+ 'tomorrow prematch fixture is excluded');
+assert.equal(isSettlementCheckFixture({start_at:'2026-12-25T10:00:00+01:00',service:'PREMATCH'},dateNow),false,
+ 'next month prematch fixture is excluded');
+assert.equal(isSettlementCheckFixture({start_at:'2026-11-24T22:00:00+01:00',service:'LIVE',status:'LIVE'},dateNow),true,
+ 'a match still live remains selectable even if it started yesterday');
 const market={id:'m1',status:'ACTIVE',suspended:false};
 const fresh={id:'o1',status:'ACTIVE',odds:2.25,priceValidUntil:2000};
 assert.equal(isCurrentSettlementCheckQuote(market,fresh,now),true,
