@@ -104,6 +104,11 @@ assert.equal(gradeLiveContract(normal90Window,{
  clock:130,counts:{goal:1},events:[{type:'goal',minute:92,team:'home'}],
  coverage:{goalThrough:130}
 }),null,'An unlabelled 92nd-minute event cannot be guessed as normal or extra time');
+assert.equal(gradeLiveContract({
+ kind:'sequence',event:'goal',target:1,side:'home'
+},{clock:130,counts:{goal:1},events:[{id:'unknown-92',type:'goal',minute:92,team:'home'}],
+ coverage:{goalThrough:130}},{ended:true}),null,
+ 'A post-90 event with unknown half/ET scope cannot settle a sequence market');
 const no=parseEventWindow(windowLine('Goal in minutes 20-45','No'));
 assert.equal(gradeLiveContract(no,obs('goal',[21],25,25)),'LOST','No goal bet loses as soon as goal verified');
 assert.equal(gradeLiveContract(no,obs('goal',[],46,46)),'WON','No goal bet wins only after interval closes');
