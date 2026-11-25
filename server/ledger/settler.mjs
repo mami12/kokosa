@@ -622,13 +622,20 @@ const normalizedTeamLabel=value=>String(value??'').normalize('NFD')
  * race, first/next and half markets never enter this path.
  */
 function gradeFinalTeamCornerMarket(line,result){
- const period=Number(line?.period??line?.accepted_contract?.providerPeriod??0);
- if(period!==0)return undefined;
- const contract=parseTeamCountMarket({...line,period:0});
+ const period=scorePeriodOf(line);
+ if(period===null)return undefined;
+ const marketName=String(line?.market_name??line?.marketName??'')
+  .replace(/^(?:(?:first|1st|second|2nd)\s*half|1h|2h)\s*[-: ]*/i,'');
+ const contract=parseTeamCountMarket({...line,market_name:marketName,period:0});
  if(!contract||contract.event!=='corner')return undefined;
  const source=String(result?.source??'').toUpperCase();
  if(source&&!['ZIZOBET','ADMIN','FEED'].includes(source))return null;
- const home=scoreValue(result?.corners_home),away=scoreValue(result?.corners_away);
+ let statistics=result?.statistics;
+ if(typeof statistics==='string'){try{statistics=JSON.parse(statistics);}catch{statistics={};}}
+ const periodKey=period===1?'firstHalf':period===2?'secondHalf':'fullTime';
+ const values=period===0?null:statistics?.periods?.[periodKey]?.corners;
+ const home=scoreValue(period===0?result?.corners_home:values?.home);
+ const away=scoreValue(period===0?result?.corners_away:values?.away);
  const count=contract.side==='home'?home:contract.side==='away'?away:null;
  if(count===null)return null;
  const decide=value=>value?'WON':'LOST';
