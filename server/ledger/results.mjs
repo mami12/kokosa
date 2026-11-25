@@ -83,6 +83,7 @@ export const FINISHED_RESULT_INSERT = `
       'shots',coalesce(app_match_result.statistics->'shots','{}'::jsonb)||coalesce(excluded.statistics->'shots','{}'::jsonb),
       'shotsOnTarget',coalesce(app_match_result.statistics->'shotsOnTarget','{}'::jsonb)||coalesce(excluded.statistics->'shotsOnTarget','{}'::jsonb),
       'fouls',coalesce(app_match_result.statistics->'fouls','{}'::jsonb)||coalesce(excluded.statistics->'fouls','{}'::jsonb),
+      'offsides',coalesce(app_match_result.statistics->'offsides','{}'::jsonb)||coalesce(excluded.statistics->'offsides','{}'::jsonb),
       'corners',coalesce(app_match_result.statistics->'corners','{}'::jsonb)||coalesce(excluded.statistics->'corners','{}'::jsonb),
       'yellow',coalesce(app_match_result.statistics->'yellow','{}'::jsonb)||coalesce(excluded.statistics->'yellow','{}'::jsonb),
       'red',coalesce(app_match_result.statistics->'red','{}'::jsonb)||coalesce(excluded.statistics->'red','{}'::jsonb),
@@ -229,7 +230,31 @@ export async function getResult(matchId,{execute=query,readEvidence=loadEventEvi
     if(onEvidenceError)onEvidenceError(error);
     else if(Date.now()-evidenceWarningAt>60000){evidenceWarningAt=Date.now();console.warn('[settle] optional event evidence unavailable; event selections remain pending');}
   }
-  return resolveSettlementStatistics(result);
+  const resolved=resolveSettlementStatistics(result);
+  // HT aggregate counters are archived separately from the final scoreboard.
+  // Derive second-half counts only when both independently recorded periods
+  // are available and the final cumulative counter is not below the HT count.
+  let firstHalf={};
+  try{
+    const half=(await execute("select statistics from app_match_half_result where match_id=$1 and source='ZIZOBET' and confirmed_at is not null",[Number(matchId)])).rows[0];
+    const value=half?.statistics;
+    firstHalf=typeof value==='string'?JSON.parse(value||'{}'):(value??{});
+  }catch{}
+  const secondHalf={};
+  for(const field of ['shots','shotsOnTarget','fouls','offsides','corners','yellow','red','cards']){
+    const full=resolved.statistics?.[field],half=firstHalf?.[field];
+    if(full&&half&&['home','away'].every(side=>
+      Number.isSafeInteger(Number(full[side]))&&Number.isSafeInteger(Number(half[side]))&&
+      Number(full[side])>=Number(half[side]))){
+      secondHalf[field]={home:Number(full.home)-Number(half.home),
+       away:Number(full.away)-Number(half.away)};
+    }
+  }
+  const periods={...(resolved.statistics?.periods??{})};
+  if(Object.keys(firstHalf).length)periods.firstHalf=firstHalf;
+  if(Object.keys(secondHalf).length)periods.secondHalf=secondHalf;
+  if(Object.keys(periods).length)resolved.statistics={...resolved.statistics,periods};
+  return resolved;
 }
 
 /** manual result (admin "settle" button): stores the score the admin entered */
@@ -309,7 +334,7 @@ export async function pendingSettlementReview(limit = 100) {
       eventMarketRequirement({name}) ||
       (/\b(?:first|1st)\s*half\b/i.test(name) &&
         (stored.half_home_score == null || stored.half_away_score == null)) ||
-      (isStatisticMarket({market_name:name}) && (statisticsNeedReview({market_name:name},stored)||!hasStatisticEvidence({market_name:name},stored))) ||
+      (isStatisticMarket({market_name:name}) && ((String(stored.source??'').toUpperCase()!=='ZIZOBET'&&statisticsNeedReview({market_name:name},stored))||!hasStatisticEvidence({market_name:name},stored))) ||
       (/\bcorners?\b/i.test(name) && (stored.corners_home == null || stored.corners_away == null)) ||
       (/\bcards?\b|booking/i.test(name) && (stored.cards_home == null || stored.cards_away == null)) ||
       /early\s*payout/i.test(name));

@@ -81,7 +81,7 @@ const later=await gradeStoredEventContract({
  }]})});
 assert.equal(later,'WON','a Zizobet-confirmed goal #2 in 50+ wins');
 
-// No backup API may be queried to rescue missing primary evidence.
+// Missing primary chronology triggers a read-only lookup for a separately verified historical provider timeline.
 const providerQueries=[];
 const noPrimary=await gradeStoredEventContract({
  id:'line-primary-only',match_id:124,
@@ -90,9 +90,10 @@ const noPrimary=await gradeStoredEventContract({
   providerQueries.push(sql);
   return {rows:[]};
  }});
-assert.equal(noPrimary,null);
-assert.equal(providerQueries.length,1,'missing Zizobet evidence remains pending without backup-provider queries');
+assert.equal(noPrimary,null,'No complete verified secondary timeline means the selection remains pending');
+assert.equal(providerQueries.length,2,'the grader checks Zizobet facts and then the separate historical-provider coverage table');
 assert.match(providerQueries[0],/provider=\$16::text/);
+assert.match(providerQueries[1],/app_match_event_coverage/);
 
 // The legacy event-evidence path is also pinned to Zizobet. A complete
 // secondary timeline is not a settlement source.

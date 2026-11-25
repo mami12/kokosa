@@ -31,10 +31,17 @@ const retired=[
  'Player to score in 2nd half',
  'Player - red cards',
  'Player - yellow cards',
- 'Total yellow cards','Total red cards','Away team to be carded',
+ 'Away team to be carded',
  'Team fouls','Total Fouls','Asian Handicap','Total Tackles','Total Saves','Total Throw-ins',
+ 'Total Booking Points','Card Point Range','Second Yellow Cards','Yellow Red Cards',
  'Total Shots','Total Shots on Goal','Total Shots on Target','Shots on Goal','Shots on Target','Anytime Goalscorer',
 ];
+const nativeCards=['Total yellow cards','Total red cards'];
+for(const name of nativeCards){
+ assert.equal(isRetiredPlayerOfferMarket({name}),true,name+' needs a native Zizobet offer identity');
+ assert.equal(isRetiredPlayerOfferMarket({name,providerId:'ZIZOBET',nativeMarketId:'18640'}),false,
+  name+' is an allowed native aggregate card market');
+}
 const kept=[
  'Total corners','1st half - Total corners','Race to 7 corners',
  'Corner in first 5 min. (00:00 - 04:59)',
@@ -53,7 +60,7 @@ for(const name of kept)assert.equal(isRetiredPlayerOfferMarket({name}),false,'Ke
 const meta={preMarkets:new Map(),liveMarkets:new Map(),positions:new Map()};
 const quotes=[];
 let mid=9000;
-for(const name of [...retired,...kept]){
+for(const name of [...retired,...kept,...nativeCards]){
  mid++;
  const def={Name:name,pos:[{id:1,nm:'Yes'}]};
  meta.preMarkets.set(mid,def);meta.liveMarkets.set(mid,def);
@@ -61,9 +68,9 @@ for(const name of [...retired,...kept]){
  quotes.push({mid,id,pid:'yes',pos:1,pn:'Yes',v:2.1,coef:2.1,pl:name==='Anytime Goalscorer'?'Anytime Test':undefined});
 }
 const row={match_id:8999000999},pre=oddsOf(row,quotes,meta,false),live=oddsOf(row,quotes,meta,true);
-assert.equal(pre.length,kept.length,'PREMATCH player specials must not reach storage');
-assert.equal(live.length,kept.length,'LIVE player specials must not reach storage');
-for(const quote of [...pre,...live])assert.equal(isExcludedOfferMarket({market_name:quote.marketName}),false);
+assert.equal(pre.length,kept.length+nativeCards.length,'PREMATCH player specials stay hidden while native yellow/red card totals remain available');
+assert.equal(live.length,kept.length+nativeCards.length,'LIVE player specials stay hidden while native yellow/red card totals remain available');
+for(const quote of [...pre,...live])assert.equal(isExcludedOfferMarket({market_name:quote.marketName,market_key:quote.marketKey}),false);
 const marketId=8999000999;
 try{
  applyRows([...pre,...live]);
@@ -78,7 +85,15 @@ try{
   ...pre.map(q=>({key:q.marketKey,name:q.marketName,line:q.line,outcomes:[{key:q.outcomeKey,name:q.outcomeName,price:q.price}]})),
   ...retired.map((name,i)=>({key:'legacy'+i,name,outcomes:[{key:'yes',name:'Yes',price:2.1}]}))
  ]},'all',{offset:0,limit:100});
- assert.equal(projected.markets.length,kept.length,
+ assert.equal(projected.markets.length,kept.length+nativeCards.length,
   'Even previously cached retired quotes stay out of all market tabs and REST projection');
+ assert.equal(projected.marketCategories.Cards,nativeCards.length,
+  'Native yellow/red card totals are counted in the Cards tab');
+ const cardsTab=detailProjection({markets:pre.map(q=>({
+  key:q.marketKey,name:q.marketName,line:q.line,
+  outcomes:[{key:q.outcomeKey,name:q.outcomeName,price:q.price}]
+ }))},'Cards',{offset:0,limit:100});
+ assert.equal(cardsTab.markets.length,nativeCards.length,
+  'The Cards tab must expose allowed native yellow/red totals');
 }finally{clearMatch(marketId);}
 console.log('PASS player market removals in LIVE/PREMATCH normalization, cached rows, display projection; retained aggregate and team markets.');

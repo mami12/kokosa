@@ -32,7 +32,7 @@ import {pool as financialDatabase} from './db.mjs';
 import {withDatabaseRequest} from './database-request-context.mjs';
 import {createFinancialResetRouter} from './ledger/financial-reset.mjs';
 import { settleAll, voidUnresolved } from './ledger/settler.mjs';
-import { isFinished, archiveFinishedMatch } from './ledger/results.mjs';
+import { isFinished, archiveFinishedMatch, captureFinishedMatches } from './ledger/results.mjs';
 import { createPendingResultTracker } from './pending-results.mjs';
 import {
   getMatches, getMatchById, getLeagues, getCounts, applyMatchInfo, knownMatchIds,
@@ -271,8 +271,22 @@ async function runSettlement(why = 'periodic') {
   settlementHealth.lastAttemptAt = new Date().toISOString();
   try {
     trackBackground(statsProviders.tick().catch(()=>{}));
-    // Optional read-only football enrichment: only mapped primary matches
-    // with pending bets and available upstream market names are eligible.
+    // Archive any finished Zizobet snapshots first, including restart recovery.
+    // Otherwise a newly discovered FT result would not yet exist in the ledger
+    // query used by warmFinalPending and could be graded before fallback data.
+    try { await captureFinishedMatches(); }
+    catch(error) { console.warn('[settle] pre-recovery result capture:',error.message); }
+    // Finished pending fixtures get a dedicated, awaited final-data pass.
+    // Do not grade them in the same cycle before FotMob/API-Football/SportAPI/
+    // GoalAPI/BSD/WorldCup26 (and confirmed AiScore data) have had a chance to
+    // fill missing, fixture-matched statistics and allowed event chronology.
+    try { await statsProviders.warmFinalPending(); }
+    catch(error) { console.warn('[stats] final settlement recovery:',error.message); }
+    // AiScore is a last-resort aggregate-stat fallback after configured providers.
+    // Await confirmed fixture recovery before grading this settlement cycle.
+    try { await footballInformation.warmFinalPending(); }
+    catch(error) { console.warn('[aiscore] final settlement recovery:',error.message); }
+    // Optional read-only football enrichment remains independent of prices/offers.
     trackBackground(footballInformation.tick().catch(error=>console.warn('[football information] tick:',error.message)));
     const out = await settleAll();
     settlementHealth.lastSuccessAt = new Date().toISOString();

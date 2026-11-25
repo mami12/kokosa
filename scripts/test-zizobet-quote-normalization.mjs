@@ -49,4 +49,14 @@ const excluded=oddsOf({match_id:65},[
 ],emptyMeta(),false,true);
 assert.equal(excluded.length,0,'explicitly excluded shot markets must remain hidden');
 
+for(const [marketId,marketName] of [[912,'Total Yellow Cards'],[913,'Total Red Cards']]){
+ const card=oddsOf({match_id:67},[
+  {mid:marketId,id:marketId+100,market_name:marketName,position_name:'Over',
+   h:0.5,v:1.9,visible:1,lock:0}
+ ],emptyMeta(),true,true);
+ assert.equal(card.length,1,marketName+' must survive the initial native Zizobet offer filter');
+ assert.equal(card[0].marketName,marketName);
+ assert.equal(card[0].nativeMarketId,String(marketId));
+}
+
 console.log('PASS Zizobet quote-native metadata fallback, ID/price/line aliases, raw quote retention and exclusions');
