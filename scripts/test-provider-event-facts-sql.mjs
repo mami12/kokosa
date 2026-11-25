@@ -236,5 +236,58 @@ try{
  await run('update app_match_event_coverage set count_home=3 where match_id=$1 and kind=\'corner\'',[matchId]);
  assert.equal(await judge('race',{target:2,side:'home'}),null,
   'No financial decision when accepted incident facts disagree with source tally');
+ // Regulation-time stoppage incidents keep their raw 47/92 minute but map
+ // to the closing 45/90 minute bucket for fixed interval settlement.
+ const lateMatch=matchId+1;
+ await run(`insert into app_match_event_fact
+  (match_id,provider,provider_event_id,kind,team,minute,phase,active)
+  values($1,'zizobet','goal-89','goal','home',89,'2nd half',true),
+        ($1,'zizobet','goal-90-plus-2','goal','home',92,'2nd half',true)`,[lateMatch]);
+ await run(`insert into app_match_event_coverage
+  (match_id,provider,kind,through_minute,count_home,count_away,complete,observed_at,confirmed_at)
+  values($1,'zizobet','goal',130,2,0,true,$2,$2)`,[lateMatch,now]);
+ await run('insert into app_live_event_cursor(match_id,last_seen_at) values($1,$2)',[lateMatch,now]);
+ const lateResult={home_score:2,away_score:0,corners_home:0,corners_away:0,cards_home:0,cards_away:0};
+ const lateLine={id:'00000000-0000-4000-8000-000000000011',match_id:lateMatch,
+  live_contract:{version:1,kind:'window',event:'goal',from:76,to:90,choice:true}};
+ assert.equal(await gradeStoredEventContract(lateLine,lateResult,{execute:run}),'WON',
+  'A verified 90+2 goal is counted in the 76-90 interval');
+
+ const firstHalfLateMatch=lateMatch+1;
+ await run(`insert into app_match_event_fact
+  (match_id,provider,provider_event_id,kind,team,minute,phase,active)
+  values($1,'zizobet','goal-45-plus-2','goal','home',47,'1st half',true)`,[firstHalfLateMatch]);
+ await run(`insert into app_match_event_coverage
+  (match_id,provider,kind,through_minute,count_home,count_away,complete,observed_at,confirmed_at)
+  values($1,'zizobet','goal',130,1,0,true,$2,$2)`,[firstHalfLateMatch,now]);
+ await run('insert into app_live_event_cursor(match_id,last_seen_at) values($1,$2)',[firstHalfLateMatch,now]);
+ assert.equal(await gradeStoredEventContract({...lateLine,id:'00000000-0000-4000-8000-000000000012',
+  match_id:firstHalfLateMatch,live_contract:{version:1,kind:'window',event:'goal',from:31,to:45,choice:true}},
+  {...lateResult,home_score:1},{execute:run}),'WON',
+  'A verified 45+2 goal is counted in the 31-45 interval');
+
+ const extraTimeMatch=lateMatch+2;
+ await run(`insert into app_match_event_fact
+  (match_id,provider,provider_event_id,kind,team,minute,phase,active)
+  values($1,'zizobet','goal-extra-time','goal','home',92,'Extra Time',true)`,[extraTimeMatch]);
+ await run(`insert into app_match_event_coverage
+  (match_id,provider,kind,through_minute,count_home,count_away,complete,observed_at,confirmed_at)
+  values($1,'zizobet','goal',130,1,0,true,$2,$2)`,[extraTimeMatch,now]);
+ await run('insert into app_live_event_cursor(match_id,last_seen_at) values($1,$2)',[extraTimeMatch,now]);
+ assert.equal(await gradeStoredEventContract({...lateLine,id:'00000000-0000-4000-8000-000000000013',
+  match_id:extraTimeMatch},{...lateResult,home_score:1},{execute:run}),'LOST',
+  'Extra Time at 92 is excluded from the 76-90 interval');
+
+ const unknownPhaseMatch=lateMatch+3;
+ await run(`insert into app_match_event_fact
+  (match_id,provider,provider_event_id,kind,team,minute,phase,active)
+  values($1,'zizobet','goal-unknown-92','goal','home',92,null,true)`,[unknownPhaseMatch]);
+ await run(`insert into app_match_event_coverage
+  (match_id,provider,kind,through_minute,count_home,count_away,complete,observed_at,confirmed_at)
+  values($1,'zizobet','goal',130,1,0,true,$2,$2)`,[unknownPhaseMatch,now]);
+ await run('insert into app_live_event_cursor(match_id,last_seen_at) values($1,$2)',[unknownPhaseMatch,now]);
+ assert.equal(await gradeStoredEventContract({...lateLine,id:'00000000-0000-4000-8000-000000000014',
+  match_id:unknownPhaseMatch},{...lateResult,home_score:1},{execute:run}),null,
+  'An unlabelled event after 90 remains pending');
  console.log('PASS real PostgreSQL engine: taken-corner evidence, primary event races/windows/interval totals, unreached race VOID and mismatched-counter PENDING');
 }finally{await db.close();}

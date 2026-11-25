@@ -204,8 +204,8 @@ try{
 
 {
  // A provider may publish stoppage-time incidents after its first FT frame.
- // Do not stop chronology polling immediately when the first final timeline
- // has been confirmed; keep a bounded post-FT window and reset it on updates.
+ // Continue polling for a fixed 45-minute recovery window even if coverage
+ // remains incomplete; expiry never authorizes a financial result.
  const teams=[{ID:1,Name:'Home United',Sport:1},{ID:2,Name:'Away United',Sport:1}];
  const regions=[{ID:1,Name:'England'}],champs=[{ID:1,Name:'Premier League'}];
  const finishedHeader=()=>({
@@ -226,6 +226,7 @@ try{
    detailReads++;
    const timeline=[{id:'goal-90',type:'score_change',gt:89,team:1}];
    if(detailReads>=3)timeline.push({id:'goal-90-plus-3',type:'score_change',gt:'90+3',team:2});
+   if(detailReads>=5)timeline.push({id:'goal-90-plus-6',type:'score_change',gt:'90+6',team:1});
    return {Match:{...finishedHeader(),GameID:77,EventStatus:40,
     MatchStatusID:40,MatchTimeExtended:'90:00'},TimeLines:timeline,gmk:[]};
   }
@@ -257,8 +258,16 @@ try{
    'the admin-facing match timeline receives the delayed 90+ event');
   now+=11*60_000;
   await feed.tick();
-  assert.equal(detailReads,3,'polling stops after the bounded quiet post-FT grace period');
+  assert.equal(detailReads,4,'An incomplete FT timeline continues to be polled within 45 minutes');
+  now+=30*60_000;
+  await feed.tick();
+  assert.equal(detailReads,5,'Late 90+ corrections are still fetched near the end of the recovery window');
+  assert.ok(archiveCalls[4].raw.TimeLines.some(event=>event.gt==='90+6'),
+   'the late correction reaches the archive before polling expires');
+  now+=6*60_000;
+  await feed.tick();
+  assert.equal(detailReads,5,'Post-FT polling stops after the fixed 45-minute bound');
  }finally{feed.stop();await feed.drain();}
 }
 
-console.log('PASS all-match Zizobet history, actor minute labels, corrections, odds exclusion and bounded background polling');
+console.log('PASS all-match Zizobet history, actor minute labels, 45-minute FT recovery bound, corrections and odds exclusion');

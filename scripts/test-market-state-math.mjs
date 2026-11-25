@@ -4,6 +4,7 @@ import {liveContract,parseNumberedGoalWindow} from '../server/ledger/live-contra
 import {assessInterval,verifyLiveIntervalAcceptance} from '../server/ledger/live-interval-acceptance.mjs';
 import {primaryLiveCounters} from '../server/ledger/primary-live-counters.mjs';
 import {buildSystemColumns} from '../server/ledger/system-columns.mjs';
+import {isDecidedLiveOutcome} from '../server/ledger/decided-markets.mjs';
 
 const at=Date.parse('2026-11-12T20:00:00Z');
 const prematch={match_id:1001,service:'PREMATCH',start_at:new Date(at+3600000),
@@ -131,4 +132,15 @@ assert.deepEqual(cols.map(col=>col.map(p=>p.outcomeId)),[
  ['101|result||1','101|total|2.5|Over','102|result||2'],
  ['101|result||2','101|total|2.5|Over','102|result||2']
 ]);
-console.log('PASS primary PREMATCH zero and LIVE event window math: goals, corners, cards, fouls, 100-0, ordinal and same-fixture columns');
+const firstHalfLive={service:'LIVE',live:true,score_at:new Date(at),
+ phase:'1H',home_score:1,away_score:0,currentMinute:32};
+assert.equal(isDecidedLiveOutcome(firstHalfLive,{
+ name:'1st half - correct score',period:1,outcomeName:'0:0'
+}),true,'A 1H correct-score quote is blocked when the current score makes it impossible');
+assert.equal(isDecidedLiveOutcome(firstHalfLive,{
+ name:'1st half - correct score',period:1,outcomeName:'1:0'
+}),false,'A 1H correct score matching the current score remains possible');
+assert.equal(isDecidedLiveOutcome(firstHalfLive,{
+ name:'1st half - correct score',period:1,outcomeName:'1:1'
+}),false,'A future 1H equalizer remains possible');
+console.log('PASS primary PREMATCH zero and LIVE event window math, stoppage time and impossible 1H correct-score filtering');

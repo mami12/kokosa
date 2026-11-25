@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {parseEventWindow,parseSequenceBet,parseOrdinalGoalTime,parseLastEvent,parseCountMarket,parseSendingOffMarket,parseLeadUpMarket,liveContract,gradeLiveContract,gradeFromAcceptedCounters} from '../server/ledger/live-contract-rules.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
-import {eventContract} from '../server/ledger/event-contract.mjs';
+import {eventContract,eventInWindow} from '../server/ledger/event-contract.mjs';
 
 const windowLine=(market,side)=>({market_name:market,outcome_name:side});
 
@@ -85,6 +85,25 @@ assert.equal(gradeLiveContract(w,obs('goal',[20],23,23)),'WON','Minute 20 is inc
 assert.equal(gradeLiveContract(w,obs('goal',[],46,46)),'LOST','No goal by elapsed interval = yes lost');
 assert.equal(gradeLiveContract(w,obs('goal',[],43,43)),null,'Do not settle no-event early');
 assert.equal(gradeLiveContract(w,obs('goal',[],46,30)),null,'Missing coverage is pending');
+const normal90Window=parseEventWindow(windowLine('Goal in minutes 76-90','Yes'));
+const lateSecondHalf={type:'goal',minute:92,minuteLabel:'90+2',phase:'2nd half',team:'home'};
+assert.equal(gradeLiveContract(normal90Window,{
+ clock:130,counts:{goal:1},events:[lateSecondHalf],coverage:{goalThrough:130}
+}),'WON','90+2 is included in the conventional 76-90 interval');
+const lateFirstHalf={type:'goal',minute:47,minuteLabel:'45+2',phase:'1st half',team:'home'};
+const firstHalfWindow=eventContract({market_name:'1st half - total goals in minutes 31-45'});
+assert.equal(eventInWindow(lateFirstHalf,firstHalfWindow),true,
+ '45+2 belongs to the closing 31-45 first-half interval');
+assert.equal(eventInWindow({...lateFirstHalf,phase:'2nd half',minuteLabel:'47'},firstHalfWindow),false,
+ 'A normal 2H minute 47 is not 1H stoppage time');
+assert.equal(gradeLiveContract(normal90Window,{
+ clock:130,counts:{goal:1},events:[{...lateSecondHalf,phase:'Extra Time'}],
+ coverage:{goalThrough:130}
+}),'LOST','An explicitly extra-time goal is excluded from the 76-90 interval');
+assert.equal(gradeLiveContract(normal90Window,{
+ clock:130,counts:{goal:1},events:[{type:'goal',minute:92,team:'home'}],
+ coverage:{goalThrough:130}
+}),null,'An unlabelled 92nd-minute event cannot be guessed as normal or extra time');
 const no=parseEventWindow(windowLine('Goal in minutes 20-45','No'));
 assert.equal(gradeLiveContract(no,obs('goal',[21],25,25)),'LOST','No goal bet loses as soon as goal verified');
 assert.equal(gradeLiveContract(no,obs('goal',[],46,46)),'WON','No goal bet wins only after interval closes');

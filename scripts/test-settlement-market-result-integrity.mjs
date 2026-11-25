@@ -110,6 +110,15 @@ assert.equal(gradeLine(choice('Halftime - Who wins the rest','2',{
  'A first-half-rest market cannot be regraded from a second-half snapshot');
 assert.equal(gradeLine(choice('Halftime - Who wins the rest','2'),firstHalfRestResult),null,
  'Without an immutable entry score the first-half-rest winner remains unknown');
+assert.equal(gradeLine(choice('Halftime - Who wins the rest?','2',{
+ accepted_contract:{acceptedLiveSnapshot:acceptedAt43}
+}),firstHalfRestResult),'WON',
+ 'The halftime-rest parser accepts the provider title with a trailing question mark');
+const genericRest=choice('Who wins the rest of the match?','1',{
+ accepted_contract:{acceptedLiveSnapshot:{isLive:true,scoreHome:0,scoreAway:1}}
+});
+assert.equal(gradeLine(genericRest,realPsvDraw),'WON',
+ 'Generic rest-of-match settlement uses the final score delta without halftime-only state');
 
 // The same rule must repair old native tickets held by a previous parser.
 // Only the accepted quote and its frozen 43-minute score may be used.
