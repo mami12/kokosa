@@ -111,7 +111,7 @@ for(const line of [
  assert.equal(gradeAtVerifiedHalfTime(line,half),null);
 }
 let sql='',args;
-await persistHalfTimeCandidate(candidate,{execute:async(q,p)=>{sql=q;args=p;return {rowCount:1,rows:[{confirmed_at:'2026-11-11T20:45:30Z',correction_count:0}]};}});
+await persistHalfTimeCandidate(withStats,{execute:async(q,p)=>{sql=q;args=p;return {rowCount:1,rows:[{confirmed_at:'2026-11-11T20:45:30Z',correction_count:0}]};}});
 assert.match(sql,/excluded\.observed_at>app_match_half_result\.observed_at/);
 assert.match(sql,/confirmed_at=now\(\)/);
 assert.match(sql,/first_seen_at=app_match_half_result\.first_seen_at/);
