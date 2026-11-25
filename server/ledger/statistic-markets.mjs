@@ -15,7 +15,7 @@ export function statisticMarketContract(line){
   /\bcorners?\b/.test(name)?'corners':
   /\bcards?\b|\bbookings?\b|karton/.test(name)?'cards':
   /\bshots? (?:on target|on goal)\b|goditj\w* ne porte/.test(name)?'shotsOnTarget'
-  :/\bfouls?\b|faulle?/.test(name)?'fouls':/\bshots?\b|goditj/.test(name)?'shots':null;
+  :/\bfouls?\b|faulle?/.test(name)?'fouls':/\boffside/.test(name)?'offsides':/\bshots?\b|goditj/.test(name)?'shots':null;
  const unsupported=!stat||Number(line?.period??0)!==0||/\b(?:players?|scorer|first|1st|second|2nd|half|halves|ht|1h|2h|quarter|period|minute|minutes|next|last|race|handicap|asian|overtime|extra|both|each|off target|blocked|odd|even|exact|range)\b|[+&/]|lojtari|pjesa|minut/.test(name);
  const home=/\b(?:team 1|1 team|home\s*team|home)\b|skuadra 1|ekipi 1/.test(name);
  const away=/\b(?:team 2|2 team|away\s*team|away)\b|skuadra 2|ekipi 2/.test(name);
