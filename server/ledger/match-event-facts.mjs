@@ -583,7 +583,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
     count(*) filter(where team='away')::int as away,
     (select count(*)::int from normal_ordered where team='home') as normal_home,
     (select count(*)::int from normal_ordered where team='away') as normal_away,
-    bool_or(minute>90 and not normal_time and (nullif(trim(coalesce(phase,'')),'') is null or lower(regexp_replace(coalesce(phase,''),'[^a-z0-9]','','g')) not in ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf'))) as phase_ambiguous,
+    bool_or(minute>90 and not normal_time and (nullif(trim(coalesce(phase,'')),'') is null or regexp_replace(lower(coalesce(phase,'')),'[^a-z0-9]','','g') not in ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf'))) as phase_ambiguous,
     count(*) filter(where card_color=$15::text)::int as color_total,
     count(*) filter(where team='home' and card_color=$15::text)::int as color_home,
     count(*) filter(where team='away' and card_color=$15::text)::int as color_away,
