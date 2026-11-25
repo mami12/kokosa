@@ -439,19 +439,23 @@ export function createFootballInformationCollector({runQuery=query,request=fetch
     'join app_ticket t on t.id=l.ticket_id '+
     'join app_football_information_map m on m.match_id=r.match_id '+
     "where l.status='PENDING' and t.status='PENDING' and m.aiscore_id is not null and m.next_check_at<=now() "+
-    'order by r.match_id');
-   let checked=0;
-   for(const item of rows){
-    try{
-     const needs=await sourceMatchNeeds(item.match_id,{runQuery,env});
-     if(!needs.length)continue;
-     await inspectFootballInformation(item.match_id,{runQuery,request,loadMatch,now,needsOverride:needs,env});
-     checked++;
-    }catch(error){
-     try{await runQuery("update app_football_information_map set last_error=$2,next_check_at=now()+interval '2 minutes' where match_id=$1",
-      [item.match_id,String(error?.message??'ERROR').slice(0,400)]);}catch{}
+    'order by r.match_id limit 8');
+   let next=0,checked=0;
+   const workers=Array.from({length:Math.min(2,rows.length)},async()=>{
+    while(next<rows.length){
+     const item=rows[next++];
+     try{
+      const needs=await sourceMatchNeeds(item.match_id,{runQuery,env});
+      if(!needs.length)continue;
+      await inspectFootballInformation(item.match_id,{runQuery,request,loadMatch,now,needsOverride:needs,env});
+      checked++;
+     }catch(error){
+      try{await runQuery("update app_football_information_map set last_error=$2,next_check_at=now()+interval '2 minutes' where match_id=$1",
+       [item.match_id,String(error?.message??'ERROR').slice(0,400)]);}catch{}
+     }
     }
-   }
+   });
+   await Promise.all(workers);
    return {examined:rows.length,checked};
   },
   async tick(){
