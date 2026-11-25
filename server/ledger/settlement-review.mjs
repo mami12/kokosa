@@ -5,7 +5,7 @@ create table if not exists app_settlement_override(line_id uuid primary key refe
 alter table app_settlement_override drop constraint if exists app_settlement_override_status_check;
 alter table app_settlement_override add constraint app_settlement_override_status_check check(status in ('PENDING','WON','LOST','VOID'));
 `;
-export const REVIEW_FIELDS=['corners','shots','shotsOnTarget','fouls','yellow','red','cards'];
+export const REVIEW_FIELDS=['corners','shots','shotsOnTarget','fouls','offsides','yellow','red','cards'];
 const valid=v=>v!==null&&v!==undefined&&v!==''&&Number.isInteger(Number(v))&&Number(v)>=0;
 const pair=value=>value&&valid(value.home)&&valid(value.away)?{home:Number(value.home),away:Number(value.away)}:null;
 const same=(a,b)=>!!a&&!!b&&a.home===b.home&&a.away===b.away;
