@@ -87,5 +87,13 @@ try{
  ]},'all',{offset:0,limit:100});
  assert.equal(projected.markets.length,kept.length+nativeCards.length,
   'Even previously cached retired quotes stay out of all market tabs and REST projection');
+ assert.equal(projected.marketCategories.Cards,nativeCards.length,
+  'Native yellow/red card totals are counted in the Cards tab');
+ const cardsTab=detailProjection({markets:pre.map(q=>({
+  key:q.marketKey,name:q.marketName,line:q.line,
+  outcomes:[{key:q.outcomeKey,name:q.outcomeName,price:q.price}]
+ }))},'Cards',{offset:0,limit:100});
+ assert.equal(cardsTab.markets.length,nativeCards.length,
+  'The Cards tab must expose allowed native yellow/red totals');
 }finally{clearMatch(marketId);}
 console.log('PASS player market removals in LIVE/PREMATCH normalization, cached rows, display projection; retained aggregate and team markets.');
