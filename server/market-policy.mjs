@@ -33,7 +33,7 @@ const hasPlayerParameter=market=>{
 const PLAYER_WORDS=/\b(?:player|players|goalscorer|goal scorer|top scorer|scorer|assist|assists|goalkeeper|goal keeper|lojtar\w*|shenues\w*|asist\w*)\b|\{pl\}/i;
 const NAMED_PLAYER=/^[\p{L}][\p{L}'-]{1,35},\s*[\p{L}][\p{L}'-]{1,35}/u;
 const UNSUPPORTED_STATS=/\b(?:fouls?|faull\w*|shots?|tackles?|nderhyrje\w*|throw[ -]?ins?|rivenie\w*|saves?|pritje\w*)\b/i;
-const CARD_MARKET_WORDS=/\b(?:cards?|karton\w*|bookings?|sending off|sent off)\b/i;
+const CARD_MARKET_WORDS=/\b(?:cards?|carded|karton\w*|bookings?|sending off|sent off)\b/i;
 const ZIZOBET_MARKET_KEY=/^(?:zz\d+@[A-Za-z0-9_-]+|zizobet:(?:live|prematch):\d+)$/i;
 /** Card offers must carry a native Zizobet identity. Name-only catalogue families
  * are allowed so the administrator can enable and order that category globally. */
