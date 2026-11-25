@@ -288,6 +288,8 @@ export async function pendingSettlementReview(limit = 100) {
   const recorded = await resultsFor(matchIds);
   const reviewRows=matchIds.length?(await query('select match_id,payload from app_stat_review where match_id=any($1::bigint[])',[matchIds])).rows:[];
   const reviews=new Map(reviewRows.map(item=>[String(item.match_id),item.payload]));
+  const overrideRows=matchIds.length?(await query('select l.match_id,l.id as line_id,l.market_name,l.outcome_name,o.status,o.actor_id,u.username as actor_name,o.reason,o.source,o.updated_at from app_settlement_override o join app_ticket_line l on l.id=o.line_id left join app_user u on u.id=o.actor_id where l.match_id=any($1::bigint[]) order by l.match_id,l.id',[matchIds])).rows:[];
+  const manualByMatch=new Map();for(const item of overrideRows){const key=String(item.match_id);if(!manualByMatch.has(key))manualByMatch.set(key,[]);manualByMatch.get(key).push(item);}
   return Promise.all(rows.map(async row => {
     const storedBase=recorded.get(String(row.match_id));
     const review=reviews.get(String(row.match_id))??null;
@@ -318,6 +320,7 @@ export async function pendingSettlementReview(limit = 100) {
       oldestTicketAt: row.oldest_ticket_at, ageHours,
       kickoff, finalScore, reason,
       marketNames,
+      manualOverrides:manualByMatch.get(String(row.match_id))??[],
       statisticsReview:review,
       statisticMarkets:marketNames.filter(name=>isStatisticMarket({market_name:name})).map(name=>({
        marketName:name,needsManualReview:statisticsNeedReview({market_name:name},stored),
