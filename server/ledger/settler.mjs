@@ -809,9 +809,12 @@ function gradeFinalAggregateCornerTotal(line,result){
  */
 export function isAggregateStatisticSettlement(line,result){
  const statistic=statisticMarketContract(line);
- return statistic?.supported===true||
-  !!fullTimeAggregateCornerContract(line)||
-  gradeFinalTeamCornerMarket(line,result)!==undefined;
+ // Aggregate paths are used only when their exact full-time/period counters
+ // are present. Otherwise a supported frozen event contract gets a chance to
+ // use a complete, reconciled provider timeline instead of staying pending.
+ if(statistic?.supported&&hasStatisticEvidence(line,result))return true;
+ return ['WON','LOST','VOID'].includes(gradeFinalAggregateCornerTotal(line,result))||
+  ['WON','LOST','VOID'].includes(gradeFinalTeamCornerMarket(line,result));
 }
 
 export function hasRequiredSettlementEvidence(line, result) {
