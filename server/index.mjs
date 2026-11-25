@@ -282,6 +282,10 @@ async function runSettlement(why = 'periodic') {
     // fill missing, fixture-matched statistics and allowed event chronology.
     try { await statsProviders.warmFinalPending(); }
     catch(error) { console.warn('[stats] final settlement recovery:',error.message); }
+    // AiScore is a last-resort aggregate-stat fallback after configured providers.
+    // Await confirmed fixture recovery before grading this settlement cycle.
+    try { await footballInformation.warmFinalPending(); }
+    catch(error) { console.warn('[aiscore] final settlement recovery:',error.message); }
     // Optional read-only football enrichment remains independent of prices/offers.
     trackBackground(footballInformation.tick().catch(error=>console.warn('[football information] tick:',error.message)));
     const out = await settleAll();
