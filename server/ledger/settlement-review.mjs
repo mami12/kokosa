@@ -25,7 +25,7 @@ export function settlementStatisticFields(line){
  if(Array.isArray(line.builder_legs))return [...new Set(line.builder_legs.flatMap(settlementStatisticFields))];
  const name=String(line.market_name??line.name??'').toLowerCase();
  // Event windows and sequence contracts use an incident timeline, not aggregate FT totals.
- if(/\\b(?:next|first|last|race|interval|window|minute|minutes|between|within|before|after|sequence|nth|first half|second half|1st half|2nd half|1h|2h)\\b/.test(name))return [];
+ if(/\b(?:next|first|last|race|interval|window|minute|minutes|between|within|before|after|sequence|nth|first half|second half|1st half|2nd half|1h|2h)\b/.test(name))return [];
  if(/yellow/.test(name))return ['yellow'];
  if(/red/.test(name))return ['red'];
  if(/card|booking|karton/.test(name))return ['cards'];
