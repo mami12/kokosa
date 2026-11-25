@@ -839,6 +839,8 @@ export function hasRequiredSettlementEvidence(line, result) {
 export function gradeLine(line, result) {
   if(line?.accepted_contract?.settlementHold)
     return gradeHeldNativeCombo(line,result);
+  line=withFrozenPeriod(line);
+  if(statisticsNeedReview(line,result))return null;
   const cornerResult=gradeFinalTeamCornerMarket(line,result);
   if(cornerResult!==undefined)return cornerResult;
   const namedResult=gradeNamedFinalTeamMarket(line,result);
