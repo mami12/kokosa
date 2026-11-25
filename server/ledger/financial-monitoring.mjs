@@ -114,7 +114,9 @@ const safe=fn=>(req,res,next)=>Promise.resolve(fn(req,res)).catch(error=>error.s
 financialMonitoringRouter.get('/admin/match-exposure',safe(async(_req,res)=>res.set('Cache-Control','no-store').json(await matchExposure())));
 financialMonitoringRouter.get('/admin/statistics-review',safe(async(_req,res)=>res.set('Cache-Control','no-store').json({reviews:(await query('select match_id,payload,updated_at from app_stat_review order by updated_at desc')).rows})));
 financialMonitoringRouter.post('/admin/manual-settlement',safe(async(req,res)=>res.json(await manualSettlement(req.body??{},req.user))));
-financialMonitoringRouter.get('/admin/settlement-review-queue',safe(async(req,res)=>res.set('Cache-Control','no-store').json(await manualReviewQueue({limit:req.query.limit}))));
+financialMonitoringRouter.get('/admin/settlement-review-queue',safe(async(req,res)=>res.set('Cache-Control','no-store').json(await manualReviewQueue({
+ limit:req.query.limit,offset:req.query.offset,reviewOnly:String(req.query.reviewOnly??'').toLowerCase()==='true'
+}))));
 /** Read-only football enrichment diagnostics, isolated from settlement and money. */
 financialMonitoringRouter.get('/admin/football-information/fixture',safe(async(req,res)=>{
  const id=Number(req.query.matchId);

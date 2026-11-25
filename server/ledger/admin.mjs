@@ -20,6 +20,7 @@ import { withOdds, serializeMatch } from '../collector.mjs';
 import { toClientMatch, toClientMatches } from './view.mjs';
 import { marketCategories, MARKET_CATEGORY_IDS } from '../market-catalog.mjs';
 import {isSyntheticFootballMatch} from '../football-competitions.mjs';
+import {isSettlementCheckFixture} from '../fixture-dates.mjs';
 import {isDecidedLiveMarket, isDecidedLiveOutcome, isDecidedLiveNumberedGoalWindow, isZizobetNativeOffer} from './decided-markets.mjs';
 import {isExcludedOfferMarket, isRetiredPlayerOfferMarket, isHandicapOfferMarket} from '../market-policy.mjs';
 import {isCurrentSettlementCheckQuote} from './settlement-check.mjs';
@@ -143,7 +144,9 @@ async function settlementCheckSelections(matchIds, refresh) {
     const match = toClientMatch(quoted);
     if (!['LIVE', 'PREMATCH'].includes(match.status) || match.isSuspended || match.isHidden) throw badRequest('Zgjidh vetëm ndeshje aktive live ose para fillimit.');
     const isLiveMatch = match.status === 'LIVE' || current.service === 'LIVE' || current.live === true;
-    const currentMin = isLiveMatch ? (Number(current.currentMinute ?? current.minute ?? current.live_minute ?? (current.match_time_ms ? Math.floor(current.match_time_ms / 60000) : null))) : null;
+    if(!isSettlementCheckFixture({...current,status:isLiveMatch?'LIVE':match.status},new Date()))
+      throw badRequest('Kontrolli pranon vetëm ndeshjet e sotme ose ndeshjet që janë aktualisht live.');
+    const currentMin = (Number(current.currentMinute ?? current.minute ?? current.live_minute ?? (current.match_time_ms ? Math.floor(current.match_time_ms / 60000) : null))) : null;
     const homeScore = Number(current.home_score ?? current.homeScore ?? current.score?.home ?? 0);
     const awayScore = Number(current.away_score ?? current.awayScore ?? current.score?.away ?? 0);
     const totalGoals = homeScore + awayScore;

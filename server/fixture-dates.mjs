@@ -17,3 +17,9 @@ export function filterFixtureRowsByDay(rows,day,now=new Date()){
  if(!['today','tomorrow','dayAfterTomorrow'].includes(day))return rows;
  return rows.filter(row=>row.live===true||String(row.service??row.status??'').toUpperCase()==='LIVE'||isFixtureOnDay(row.start_at,day,now));
 }
+
+/** Settlement-check fixtures are limited to today's Tirane calendar date; live matches remain eligible. */
+export function isSettlementCheckFixture(row,now=new Date()){
+ if(row?.live===true||String(row?.service??'').toUpperCase()==='LIVE'||String(row?.status??'').toUpperCase()==='LIVE')return true;
+ return isFixtureOnDay(row?.start_at??row?.startTime??row?.startAt,'today',now);
+}

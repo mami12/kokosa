@@ -8,6 +8,7 @@ const text=value=>String(value??'').trim();
 const nowDate=value=>{const n=new Date(value).getTime();return Number.isFinite(n)?n:0;};
 /** Why this specific selection should be reviewed, never an automatic decision. */
 export function reviewReason(row,now=Date.now()){
+ if(row.result_id==null&&row.start_at!=null&&nowDate(row.start_at)>now)return null;
  const market=text(row.market_name);
  // Scoring Type is a goal-method contract. The current Zizobet timeline
  // adapter preserves own-goal hints, but not verified penalty/header/foot data.
@@ -40,9 +41,10 @@ export function reviewReason(row,now=Date.now()){
  if(now-nowDate(row.placed_at)<6*60*60*1000)return null;
  return 'MISSING_FINAL_RESULT';
 }
-export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()}={}){
+export async function manualReviewQueue({runQuery=query,limit=150,offset=0,reviewOnly=false,now=Date.now()}={}){
  const cap=Math.min(2000,Math.max(1,Math.trunc(Number(limit)||150)));
- const scanLimit=Math.min(20000,cap*10);
+ const start=Math.max(0,Math.trunc(Number(offset)||0));
+ const scanLimit=Math.min(20000,cap*(reviewOnly?10:1));
  const rows=(await runQuery(`select l.id as line_id,l.ticket_id,l.match_id,l.market_key,l.line,l.outcome_key,
     l.outcome_name,l.market_name,l.match_name,l.status as line_status,l.odds_at_placement,
     l.accepted_contract,l.live_contract,
@@ -53,7 +55,7 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
     t.status as ticket_status,t.placed_at,t.stake,t.original_potential_payout,
     u.username,r.match_id as result_id,r.home_score,r.away_score,r.statistics as final_statistics,r.source as result_source,
     r.half_home_score,r.half_away_score,r.corners_home,r.corners_away,r.cards_home,r.cards_away,
-    sr.payload as statistics_review,m.status as match_status,m.feed_status,
+    sr.payload as statistics_review,m.status as match_status,m.feed_status,m.start_at,
     o.status as override_status,n.first_seen_at
     from app_ticket_line l
     join app_ticket t on t.id=l.ticket_id
@@ -63,23 +65,27 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
     left join matches m on m.match_id=l.match_id
     left join app_settlement_override o on o.line_id=l.id
     left join app_manual_review_notice n on n.line_id=l.id
-    where l.status in ('PENDING','VOID')
+    where ((l.status='PENDING' and t.status='PENDING') or l.status='VOID')
       and t.status not in ('CANCELLED','REVERTED','CASHED_OUT')
       and (o.line_id is null or o.status='PENDING')
-      and (l.status='VOID' or r.match_id is not null or t.placed_at<now()-interval '6 hours'
-        or coalesce(l.accepted_contract->>'settlementHold','')<>'')
-    order by case when l.status='VOID' then 0 else 1 end,t.placed_at desc
-    limit $1`,[scanLimit])).rows;
+      and ($3::boolean=false or l.status='VOID' or r.match_id is not null
+        or coalesce(l.accepted_contract->>'settlementHold','')<>''
+        or (t.placed_at<now()-interval '6 hours' and lower(coalesce(m.status,'')) in ('ended','closed','finished')))
+    order by case when l.status='PENDING' then 0 else 1 end,t.placed_at desc,t.id desc,l.id
+    limit $1 offset $2`,[scanLimit,start,reviewOnly])).rows;
  const eligible=[];
  for(const row of rows){
-  const reason=reviewReason(row,now);if(!reason)continue;
-  eligible.push({row,reason});
+  const reason=reviewReason(row,now);
+  if(reason)eligible.push({row,reason,requiresReview:true});
+  else if(row.line_status==='PENDING'&&row.ticket_status==='PENDING'&&!reviewOnly)
+   eligible.push({row,reason:'AWAITING_RESULT',requiresReview:false});
   if(eligible.length>=cap)break;
  }
  // Register unseen notices in one batch. Expanding the review queue must not
  // turn 2,000 tickets into 2,000 sequential database round trips.
- const missingNoticeIds=eligible.filter(({row})=>!row.first_seen_at).map(({row})=>row.line_id);
- const noticeTimes=new Map(eligible.filter(({row})=>row.first_seen_at)
+ const reviewEligible=eligible.filter(item=>item.requiresReview);
+ const missingNoticeIds=reviewEligible.filter(({row})=>!row.first_seen_at).map(({row})=>row.line_id);
+ const noticeTimes=new Map(reviewEligible.filter(({row})=>row.first_seen_at)
   .map(({row})=>[String(row.line_id),row.first_seen_at]));
  if(missingNoticeIds.length){
   await runQuery(`insert into app_manual_review_notice(line_id,first_seen_at)
@@ -91,10 +97,10 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
   for(const row of saved)noticeTimes.set(String(row.line_id),row.first_seen_at);
  }
  const items=[];
- for(const {row,reason} of eligible){
-  const firstSeenAt=noticeTimes.get(String(row.line_id))??new Date(now);
-  const noticeExpiresAt=new Date(nowDate(firstSeenAt)+NOTICE_LIFETIME_MS);
-  items.push({noticeExpiresAt:noticeExpiresAt.toISOString(),notificationActive:now<noticeExpiresAt.getTime(),lineId:row.line_id,ticketId:row.ticket_id,matchId:String(row.match_id),
+ for(const {row,reason,requiresReview} of eligible){
+  const firstSeenAt=requiresReview?(noticeTimes.get(String(row.line_id))??new Date(now)):null;
+  const noticeExpiresAt=firstSeenAt?new Date(nowDate(firstSeenAt)+NOTICE_LIFETIME_MS):null;
+  items.push({requiresReview,noticeExpiresAt:noticeExpiresAt?.toISOString()??null,notificationActive:requiresReview&&now<noticeExpiresAt.getTime(),lineId:row.line_id,ticketId:row.ticket_id,matchId:String(row.match_id),
    marketKey:row.market_key,marketLine:row.line??'',marketName:row.market_name,
    matchName:row.match_name,outcomeKey:row.outcome_key,outcomeName:row.outcome_name,
    lineStatus:row.line_status,ticketStatus:row.ticket_status,username:row.username??null,
@@ -203,5 +209,6 @@ export async function manualReviewQueue({runQuery=query,limit=150,now=Date.now()
   item.eventTimelineSource=!item.eventTimeline.length?'UNAVAILABLE':
    item.eventTimeline.every(event=>event.verified)?'ZIZOBET_CONFIRMED':'ZIZOBET_ARCHIVED';
  }
- return {items,count:items.length,notificationCount:items.filter(item=>item.notificationActive).length,hasMore:items.length>=cap||rows.length===scanLimit};
+ return {items,count:items.length,notificationCount:items.filter(item=>item.notificationActive).length,
+  hasMore:rows.length===scanLimit,nextOffset:start+rows.length,offset:start,reviewOnly};
 }
