@@ -1158,6 +1158,7 @@ export async function gradeStoredEventContract(line,result,{execute}={}){
  if(line?.live_contract?.kind==='score-handicap'&&
     !(line.live_contract.event==='corner'&&line.live_contract.half))
   return gradeHandicapContract(line.live_contract,result);
+ const c=line?.live_contract;
  const primary=await gradeSingleEventProvider(line,result,{execute,provider:'zizobet'});
  if(primary!==null){
   if(result&&c?.event){
@@ -1169,7 +1170,6 @@ export async function gradeStoredEventContract(line,result,{execute}={}){
  // Never combine two different event sequences. A complete secondary-provider
  // timeline may stand in for a missing/incomplete Zizobet chronology only after
  // it is validated against this fixture's final score and any available FT counters.
- const c=line?.live_contract;
  if(!c||!['corner','card'].includes(c.event)||typeof execute!=='function')return null;
  const review=result?.statistics_review??{};
  const conflictField=c.event==='corner'?'corners':'cards';
