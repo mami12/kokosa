@@ -37,6 +37,16 @@ const CARD_MARKET_WORDS=/\b(?:cards?|karton\w*|bookings?|sending off|sent off)\b
 const ZIZOBET_MARKET_KEY=/^(?:zz\d+@[A-Za-z0-9_-]+|zizobet:(?:live|prematch):\d+)$/i;
 /** Card offers must carry a native Zizobet identity. Name-only catalogue families
  * are allowed so the administrator can enable and order that category globally. */
+const nativeZizobetCardQuote=market=>{
+ if(!titlesOf(market).some(title=>CARD_MARKET_WORDS.test(title)))return false;
+ const raw=market?.market_key??market?.marketKey??market?.extId??market?.key;
+ return raw!=null&&ZIZOBET_MARKET_KEY.test(String(raw).trim());
+};
+const genericCardCatalogFamily=market=>{
+ if(market?.market_key!=null||market?.marketKey!=null||market?.extId!=null)return false;
+ const key=clean(market?.key);
+ return !!key&&titlesOf(market).some(title=>CARD_MARKET_WORDS.test(title)&&title===key);
+};
 const nonZizobetCardQuote=market=>{
  if(!titlesOf(market).some(title=>CARD_MARKET_WORDS.test(title)))return false;
  const quoteKey=market?.market_key??market?.marketKey??market?.extId;
@@ -57,7 +67,8 @@ export function isRetiredPlayerOfferMarket(market){
  const type=clean(market?.marketType??market?.market_type??market?.category??
   market?.column??market?.board_column??'');
  const unsupportedType=/^(?:fouls?|faull\w*|players?|lojtar\w*|player props?|tackles?|throw[ -]?ins?|saves?|handicap|handikap\w*)$/.test(type);
- return unsupportedType||isPlayerOfferMarket(market)||
+ const retiredCard=!nativeZizobetCardQuote(market)&&titlesOf(market).some(title=>CARD_MARKET_WORDS.test(title));
+ return unsupportedType||retiredCard||isPlayerOfferMarket(market)||
   titlesOf(market).some(title=>UNSUPPORTED_STATS.test(title)||NAMED_PLAYER.test(title))||isHandicapOfferMarket(market);
 }
 export const isHandicapOfferMarket=market=>
@@ -70,4 +81,4 @@ export const isEarlyPayoutOfferMarket=market=>{
 };
 export const isExcludedOfferMarket=market=>
  isHandicapOfferMarket(market)||isEarlyPayoutOfferMarket(market)||
- nonZizobetCardQuote(market)||isRetiredPlayerOfferMarket(market);
+ nonZizobetCardQuote(market)||(!genericCardCatalogFamily(market)&&isRetiredPlayerOfferMarket(market));
