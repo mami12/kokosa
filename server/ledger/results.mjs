@@ -83,6 +83,7 @@ export const FINISHED_RESULT_INSERT = `
       'shots',coalesce(app_match_result.statistics->'shots','{}'::jsonb)||coalesce(excluded.statistics->'shots','{}'::jsonb),
       'shotsOnTarget',coalesce(app_match_result.statistics->'shotsOnTarget','{}'::jsonb)||coalesce(excluded.statistics->'shotsOnTarget','{}'::jsonb),
       'fouls',coalesce(app_match_result.statistics->'fouls','{}'::jsonb)||coalesce(excluded.statistics->'fouls','{}'::jsonb),
+      'offsides',coalesce(app_match_result.statistics->'offsides','{}'::jsonb)||coalesce(excluded.statistics->'offsides','{}'::jsonb),
       'corners',coalesce(app_match_result.statistics->'corners','{}'::jsonb)||coalesce(excluded.statistics->'corners','{}'::jsonb),
       'yellow',coalesce(app_match_result.statistics->'yellow','{}'::jsonb)||coalesce(excluded.statistics->'yellow','{}'::jsonb),
       'red',coalesce(app_match_result.statistics->'red','{}'::jsonb)||coalesce(excluded.statistics->'red','{}'::jsonb),
