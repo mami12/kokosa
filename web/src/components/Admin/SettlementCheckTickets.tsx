@@ -3,7 +3,7 @@ import {AlertTriangle,CheckCircle2,Play,RefreshCw,Ticket} from 'lucide-react';
 import {apiClient} from '../../api/client';
 import {createClientRequestId} from '../../utils/clientRequestId.mjs';
 import {useLanguage} from '../../context/LanguageContext';
-import {isSettlementCheckFixture} from '../../../server/fixture-dates.mjs';
+import {isSettlementCheckFixture} from '../../utils/fixtureDates';
 
 type Player={id:string;username:string;role:string;status:string;balance:number};
 type Match={id:string;homeTeam?:{name?:string}|string;awayTeam?:{name?:string}|string;status:string;service?:string;startTime?:string;start_at?:string;startAt?:string;live?:boolean};
