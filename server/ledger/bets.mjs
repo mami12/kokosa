@@ -76,10 +76,6 @@ const loadOdds = async (id, executor) => config.oddsStore === 'db'
   : getOddsForMatches([id]);
 
 /**
- * Turns one selection from the client ({ outcomeId, oddsAtPlacement }) into the row we
- * will store, using our own live price. Throws a 400 with a user-facing message.
- */
-/**
  * Freeze only counters that were actually observed by the primary live feed.
  * A future PREMATCH fixture has a real zero baseline; a LIVE fixture with a
  * missing/stale score or statistic has an unknown baseline, never an invented 0.
@@ -94,6 +90,10 @@ export function acceptedCountersForMatch(match,{at=Date.now(),unstartedPrematch=
  };
 }
 
+/**
+ * Turns one selection from the client ({ outcomeId, oddsAtPlacement }) into the row we
+ * will store, using our own live price. Throws a 400 with a user-facing message.
+ */
 async function resolveSelectionInternal(selection, {executor = query} = {}) {
   const builder = parseBuilderId(selection?.outcomeId);
   if (builder) return resolveBuilderSelection(selection,builder,{executor});
