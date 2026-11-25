@@ -12,7 +12,7 @@ import {matchSnapshots} from './match-snapshots.mjs';
 import {eventMarketRequirement} from './event-market-policy.mjs';
 import {teamStatisticsFromRow,verifiedFinalStatistics} from '../match-statistics.mjs';
 import {isStatisticMarket,hasStatisticEvidence} from './statistic-markets.mjs';
-import {resolveSettlementStatistics} from './settlement-review.mjs';
+import {resolveSettlementStatistics,statisticsNeedReview,settlementStatisticFields} from './settlement-review.mjs';
 
 /**
  * Do not settle bets from a made-up 0-0 or a kickoff timer. A final score
@@ -284,9 +284,15 @@ export async function pendingSettlementReview(limit = 100) {
   );
   if (!rows.length) return [];
 
-  const recorded = await resultsFor(rows.map(r => Number(r.match_id)));
+  const matchIds=rows.map(r=>Number(r.match_id));
+  const recorded = await resultsFor(matchIds);
+  const reviewRows=matchIds.length?(await query('select match_id,payload from app_stat_review where match_id=any($1::bigint[])',[matchIds])).rows:[];
+  const reviews=new Map(reviewRows.map(item=>[String(item.match_id),item.payload]));
   return Promise.all(rows.map(async row => {
-    const stored = recorded.get(String(row.match_id));
+    const storedBase=recorded.get(String(row.match_id));
+    const review=reviews.get(String(row.match_id))??null;
+    const stored=storedBase?resolveSettlementStatistics({...storedBase,statistics_review:review,
+      statistics_review_pending:process.env.STATS_PROVIDERS_ENABLED==='true'&&!review}):null;
     const current = await getMatchById(Number(row.match_id));
     const kickoff = current?.start_at ? new Date(current.start_at).toISOString() : null;
     const timestamp = new Date(row.oldest_ticket_at).getTime();
@@ -297,7 +303,7 @@ export async function pendingSettlementReview(limit = 100) {
       eventMarketRequirement({name}) ||
       (/\b(?:first|1st)\s*half\b/i.test(name) &&
         (stored.half_home_score == null || stored.half_away_score == null)) ||
-      (isStatisticMarket({market_name:name}) && !hasStatisticEvidence({market_name:name},stored)) ||
+      (isStatisticMarket({market_name:name}) && (statisticsNeedReview({market_name:name},stored)||!hasStatisticEvidence({market_name:name},stored))) ||
       (/\bcorners?\b/i.test(name) && (stored.corners_home == null || stored.corners_away == null)) ||
       (/\bcards?\b|booking/i.test(name) && (stored.cards_home == null || stored.cards_away == null)) ||
       /early\s*payout/i.test(name));
@@ -312,6 +318,14 @@ export async function pendingSettlementReview(limit = 100) {
       oldestTicketAt: row.oldest_ticket_at, ageHours,
       kickoff, finalScore, reason,
       marketNames,
+      statisticsReview:review,
+      statisticMarkets:marketNames.filter(name=>isStatisticMarket({market_name:name})).map(name=>({
+       marketName:name,needsManualReview:statisticsNeedReview({market_name:name},stored),
+       evidence:Object.fromEntries(settlementStatisticFields({market_name:name}).map(field=>[field,{
+        primary:stored?.statistics?.[field]??(field==='corners'?{home:stored?.corners_home,away:stored?.corners_away}:field==='cards'?{home:stored?.cards_home,away:stored?.cards_away}:null),
+        sources:stored?._settlementSources?.[field]??[],conflict:review?.conflicts?.[field]??null
+       }]))
+      })),
       feedStatus: current?.feed_status ?? null,
       feedScoreAt: current?.score_at ?? null,
     };
