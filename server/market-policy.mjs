@@ -34,6 +34,7 @@ const PLAYER_WORDS=/\b(?:player|players|goalscorer|goal scorer|top scorer|scorer
 const NAMED_PLAYER=/^[\p{L}][\p{L}'-]{1,35},\s*[\p{L}][\p{L}'-]{1,35}/u;
 const UNSUPPORTED_STATS=/\b(?:fouls?|faull\w*|shots?|tackles?|nderhyrje\w*|throw[ -]?ins?|rivenie\w*|saves?|pritje\w*)\b/i;
 const CARD_MARKET_WORDS=/\b(?:cards?|carded|karton\w*|bookings?|sending off|sent off)\b/i;
+const UNSUPPORTED_CARD_PROPS=/\b(?:team\s+to\s+be\s+carded|to\s+be\s+carded)\b/i;
 const ZIZOBET_MARKET_KEY=/^(?:zz\d+@[A-Za-z0-9_-]+|zizobet:(?:live|prematch):\d+)$/i;
 /** Card offers must carry a native Zizobet identity. Name-only catalogue families
  * are allowed so the administrator can enable and order that category globally. */
@@ -76,7 +77,7 @@ export function isRetiredPlayerOfferMarket(market){
  const unsupportedType=/^(?:fouls?|faull\w*|players?|lojtar\w*|player props?|tackles?|throw[ -]?ins?|saves?|handicap|handikap\w*)$/.test(type);
  const retiredCard=!nativeZizobetCardQuote(market)&&!aggregateTotalCards(market)&&titlesOf(market).some(title=>CARD_MARKET_WORDS.test(title));
  return unsupportedType||retiredCard||isPlayerOfferMarket(market)||
-  titlesOf(market).some(title=>UNSUPPORTED_STATS.test(title)||NAMED_PLAYER.test(title))||isHandicapOfferMarket(market);
+  titlesOf(market).some(title=>UNSUPPORTED_STATS.test(title)||UNSUPPORTED_CARD_PROPS.test(title)||NAMED_PLAYER.test(title))||isHandicapOfferMarket(market);
 }
 export const isHandicapOfferMarket=market=>
  titlesOf(market).some(title=>/\b(?:asian\s+)?handicap\b|\bhandikap\w*\b|\bfora\b/i.test(title));
