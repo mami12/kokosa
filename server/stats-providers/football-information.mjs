@@ -4,6 +4,7 @@
  */
 import {createHash} from 'node:crypto';
 import {enrichPrimaryScorerNames} from './aiscore-scorer-enrichment.mjs';
+import {compareFinalStatistics} from '../ledger/settlement-review.mjs';
 import {query} from '../db.mjs';
 import {getMatchById} from '../matches.mjs';
 import {teamsMatch} from './adapters.mjs';
@@ -351,6 +352,21 @@ export async function inspectFootballInformation(matchId,{runQuery=query,request
   }
   if(endpoint.key.startsWith('aiscore:')&&mapped.mapping_status==='CONFIRMED')
    await enrichPrimaryScorerNames(id,checked.payload,{execute:runQuery});
+  // AiScore is considered only after configured final-stat providers completed.
+  // The parser rechecks confirmed fixture ID, teams, kickoff and explicit FT status.
+  if(endpoint.key==='aiscore:match'&&mapped.mapping_status==='CONFIRMED'){
+   const observation=parseAiScoreFinalStatistics(checked.payload,mapped.aiscore_id,row);
+   if(observation){
+    const prior=(await runQuery('select payload from app_stat_review where match_id=$1',[id])).rows[0]?.payload;
+    const review=json(prior);
+    if(review?.complete===true&&Array.isArray(review.attempted)){
+     const sources=[...(review.sources??[]).filter(source=>source.provider!=='aiscore'),observation];
+     const next=compareFinalStatistics(sources,{attempted:review.attempted,unavailable:review.unavailable??{}});
+     await runQuery('insert into app_stat_review(match_id,payload) values($1,$2::jsonb) '+
+      'on conflict(match_id) do update set payload=excluded.payload,updated_at=now()',[id,JSON.stringify(next)]);
+    }
+   }
+  }
 
  }
  const errors=results.filter(s=>!s.ok);
@@ -414,6 +430,30 @@ export function createFootballInformationCollector({runQuery=query,request=fetch
  };
  return {
   enabled,warm,observeMatch,
+  // Settlement awaits this last-resort pass after configured statistics providers.
+  async warmFinalPending(){
+   if(!enabled())return {examined:0,checked:0};
+   const {rows}=await runQuery(
+    'select distinct r.match_id from app_match_result r '+
+    'join app_ticket_line l on l.match_id=r.match_id '+
+    'join app_ticket t on t.id=l.ticket_id '+
+    'join app_football_information_map m on m.match_id=r.match_id '+
+    "where l.status='PENDING' and t.status='PENDING' and m.aiscore_id is not null and m.next_check_at<=now() "+
+    'order by r.match_id');
+   let checked=0;
+   for(const item of rows){
+    try{
+     const needs=await sourceMatchNeeds(item.match_id,{runQuery,env});
+     if(!needs.length)continue;
+     await inspectFootballInformation(item.match_id,{runQuery,request,loadMatch,now,needsOverride:needs,env});
+     checked++;
+    }catch(error){
+     try{await runQuery("update app_football_information_map set last_error=$2,next_check_at=now()+interval '2 minutes' where match_id=$1",
+      [item.match_id,String(error?.message??'ERROR').slice(0,400)]);}catch{}
+    }
+   }
+   return {examined:rows.length,checked};
+  },
   async tick(){
    if(!enabled()||busy||now()-lastTick<15000||now()<sourcePauseUntil)return {enabled:enabled(),scanned:0,paused:now()<sourcePauseUntil};
    busy=true;lastTick=now();
