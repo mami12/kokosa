@@ -365,6 +365,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
          observedValues.cards={home:Number(values.yellow.home)+Number(values.red.home),away:Number(values.yellow.away)+Number(values.red.away)};
         observations.push({provider,final:true,values:observedValues,fixtureId:m.id,observedAt:new Date(now()).toISOString()});
        }else unavailable[provider]='STATS_NOT_FINAL';}
+       if(!final||observations.some(source=>source.provider===provider&&source.final===true)){
        for(const field of supplementalStats){
         const pair=values[field];if(!pair)continue;
         const current=entry.values[field]??{};
@@ -378,6 +379,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
        }
        if(values.yellow&&values.red&&['home','away'].every(side=>values.yellow[side]!=null&&values.red[side]!=null)&&entry.values.cards?.home==null&&entry.values.cards?.away==null){
         entry.values.cards={home:Number(values.yellow.home)+Number(values.red.home),away:Number(values.yellow.away)+Number(values.red.away)};entry.sources.cards=provider;
+       }
        }
       }catch(e){unavailable[provider]=/^STATS_[A-Z_0-9]+$/.test(e.message)?e.message:'STATS_UNAVAILABLE';health.providers[provider]={...(health.providers[provider]??{}),lastError:unavailable[provider]};}
      }
@@ -442,6 +444,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
        yellow: parsed.yellowCards,
        red: parsed.redCards
       };
+      if(!final||parsed.finished){
       for (const field of supplementalStats) {
        const pair = fmValues[field];
        if (!pair || pair.home == null || pair.away == null) continue;
@@ -459,6 +462,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
          fixtureId: fm.match.id,
          observedAt: new Date(now()).toISOString()
        });
+      }
       }
      }
     } catch(error) {
