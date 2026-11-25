@@ -30,7 +30,7 @@ import {isMultiscoresMarket,gradeMultiscores,isMatchbetFirstGoalMarket,gradeMatc
 import {isQualificationMarket,gradeQualification} from './qualification.mjs';
 import { systemColumnPayout } from './system-columns.mjs';
 import { eventMarketRequirement } from './event-market-policy.mjs';
-import { isStatisticMarket, hasStatisticEvidence, gradeStatisticLine } from './statistic-markets.mjs';
+import { isStatisticMarket, statisticMarketContract, hasStatisticEvidence, gradeStatisticLine } from './statistic-markets.mjs';
 import {goalTotalContract} from './goal-total-contract.mjs';
 import {isScoringPropMarket,gradeScoringPropMarket} from './scoring-props.mjs';
 import {isParityLikeMarket,gradeParityMarket} from './parity-markets.mjs';
@@ -756,9 +756,10 @@ const periodScores=(line,result)=>{
  * deliberately excluded by cornerTotalContract and the explicit period check.
  */
 function fullTimeAggregateCornerContract(line={}){
- const period=Number(line?.period??line?.accepted_contract?.providerPeriod??0);
- if(period!==0)return null;
- const contract=cornerTotalContract(line,{
+ const period=scorePeriodOf(line);
+ if(period===null)return null;
+ const marketName=String(line?.market_name??line?.marketName??'').replace(/^(?:(?:first|1st|second|2nd)\\s*half|1h|2h)\\s*[-: ]*/i,'');
+ const contract=cornerTotalContract({...line,market_name:marketName},{
   home_team:line?.home_team,away_team:line?.away_team
  });
  if(!contract)return null;
@@ -767,7 +768,7 @@ function fullTimeAggregateCornerContract(line={}){
  const over=key==='over'||/^over(?:\s|$)/.test(name);
  const under=key==='under'||/^under(?:\s|$)/.test(name);
  if(over===under)return null;
- return {...contract,over};
+ return {...contract,over,period};
 }
 function gradeFinalAggregateCornerTotal(line,result){
  const contract=fullTimeAggregateCornerContract(line);
@@ -777,8 +778,10 @@ function gradeFinalAggregateCornerTotal(line,result){
     !(source==='FEED'&&result?._zizobetVerified===true))return null;
  let statistics=result?.statistics;
  if(typeof statistics==='string'){try{statistics=JSON.parse(statistics);}catch{statistics={};}}
- const home=scoreValue(result?.corners_home??statistics?.corners?.home);
- const away=scoreValue(result?.corners_away??statistics?.corners?.away);
+ const periodKey=contract.period===1?'firstHalf':contract.period===2?'secondHalf':'fullTime';
+ const periodCorners=statistics?.periods?.[periodKey]?.corners;
+ const home=scoreValue(contract.period===0?(result?.corners_home??statistics?.corners?.home):periodCorners?.home);
+ const away=scoreValue(contract.period===0?(result?.corners_away??statistics?.corners?.away):periodCorners?.away);
  const count=contract.scope==='home'?home:contract.scope==='away'?away:
   home===null||away===null?null:home+away;
  const threshold=num(line?.line)??num(contract.line);
@@ -1587,16 +1590,21 @@ export function settledOddsFor(line,result,status){
  * may use the synthetic HT-only score context.
  */
 export function firstHalfScoreOnly(line){
- if(!line||Array.isArray(line.builder_legs)||needsEvents(line))return false;
+ if(!line||Array.isArray(line.builder_legs))return false;
  line=withFrozenPeriod(line);
  const name=String(line.market_name??''),lower=name.toLowerCase();
  const period=scorePeriodOf(line);
  if(period!==1)return false;
+ const statContract=statisticMarketContract(line);
+ const aggregateHalfStatistic=(isStatisticMarket(line)&&statContract?.supported)||
+  fullTimeAggregateCornerContract(line)?.period===1;
+ if(needsEvents(line)&&!aggregateHalfStatistic)return false;
  if(/\b(?:both halves|either half|each half|second half|2nd half|full time|rest of match|extra time)\b/i.test(name)||
     /\b(?:ht\s*\/\s*ft|halftime\s*\/\s*fulltime|half.?time\s*\/\s*full.?time)\b/i.test(name))
   return false;
- if(/\b(?:corners?|kornera?|cards?|bookings?|kartona?|fouls?|faulle?|shots?|goditj|players?|lojtare?|offsides?)\b/i.test(name))return false;
- if(isHtFtMarket(name)||isStatisticMarket(line)||isHalfExactMarketFamily(line))return false;
+ if(/\b(?:corners?|kornera?|cards?|bookings?|kartona?|fouls?|faulle?|shots?|goditj|players?|lojtare?|offsides?)\b/i.test(name)&&!aggregateHalfStatistic)return false;
+ if(isHtFtMarket(name)||isHalfExactMarketFamily(line))return false;
+ if(aggregateHalfStatistic)return true;
  const saved=line.live_contract;
  if(saved){
   if(saved.kind==='period-goal-total')
@@ -1631,8 +1639,11 @@ export function gradeAtVerifiedHalfTime(line,half){
  line=withFrozenPeriod(line);
  // Deliberately synthetic, scoped ONLY to the vetted 1H subset above.
  // This result never enters app_match_result or a FT audit.
- const result={home_team:half.home_team,away_team:half.away_team,
-  home_score:home,away_score:away,half_home_score:home,half_away_score:away};
+ const halfStatistics=typeof half.statistics==='string'?JSON.parse(half.statistics||'{}'):(half.statistics??{});
+ const result={source:'ZIZOBET',home_team:half.home_team,away_team:half.away_team,
+  home_score:home,away_score:away,half_home_score:home,half_away_score:away,
+  corners_home:halfStatistics.corners?.home??null,corners_away:halfStatistics.corners?.away??null,
+  statistics:{...halfStatistics,periods:{firstHalf:halfStatistics}}};
  let status;
  if(line.live_contract?.kind==='period-goal-total')
   status=gradePeriodGoalTotal(line.live_contract,result);
@@ -1656,7 +1667,7 @@ export async function settleVerifiedHalftimes({
  runQuery=query,update=updatePendingLine,recalc=recalcTicket
 }={}){
  const rows=await nextHalfTimeLines(runQuery,[
-  'select l.*,t.placed_at,h.home_team,h.away_team,h.half_home_score,h.half_away_score,h.confirmed_at,h.first_seen_at',
+  'select l.*,t.placed_at,h.home_team,h.away_team,h.half_home_score,h.half_away_score,h.statistics,h.confirmed_at,h.first_seen_at',
   'from app_ticket_line l',
   'join app_ticket t on t.id=l.ticket_id',
   'join app_match_half_result h on h.match_id=l.match_id',
