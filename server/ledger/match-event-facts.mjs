@@ -1170,13 +1170,15 @@ export async function gradeStoredEventContract(line,result,{execute}={}){
  // Never combine two different event sequences. A complete secondary-provider
  // timeline may stand in for a missing/incomplete Zizobet chronology only after
  // it is validated against this fixture's final score and any available FT counters.
- if(!result||!c||!['corner','card'].includes(c.event)||typeof execute!=='function')return null;
+ if(!result||!c||!['goal','corner','card'].includes(c.event)||typeof execute!=='function')return null;
  const review=result?.statistics_review??{};
- const conflictField=c.event==='corner'?'corners':'cards';
- if(review.conflicts?.[conflictField]||
-    c.event==='card'&&c.cardColor&&review.conflicts?.[String(c.cardColor).toLowerCase()])return null;
- const totals=c.event==='corner'?[result?.corners_home,result?.corners_away]:
-  [result?.cards_home,result?.cards_away];
+ const conflictField=c.event==='corner'?'corners':c.event==='card'?'cards':null;
+ if(conflictField&&(
+    review.conflicts?.[conflictField]||
+    c.event==='card'&&c.cardColor&&review.conflicts?.[String(c.cardColor).toLowerCase()]))return null;
+ const totals=c.event==='goal'?[result?.home_score,result?.away_score]:
+  c.event==='corner'?[result?.corners_home,result?.corners_away]:
+   [result?.cards_home,result?.cards_away];
  const validTotal=value=>value!=null&&Number.isSafeInteger(Number(value))&&Number(value)>=0;
  const {rows}=await execute(`select provider from app_match_event_coverage
   where match_id=$1 and kind=$2 and provider=any($3::text[])
