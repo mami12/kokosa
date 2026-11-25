@@ -1,7 +1,7 @@
 import './fixtures/isolated-casino-env.mjs';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {marketIsEnabled,nativeMarketPolicyKeys,marketCategories} from '../server/market-catalog.mjs';
+import {marketIsEnabled,nativeMarketPolicyKeys} from '../server/market-catalog.mjs';
 import {refreshMarketCatalog,seedNativeMarketCatalog,assertMarketEnabled} from '../server/ledger/market-catalog-store.mjs';
 import {persistProviderMarketDefinitions} from '../server/ledger/provider-offer-archive.mjs';
 import {LEDGER_SQL} from '../server/ledger/schema.mjs';
