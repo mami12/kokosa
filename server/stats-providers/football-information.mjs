@@ -196,7 +196,7 @@ export async function sourceMatchNeeds(matchId,{runQuery=query,env=process.env}=
    'select payload from app_live_event_frame where match_id=$1 order by observed_at desc,id desc limit 1',[matchId])).rows[0]?.payload??null;
  }
  return missingSupplementalNeeds(needs,{
-  ...facts,primaryEvents,providersEnabled:env.STATS_PROVIDERS_ENABLED==='true'
+  ...facts,primaryEvents,providersEnabled:env.STATS_PROVIDERS_ENABLED!=='false'
  });
 }
 export async function setFootballInformationMapping({matchId,aiscoreId,thesports01Id,actorId},
