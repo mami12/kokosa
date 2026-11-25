@@ -276,22 +276,14 @@ try{
  await run('insert into app_live_event_cursor(match_id,last_seen_at) values($1,$2)',[extraTimeMatch,now]);
  const phaseProbe=await run(`select phase,
   regexp_replace(lower(coalesce(phase,'')),'[^a-z0-9]','','g') as phase_key,
-  nullif(trim(coalesce(phase,'')),'') is null as phase_is_blank,
-  lower(regexp_replace(coalesce(phase,''),'[^a-z0-9]','','g')) in
-   ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf') as is_explicit_extra_time,
-  (minute>90 and (nullif(trim(coalesce(phase,'')),'') is null or
-   lower(regexp_replace(coalesce(phase,''),'[^a-z0-9]','','g')) not in
-    ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf'))) as phase_ambiguous_probe
+  (regexp_replace(lower(coalesce(phase,'')),'[^a-z0-9]','','g') in
+   ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf')) as is_explicit_extra_time
   from app_match_event_fact where match_id=$1 and provider_event_id='goal-extra-time'`,[extraTimeMatch]);
- console.log('[extra-time-phase-probe]',JSON.stringify(phaseProbe.rows));
- const extraTimeDebug=async(sql,params)=>{
-  const output=await run(sql,params);
-  if(sql.includes('with covered'))console.log('[extra-time-grade-debug]',JSON.stringify(output.rows));
-  return output;
- };
- assert.equal(await gradeStoredEventContract({...lateLine,id:'00000000-0000-4000-8000-000000000013',
-  match_id:extraTimeMatch},{...lateResult,home_score:1},{execute:extraTimeDebug}),'LOST',
-  'Extra Time at 92 is excluded from the 76-90 interval');
+ assert.equal(phaseProbe.rows[0].is_explicit_extra_time,true,
+  'Extra Time labels are normalized before phase comparison');
+ const extraTimeGrade=await gradeStoredEventContract({...lateLine,id:'00000000-0000-4000-8000-000000000013',
+  match_id:extraTimeMatch},{...lateResult,home_score:1},{execute:run});
+ assert.equal(extraTimeGrade,'LOST','Extra Time at 92 is excluded from the 76-90 interval');
 
  const unknownPhaseMatch=lateMatch+3;
  await run(`insert into app_match_event_fact
