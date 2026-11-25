@@ -277,6 +277,8 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    if(result)final=true;
    const pendingMarkets=final?(await runQuery("select distinct l.market_name from app_ticket_line l join app_ticket t on t.id=l.ticket_id where l.match_id=$1 and l.status='PENDING' and t.status='PENDING'",[Number(id)])).rows:[];
    const settlementFields=[...new Set(pendingMarkets.flatMap(line=>settlementStatisticFields(line)))];
+   // Create the event-fact/coverage tables before querying final coverage.
+   await init();
    let pendingEventRows=[];
    if(final){
     try{
@@ -338,7 +340,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    const matchStatsReady=entry=>statsReady(entry,requiredForMatch);
    const finalReviewNeeded=final&&(settlementFields.length>0||finalTimelineNeeds.length>0);
    const eventKindsKey=JSON.stringify(finalTimelineNeeds.slice().sort());
-   await init();const old=cached??await read('display:'+id);
+   const old=cached??await read('display:'+id);
    const requiredKey=[...requiredForMatch].sort().join('|');
    const cachedKey=[...(old?.settlementFields??[])].sort().join('|');
    if(old?.version===5&&old.identity===identity&&old.next>now()&&Number.isFinite(Number(old.at))&&now()-Number(old.at)<localTtl&&!urgent.has(id)&&(!final||old.finalReview&&cachedKey===requiredKey&&old.finalEventKindsKey===eventKindsKey)){displayCache.set(id,old);return;}
