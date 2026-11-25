@@ -103,8 +103,8 @@ assert.deepEqual(settlementStatisticFields({market_name:'Next Corner'}),[],
  'event sequence markets do not inherit aggregate corner-stat conflicts');
 
 const conflictingReview=compareFinalStatistics([
- {provider:'fotmob',final:true,values:{corners:{home:6,away:4},shotsOnTarget:{home:3,away:2}}},
- {provider:'bsd',final:true,values:{corners:{home:5,away:4},shotsOnTarget:{home:3,away:2}}}
+ {provider:'fotmob',final:true,values:{corners:{home:6,away:4},shotsOnTarget:{home:3,away:2},cards:{home:2,away:1}}},
+ {provider:'bsd',final:true,values:{corners:{home:5,away:4},shotsOnTarget:{home:3,away:2},cards:{home:2,away:1}}}
 ]);
 const conflictingResult=resolveSettlementStatistics({...zizoStatResult,statistics_review:conflictingReview});
 assert.ok(conflictingReview.conflicts.corners);
