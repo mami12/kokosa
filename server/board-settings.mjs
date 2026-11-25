@@ -27,8 +27,23 @@ export function competitionPriority(row){
  return {priority:100,protected:false};
 }
 const time=value=>{const n=new Date(value??0).getTime();return Number.isFinite(n)?n:0;};
+const kickoffDay=value=>{
+ const date=new Date(value??0);if(!Number.isFinite(date.getTime()))return Number.MAX_SAFE_INTEGER;
+ const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Tirane',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date).map(part=>[part.type,part.value]));
+ return Number(parts.year+parts.month+parts.day);
+};
 const live=row=>String(row.service??row.status).toUpperCase()==='LIVE';
-function compare(a,b){return Number(live(b))-Number(live(a))||(!live(a)?a.listing_priority-b.listing_priority:0)||time(a.competition_first_seen_at??a.first_seen_at)-time(b.competition_first_seen_at??b.first_seen_at)||String(a.tournament_id??'').localeCompare(String(b.tournament_id??''),'en',{numeric:true})||time(live(a)?a.live_first_seen_at:a.prematch_first_seen_at??a.first_seen_at)-time(live(b)?b.live_first_seen_at:b.prematch_first_seen_at??b.first_seen_at)||String(a.match_id).localeCompare(String(b.match_id),'en',{numeric:true});}
+function compare(a,b){
+ const aLive=live(a),bLive=live(b);
+ return Number(bLive)-Number(aLive)
+  ||(!aLive?kickoffDay(a.start_at)-kickoffDay(b.start_at):0)
+  ||(!aLive?a.listing_priority-b.listing_priority:0)
+  ||time(a.competition_first_seen_at??a.first_seen_at)-time(b.competition_first_seen_at??b.first_seen_at)
+  ||String(a.tournament_id??'').localeCompare(String(b.tournament_id??''),'en',{numeric:true})
+  ||time(aLive?a.live_first_seen_at:a.prematch_first_seen_at??a.first_seen_at)-time(bLive?b.live_first_seen_at:b.prematch_first_seen_at??b.first_seen_at)
+  ||time(a.start_at)-time(b.start_at)
+  ||String(a.match_id).localeCompare(String(b.match_id),'en',{numeric:true});
+}
 export function selectPublishedMatches(catalog,config=boardSettings()){
  const rows=catalog.filter(r=>r.active!==false&&!isSyntheticFootballMatch(r)&&!/^(?:ended|finished|cancelled|closed|uncovered)$/i.test(String(r.status??''))&&!/^(?:ft|finished|ended|full.?time)$/i.test(String(r.feed_status??''))).map(row=>{const rank=competitionPriority(row);return {...row,listing_priority:rank.priority,protected_prematch:!live(row)&&rank.protected};}).sort(compare);
  const prematch=rows.filter(r=>!live(r)),protectedRows=prematch.filter(r=>r.protected_prematch),others=prematch.filter(r=>!r.protected_prematch);

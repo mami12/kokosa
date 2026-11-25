@@ -36,6 +36,15 @@ try {
   const refreshed = first.map((item, index) => ({ ...item, startTime: new Date(Date.now() + index * 7 * 3600000).toISOString(), homeScore: index + 1 }));
   assert.deepEqual(ids(refreshed.sort(compareMatchDisplay)), ids(first), 'score/kickoff/arrival changes cannot reorder existing fixtures');
   console.log('PASS global listing order: memory/SQL parity, new fixtures append, kickoff corrections and independently opened client order');
+  const scheduled=[
+    {id:'tomorrow-cl',status:'PREMATCH',startTime:'2026-11-26T10:00:00+01:00',listingPriority:1,competitionOrder:1,displayOrder:1,tournamentId:1},
+    {id:'today-championship',status:'PREMATCH',startTime:'2026-11-25T19:00:00+01:00',listingPriority:20,competitionOrder:2,displayOrder:2,tournamentId:2},
+    {id:'today-cl',status:'PREMATCH',startTime:'2026-11-25T21:00:00+01:00',listingPriority:1,competitionOrder:3,displayOrder:3,tournamentId:3},
+    {id:'today-premier',status:'PREMATCH',startTime:'2026-11-25T20:00:00+01:00',listingPriority:10,competitionOrder:4,displayOrder:4,tournamentId:4},
+  ];
+  assert.deepEqual(scheduled.sort(compareMatchDisplay).map(m=>m.id),
+    ['today-cl','today-premier','today-championship','tomorrow-cl'],
+    'Tirana date groups come first; within the same date Champions League and domestic league priority apply before kickoff');
   const future = Date.now() + 4 * 60000;
   memory.getById(500).score_at = new Date(future); memory.getById(500).home_score = 3; memory.getById(500).away_score = 0;
   memory.expireStale(150, future);
