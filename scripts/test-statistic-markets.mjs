@@ -10,7 +10,7 @@ import {normalizeTeamStatistics,mergeTeamStats,teamStatisticsFromRow,verifiedFin
 import {isStatisticMarket,statisticMarketContract,hasStatisticEvidence,gradeStatisticLine} from '../server/ledger/statistic-markets.mjs';
 import {hasRequiredSettlementEvidence,gradeLine} from '../server/ledger/settler.mjs';
 import {compareFinalStatistics,resolveSettlementStatistics,statisticsNeedReview,settlementStatisticFields} from '../server/ledger/settlement-review.mjs';
-const {FINISHED_RESULT_INSERT,finishedResultParameters}=await import('../server/ledger/results.mjs');
+const {FINISHED_RESULT_INSERT,finishedResultParameters,getResult}=await import('../server/ledger/results.mjs');
 const {createMatchSnapshotStore}=await import('../server/ledger/match-snapshots.mjs');
 const {pool}=await import('../server/db.mjs');
 const now=Date.now(),at=new Date(now).toISOString(),old=new Date(now-300000).toISOString(),staleAt=new Date(now-4*60*60*1000).toISOString();
@@ -175,6 +175,29 @@ for(const baseLine of fullTimeMarkets){
 }
 assert.equal(statisticMarketContract({market_name:'Total Offsides',line:'3.5'}).stat,'offsides');
 assert.equal(gradeLine(fullTimeMarkets[3],zizoFinalStats),'WON');
+const halfStats={
+ shots:{home:3,away:2},shotsOnTarget:{home:2,away:1},fouls:{home:4,away:5},
+ offsides:{home:1,away:0},corners:{home:6,away:0},
+ yellow:{home:1,away:1},red:{home:0,away:0},cards:{home:1,away:1}
+};
+const periodResult=await getResult(900,{
+ execute:async sql=>{
+  if(sql.startsWith('select * from app_match_result'))return {rows:[{...zizoFinalStats,corners_home:13,corners_away:0}]};
+  if(sql.includes('from app_stat_review'))return {rows:[]};
+  if(sql.includes('from app_match_half_result'))return {rows:[{statistics:halfStats}]};
+  throw new Error('Unexpected getResult query '+sql);
+ },
+ readEvidence:async()=>null
+});
+assert.deepEqual(periodResult.statistics.periods.secondHalf.shots,{home:5,away:3});
+assert.deepEqual(periodResult.statistics.periods.secondHalf.corners,{home:7,away:0});
+const secondHalfShots={market_name:'2nd half - Total Shots',line:'7.5',outcome_key:'over',outcome_name:'Over',period:2};
+const secondHalfCorners={market_name:'2nd half - Total Corners',line:'6.5',outcome_key:'over',outcome_name:'Over',period:2};
+assert.equal(hasRequiredSettlementEvidence(secondHalfShots,periodResult),true);
+assert.equal(gradeLine(secondHalfShots,periodResult),'WON');
+assert.equal(hasRequiredSettlementEvidence(secondHalfCorners,periodResult),true);
+assert.equal(gradeLine(secondHalfCorners,periodResult),'WON');
+
 
 assert.deepEqual(settlementStatisticFields(totalCards),['cards']);
 assert.deepEqual(settlementStatisticFields({market_name:'Next Corner'}),[],
