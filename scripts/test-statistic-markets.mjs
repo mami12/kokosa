@@ -8,6 +8,7 @@ import {LEDGER_SQL} from '../server/ledger/schema.mjs';
 import {decodePushMessage} from '../server/push-decode.mjs';
 import {normalizeTeamStatistics,mergeTeamStats,teamStatisticsFromRow,verifiedFinalStatistics,trackerTeamStatistics} from '../server/match-statistics.mjs';
 import {isStatisticMarket,statisticMarketContract,hasStatisticEvidence,gradeStatisticLine} from '../server/ledger/statistic-markets.mjs';
+import {hasRequiredSettlementEvidence,gradeLine} from '../server/ledger/settler.mjs';
 import {compareFinalStatistics,resolveSettlementStatistics,statisticsNeedReview,settlementStatisticFields} from '../server/ledger/settlement-review.mjs';
 const {FINISHED_RESULT_INSERT,finishedResultParameters}=await import('../server/ledger/results.mjs');
 const {createMatchSnapshotStore}=await import('../server/ledger/match-snapshots.mjs');
@@ -106,6 +107,13 @@ assert.equal(gradeStatisticLine(totalCorners,fallbackResult),'WON');
 assert.equal(gradeStatisticLine(totalCards,fallbackResult),'WON');
 assert.equal(gradeStatisticLine(totalYellow,fallbackResult),'WON');
 assert.equal(gradeStatisticLine(totalRed,fallbackResult),'WON');
+assert.equal(hasRequiredSettlementEvidence(totalCards,fallbackResult),true);
+assert.equal(hasRequiredSettlementEvidence(totalYellow,fallbackResult),true);
+assert.equal(hasRequiredSettlementEvidence(totalRed,fallbackResult),true);
+assert.equal(gradeLine(totalCards,fallbackResult),'WON');
+assert.equal(gradeLine(totalYellow,fallbackResult),'WON');
+assert.equal(gradeLine(totalRed,fallbackResult),'WON',
+ 'yellow and red totals must bypass the legacy generic CARDS-family gate');
 assert.deepEqual(settlementStatisticFields(totalCards),['cards']);
 assert.deepEqual(settlementStatisticFields({market_name:'Next Corner'}),[],
  'event sequence markets do not inherit aggregate corner-stat conflicts');
