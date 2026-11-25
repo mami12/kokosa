@@ -45,6 +45,10 @@ const race=liveContract(line('1st half - Race to 2 corners','1'));
 assert.equal(gradeHalfEventFacts(race,ambiguous,{complete:true}),null,
  'An unlabelled minute 45 cannot be guessed into either half');
 
+const halfNext=parseHalfEventContract(line('1st half - Next goal','home'),{goal:{home:0,away:0}});
+assert.equal(halfNext?.kind,'half-next-event');
+assert.equal(gradeHalfEventFacts(halfNext,ambiguous,{complete:true}),null,
+ 'A goal at minute 45 without phase evidence cannot determine the first-half next-goal result');
 const secondHalfNoPhase=[...corners,{team:'away',minute:46,phase:null,seconds:2765}];
 const secondRace=liveContract(line('2nd half - Race to 2 corners','2'));
 assert.equal(gradeHalfEventFacts(secondRace,secondHalfNoPhase,{complete:true}),'WON',
