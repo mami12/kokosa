@@ -118,7 +118,7 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
   // Unreadable native parameters require settlement review, not rejection.
   const nativeQuoteVerified=String(selectedRow.provider_id??'').toUpperCase()==='ZIZOBET';
   let settlementHold=null, row=selectedRow;
-  try{row=nativeZizobetContractRow(selectedRow);}
+  try{row=nativeZizobetContractRow(selectedRow,{competitors:{home:match.home,away:match.away}});}
   catch(error){
     if(!nativeQuoteVerified||error?.code!=='MARKET_EVIDENCE_UNSUPPORTED')throw error;
     settlementHold='NATIVE_PARAMETERS_UNMAPPED';
