@@ -45,7 +45,7 @@ const guard = (fn) => (req, res, next) => {
     if (res.statusCode < 400 && mutatingRequest &&
         ['ADMIN', 'MANAGER'].includes(req.user?.role)) {
       try {
-        const target = req.path.match(/\/(users|matches|markets|outcomes|tickets)\/([^/]+)/);
+        const target = req.path.match(/\/(users|matches|markets|outcomes|tickets|lines)\/([^/]+)/);
         const safeKeys = ['username', 'role', 'managerId', 'initialBalance', 'amount', 'status', 'isSuspended', 'odds', 'price', 'homeScore', 'awayScore', 'country', 'competitionId', 'category', 'suspended', 'hidden', 'countrySlug', 'tournamentId', 'reason'];
         const input = Object.fromEntries(
           safeKeys.filter((key) => req.body?.[key] !== undefined).map((key) => [key, req.body[key]]),
