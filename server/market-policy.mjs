@@ -39,7 +39,7 @@ const ZIZOBET_MARKET_KEY=/^(?:zz\d+@[A-Za-z0-9_-]+|zizobet:(?:live|prematch):\d+
  * are allowed so the administrator can enable and order that category globally. */
 const nonZizobetCardQuote=market=>{
  if(!titlesOf(market).some(title=>CARD_MARKET_WORDS.test(title)))return false;
- const quoteKey=market?.market_key??market?.marketKey;
+ const quoteKey=market?.market_key??market?.marketKey??market?.extId;
  const key=quoteKey!=null&&String(quoteKey).trim()?String(quoteKey).trim():
   (/^(?:zizobet:)|@/.test(String(market?.key??''))?String(market.key).trim():'');
  return !!key&&!ZIZOBET_MARKET_KEY.test(key);
