@@ -79,6 +79,21 @@ const loadOdds = async (id, executor) => config.oddsStore === 'db'
  * Turns one selection from the client ({ outcomeId, oddsAtPlacement }) into the row we
  * will store, using our own live price. Throws a 400 with a user-facing message.
  */
+/**
+ * Freeze only counters that were actually observed by the primary live feed.
+ * A future PREMATCH fixture has a real zero baseline; a LIVE fixture with a
+ * missing/stale score or statistic has an unknown baseline, never an invented 0.
+ */
+export function acceptedCountersForMatch(match,{at=Date.now(),unstartedPrematch=false}={}){
+ const zero={home:0,away:0};
+ return {
+  goal:unstartedPrematch?zero:primaryLiveCounters(match,'goal',{at}),
+  corner:unstartedPrematch?zero:primaryLiveCounters(match,'corner',{at}),
+  card:unstartedPrematch?zero:primaryLiveCounters(match,'card',{at}),
+  foul:unstartedPrematch?zero:primaryLiveCounters(match,'foul',{at})
+ };
+}
+
 async function resolveSelectionInternal(selection, {executor = query} = {}) {
   const builder = parseBuilderId(selection?.outcomeId);
   if (builder) return resolveBuilderSelection(selection,builder,{executor});
@@ -589,17 +604,10 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
   const kickoffAt=Date.parse(match.start_at??'');
   const unstartedPrematch=String(match.service??'').toUpperCase()==='PREMATCH'&&
     Number.isFinite(kickoffAt)&&kickoffAt>snapshotAt;
-  const zero={home:0,away:0};
-  // The future PREMATCH fixture has not begun: zero is real. A LIVE
-  // missing counter is unknown, never a manufactured 0-0.
-  const extractStatCounters = (event) => {
-    const primary = primaryLiveCounters(match, event, { at: snapshotAt });
-    if (primary && primary.home != null && primary.away != null) return primary;
-    if (event === 'goal') {
-      const h = match.home_score ?? match.homeScore ?? match.score?.home;
-      const a = match.away_score ?? match.awayScore ?? match.score?.away;
-      if (h != null && a != null && Number.isFinite(Number(h)) && Number.isFinite(Number(a))) {
-        return { home: Number(h), away: Number(a), source: 'match-score' };
+  // Missing/stale LIVE counters stay null. Only an unstarted PREMATCH
+  // fixture has a known 0-0 baseline.
+  const acceptedCounters=acceptedCountersForMatch(match,{at:snapshotAt,unstartedPrematch});
+  return { home: Number(h), away: Number(a), source: 'match-score' };
       }
     }
     const teams = teamStatisticsFromRow(match);
@@ -654,8 +662,8 @@ async function resolveSelectionInternal(selection, {executor = query} = {}) {
     acceptedLiveSnapshot:{
       isLive:!unstartedPrematch,
       capturedAt:new Date(snapshotAt).toISOString(),
-      scoreHome:unstartedPrematch?0:match.home_score??null,
-      scoreAway:unstartedPrematch?0:match.away_score??null,
+      scoreHome:acceptedCounters.goal?.home??null,
+      scoreAway:acceptedCounters.goal?.away??null,
       scoreObservedAt:match.score_at??null,clockMilliseconds:match.match_time_ms??null,
       clockObservedAt:match.clock_at??null,feedPhase:match.feed_status??null,
       feedPhaseObservedAt:match.feed_status_at??null,
