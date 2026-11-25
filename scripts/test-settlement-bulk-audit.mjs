@@ -38,7 +38,12 @@ try{
         ($3,$4,$5,'zz101@native','Total Cards','2.5','over','Over 2.5','PENDING'),
         ($6,$2,$5,'zz102@native','Total Goals','1.5','over','Over 1.5','PENDING')`,
   [lineA,ticketA,lineB,ticketB,matchId,lineC]);
- await db.query("insert into app_settlement_override(line_id,status,actor_id,reason,source) values($1,'PENDING',$2,'Needs manual review','ADMIN')",[lineC,actor]);
+ const held=await manualSettleLine(lineC,'PENDING',{
+  actorId:actor,reason:'Statistika e kartonave mungon ende',
+  database:pool,recalc:async()=>{throw Error('Pending decisions must not recalculate or pay a ticket');}
+ });
+ assert.equal(held.status,'PENDING');
+ assert.equal((await db.query('select status from app_settlement_override where line_id=$1',[lineC])).rows[0].status,'PENDING');
  const line={id:lineA,ticket_id:ticketA,match_id:matchId,market_key:'zz100@native',
   market_name:'Total Corners',line:'8.5',outcome_key:'over',outcome_name:'Over 8.5'};
  const result={source:'ZIZOBET',home_score:2,away_score:0,corners_home:6,corners_away:4,
