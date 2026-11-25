@@ -92,32 +92,19 @@ export const FINISHED_RESULT_INSERT = `
 `;
 
 export function finishedResultParameters(row) {
-  // The push feed stores stats under its competitor IDs, e.g.
-  // { "87150": {corners:3}, "87155": {corners:4} }, NOT under
-  // stats.home/stats.away. Failing to map this made corner/card tickets
-  // VOID or eternally pending even when full-time stats were available.
   const {home:homeTeam,away:awayTeam}=teamStatisticsFromRow(row);
-  const home = homeTeam ? statNum(homeTeam.corners) : null;
-  const away = awayTeam ? statNum(awayTeam.corners) : null;
-  const cards = team => {
-    if (!team) return null;
-    const yellow = statNum(team.yellow);
-    const red = statNum(team.red);
-    // A missing red/yellow component is UNKNOWN, not zero. An incomplete
-    // final-card sum could otherwise mark a valid Over as LOST or Under WON.
-    return yellow === null || red === null ? null : yellow + red;
+  const statistics=verifiedFinalStatistics(row);
+  const home=statNum(statistics.corners?.home),away=statNum(statistics.corners?.away);
+  const cards=(side)=>{
+    const yellow=statNum(statistics.yellow?.[side]),red=statNum(statistics.red?.[side]);
+    return yellow===null||red===null?null:yellow+red;
   };
-  const half = verifiedFirstHalf(row.periods_score);
+  const half=verifiedFirstHalf(row.periods_score);
   const cornerHalfHT={home:statNum(homeTeam?.cornersHT),away:statNum(awayTeam?.cornersHT)};
   const cornerHalf2H={home:statNum(homeTeam?.corners2H),away:statNum(awayTeam?.corners2H)};
-  const cornerFull={home:statNum(homeTeam?.cornersFT??homeTeam?.corners),
-    away:statNum(awayTeam?.cornersFT??awayTeam?.corners)};
+  const cornerFull={home,away};
   const validPair=pair=>pair!=null&&Number.isSafeInteger(pair.home)&&pair.home>=0&&
     Number.isSafeInteger(pair.away)&&pair.away>=0;
-  // Zizobet can publish either the first-half or second-half corner split.
-  // When exactly one half is supplied, derive the other only from the same
-  // provider's verified full-time total. If both halves are supplied, require
-  // them to reconcile exactly before exposing period statistics to settlement.
   let cornerFirst=validPair(cornerHalfHT)?cornerHalfHT:null;
   let cornerSecond=validPair(cornerHalf2H)?cornerHalf2H:null;
   if(validPair(cornerFull)){
@@ -130,11 +117,9 @@ export function finishedResultParameters(row) {
     cornerFirst.home+cornerSecond.home===cornerFull.home&&
     cornerFirst.away+cornerSecond.away===cornerFull.away
     ?{firstHalf:cornerFirst,secondHalf:cornerSecond,fullTime:cornerFull,source:'ZIZOBET'}:null;
-  const statistics=verifiedFinalStatistics(row);
   if(cornerPeriods)statistics.cornerPeriods=cornerPeriods;
-  return [row.match_id, row.home, row.away, Number(row.home_score), Number(row.away_score),
-    cornerFull.home??home, cornerFull.away??away,cards(homeTeam),cards(awayTeam),
-    half?.home ?? null, half?.away ?? null,JSON.stringify(statistics)];
+  return [row.match_id,row.home,row.away,Number(row.home_score),Number(row.away_score),
+    home,away,cards('home'),cards('away'),half?.home??null,half?.away??null,JSON.stringify(statistics)];
 }
 
 /**
