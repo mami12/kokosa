@@ -26,7 +26,7 @@ export function settlementStatisticFields(line){
  const name=String(line.market_name??line.name??'').toLowerCase();
  // Player props and event windows use player/event evidence, not aggregate FT totals.
  if(/\b(?:player|players|scorer|assist|to be booked|to receive a card)\b/.test(name)||
-    /\b(?:next|first|last|race|interval|window|minute|minutes|between|within|before|after|sequence|nth|first half|second half|1st half|2nd half|1h|2h)\b/.test(name))return [];
+    /\b(?:next|first|last|race|interval|window|minute|minutes|between|within|before|after|sequence|nth)\b/.test(name))return [];
  if(/yellow/.test(name))return ['yellow'];
  if(/red/.test(name))return ['red'];
  if(/card|booking|karton/.test(name))return ['cards'];
