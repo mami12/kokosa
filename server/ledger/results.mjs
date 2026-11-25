@@ -310,7 +310,7 @@ export async function pendingSettlementReview(limit = 100) {
       eventMarketRequirement({name}) ||
       (/\b(?:first|1st)\s*half\b/i.test(name) &&
         (stored.half_home_score == null || stored.half_away_score == null)) ||
-      (isStatisticMarket({market_name:name}) && (statisticsNeedReview({market_name:name},stored)||!hasStatisticEvidence({market_name:name},stored))) ||
+      (isStatisticMarket({market_name:name}) && ((String(stored.source??'').toUpperCase()!=='ZIZOBET'&&statisticsNeedReview({market_name:name},stored))||!hasStatisticEvidence({market_name:name},stored))) ||
       (/\bcorners?\b/i.test(name) && (stored.corners_home == null || stored.corners_away == null)) ||
       (/\bcards?\b|booking/i.test(name) && (stored.cards_home == null || stored.cards_away == null)) ||
       /early\s*payout/i.test(name));
