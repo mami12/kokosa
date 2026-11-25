@@ -1167,6 +1167,18 @@ export async function gradeStoredEventContract(line,result,{execute}={}){
   }
   return primary;
  }
+ // A present Zizobet period-corner snapshot is authoritative even when its
+ // internal totals do not reconcile. Such a contradiction is a hard hold:
+ // do not bypass it with a secondary event timeline.
+ const resultStats=typeof result?.statistics==='string'?(()=>{
+  try{return JSON.parse(result.statistics);}catch{return null;}
+ })():result?.statistics;
+ const isOfficialPeriodCornerContract=c?.event==='corner'&&(
+  ['half-total','half-exact-count','half-parity','corner-comparison'].includes(c.kind)||
+  c.kind==='score-handicap'&&[1,2].includes(c.half));
+ if(isOfficialPeriodCornerContract&&
+    String(result?.source??'').toUpperCase()==='ZIZOBET'&&
+    resultStats?.cornerPeriods!=null)return null;
  // Never combine two different event sequences. A complete secondary-provider
  // timeline may stand in for a missing/incomplete Zizobet chronology only after
  // it is validated against this fixture's final score and any available FT counters.
