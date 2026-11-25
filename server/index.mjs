@@ -32,7 +32,7 @@ import {pool as financialDatabase} from './db.mjs';
 import {withDatabaseRequest} from './database-request-context.mjs';
 import {createFinancialResetRouter} from './ledger/financial-reset.mjs';
 import { settleAll, voidUnresolved } from './ledger/settler.mjs';
-import { isFinished, archiveFinishedMatch } from './ledger/results.mjs';
+import { isFinished, archiveFinishedMatch, captureFinishedMatches } from './ledger/results.mjs';
 import { createPendingResultTracker } from './pending-results.mjs';
 import {
   getMatches, getMatchById, getLeagues, getCounts, applyMatchInfo, knownMatchIds,
@@ -271,6 +271,11 @@ async function runSettlement(why = 'periodic') {
   settlementHealth.lastAttemptAt = new Date().toISOString();
   try {
     trackBackground(statsProviders.tick().catch(()=>{}));
+    // Archive any finished Zizobet snapshots first, including restart recovery.
+    // Otherwise a newly discovered FT result would not yet exist in the ledger
+    // query used by warmFinalPending and could be graded before fallback data.
+    try { await captureFinishedMatches(); }
+    catch(error) { console.warn('[settle] pre-recovery result capture:',error.message); }
     // Finished pending fixtures get a dedicated, awaited final-data pass.
     // Do not grade them in the same cycle before FotMob/API-Football/SportAPI/
     // GoalAPI/BSD/WorldCup26 (and confirmed AiScore data) have had a chance to
