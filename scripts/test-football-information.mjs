@@ -129,7 +129,8 @@ const db=async(sql,params)=>{
 };
 const result=await inspectFootballInformation(101,{
  runQuery:db,loadMatch:async()=>ledgerMatch,now:()=>Date.parse('2026-11-06T16:30:00Z'),
- request:async url=>{fetchedUrls.push(url);return response({data:{events:[{type:'goal',minute:14,team:'home'}]}});}
+ request:async url=>{fetchedUrls.push(url);return response({data:{events:[{type:'goal',minute:14,team:'home'}]}});},
+ needsOverride:['player']
 });
 assert.equal(result.matchId,101);
 assert.equal(result.mappingStatus,'ADMIN_SUPPLIED_UNVERIFIED');
