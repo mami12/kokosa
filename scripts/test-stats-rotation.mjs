@@ -249,7 +249,7 @@ try{
   await database.query('insert into app_match_result(match_id,home_score,away_score) values(101,1,0)');
   const oldFetch=globalThis.fetch;globalThis.fetch=async()=>new Response('{}',{status:503});
   try{await h.service.tick();}finally{globalThis.fetch=oldFetch;}
-  assert.equal(h.persistedGoals.length,1,'FotMob or a configured historical provider must persist a complete final goal timeline');
+  assert.equal(h.persistedGoals.length,1,JSON.stringify({message:'FotMob or a configured historical provider must persist a complete final goal timeline',health:h.service.health(),calls:h.calls.map(call=>({provider:call.provider,path:call.path})),eventRows:(await database.query('select live_contract from app_ticket_line where match_id=101')).rows}));
   assert.equal(h.persistedGoals[0].evidence.source,'bsd');
   assert.equal(h.persistedGoals[0].evidence.events.length,1);
   assert.equal(h.persistedGoals[0].evidence.homeScore,1);
