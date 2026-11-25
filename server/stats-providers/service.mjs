@@ -14,8 +14,9 @@ import {supplementalRefreshMs,fixtureLive,prematchSoon,sportingFingerprint} from
 const query=async(...a)=>(await import('../db.mjs')).query(...a);
 const specs={bsd:{base:'https://sports.bzzoiro.com/api/v2',env:'BSD_API_KEY',header:'Authorization',prefix:'Token ',day:1000,month:14000},worldcup26:{base:'https://worldcup26.ir',day:500,month:10000},sportapi:{base:'https://sportapi.ai/api',env:'SPORTAPI_API_KEY',header:'X-Api-Key',day:2000,month:14000},goalapi:{base:'https://api.goal-api.com/v1',env:'GOALAPI_API_KEY',header:'Authorization',prefix:'Bearer ',day:1000,month:31000},apifootball:{base:'https://v3.football.api-sports.io',env:'APIFOOTBALL_API_KEY',header:'x-apisports-key',day:100,month:3100}};
 const refreshMs=10*60*1000;
-// Zizobet alone owns score, corners, cards and the event chronology.
-// Secondary APIs may enrich verified actors and missing team statistics.
+// Zizobet owns the bookmaker offers, prices, live status and primary score.
+// Configured football-data providers independently recover missing final statistics
+// and complete goal/corner/card timelines for market-specific settlement.
 const supplementalStats=['shotsOnTarget','fouls','shots','possession','corners','yellow','red','cards'];
 const requiredStats=['shotsOnTarget','fouls','shots'];
 const supplementalSnapshot=values=>Object.fromEntries(supplementalStats
