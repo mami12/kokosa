@@ -230,7 +230,30 @@ export async function getResult(matchId,{execute=query,readEvidence=loadEventEvi
     if(onEvidenceError)onEvidenceError(error);
     else if(Date.now()-evidenceWarningAt>60000){evidenceWarningAt=Date.now();console.warn('[settle] optional event evidence unavailable; event selections remain pending');}
   }
-  return resolveSettlementStatistics(result);
+  const resolved=resolveSettlementStatistics(result);
+  // HT aggregate counters are archived separately from the final scoreboard.
+  // Derive second-half counts only when both independently recorded periods
+  // are available and the final cumulative counter is not below the HT count.
+  let firstHalf={};
+  try{
+    const half=(await execute("select statistics from app_match_half_result where match_id=$1 and source='ZIZOBET' and confirmed_at is not null",[Number(matchId)])).rows[0];
+    const value=half?.statistics;
+    firstHalf=typeof value==='string'?JSON.parse(value||'{}'):(value??{});
+  }catch{}
+  const secondHalf={};
+  for(const field of ['shots','shotsOnTarget','fouls','offsides','corners','yellow','red','cards']){
+    const full=resolved.statistics?.[field],half=firstHalf?.[field];
+    if(full&&half&&['home','away'].every(side=>
+      Number.isSafeInteger(Number(full[side]))&&Number.isSafeInteger(Number(half[side]))&&
+      Number(full[side])>=Number(half[side]))){
+      secondHalf[field]={home:Number(full.home)-Number(half.home),
+       away:Number(full.away)-Number(half.away)};
+    }
+  }
+  resolved.statistics={...resolved.statistics,
+   periods:{...(resolved.statistics?.periods??{}),firstHalf,
+    ...(Object.keys(secondHalf).length?{secondHalf}:{})}};
+  return resolved;
 }
 
 /** manual result (admin "settle" button): stores the score the admin entered */
