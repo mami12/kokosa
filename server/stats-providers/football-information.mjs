@@ -147,7 +147,7 @@ export async function requestFootballInformation(url,{request=fetch,maxBytes=700
 const nonnegative=v=>v!=null&&v!==''&&Number.isInteger(Number(v))&&Number(v)>=0;
 const json=v=>{try{return typeof v==='string'?JSON.parse(v):v;}catch{return null;}};
 export function missingSupplementalNeeds(needs,{statistics,review,primaryEvents,cornersHome,cornersAway,cardsHome,cardsAway,providersEnabled=false}={}){
- const selected=new Set(needs),stats=json(statistics)??{},assessed=json(review);
+ const selected=new Set(needs.filter(field=>SETTLEMENT_STAT_FIELDS.includes(field)||field==='player'||field==='timeline')),stats=json(statistics)??{},assessed=json(review);
  const primary={
   ...stats,
   corners:stats.corners??{home:cornersHome??stats.corners_home,away:cornersAway??stats.corners_away},
