@@ -234,6 +234,25 @@ alter table app_ticket_line add column if not exists settlement_reason text;
 alter table app_ticket_line add column if not exists settled_odds numeric(14,4);
 create index if not exists app_ticket_line_ticket_idx on app_ticket_line (ticket_id);
 create index if not exists app_ticket_line_match_idx  on app_ticket_line (match_id);
+-- Immutable provenance for each automatic line decision; does not drive wallet state.
+create table if not exists app_settlement_audit (
+ id bigserial primary key,
+ line_id uuid not null,
+ ticket_id uuid not null,
+ match_id bigint not null,
+ status text not null check(status in ('WON','LOST','VOID')),
+ market_key text,
+ market_name text not null,
+ outcome_name text not null,
+ source text not null,
+ reason text not null,
+ facts jsonb not null,
+ evidence_hash text not null,
+ decided_at timestamptz not null default now(),
+ unique(line_id,status,evidence_hash)
+);
+create index if not exists app_settlement_audit_match_idx on app_settlement_audit(match_id,decided_at desc);
+create index if not exists app_settlement_audit_ticket_idx on app_settlement_audit(ticket_id,decided_at desc);
 
 -- final results, persisted the moment a match is seen finished: settlement must work even
 -- if the process restarts or the match later leaves the feed
