@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {HALFTIME_RESULT_SQL,extractConfirmedHalfTimeCandidate,
  persistHalfTimeCandidate} from '../server/ledger/halftime-results.mjs';
 import {infoOf} from '../server/zizobet/normalize.mjs';
+import {normalizeTeamStatistics} from '../server/match-statistics.mjs';
 import {firstHalfScoreOnly,gradeAtVerifiedHalfTime,scorePeriodOf} from '../server/ledger/settler.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
 import {snapshotRow} from '../server/ledger/match-snapshots.mjs';
@@ -35,6 +36,15 @@ assert.equal(persistedSnapshot.clock_at,live.clock_at,
 
 assert.deepEqual([candidate.home,candidate.away],[2,1]);
 assert.equal(candidate.source,'ZIZOBET');
+const withStats=extractConfirmedHalfTimeCandidate({...live,stats:{
+ home:normalizeTeamStatistics({shots:10,shotsOnTarget:4,fouls:7,offsides:2,corners:6,yellow:1,red:0},{observedAt:status}),
+ away:normalizeTeamStatistics({shots:5,shotsOnTarget:2,fouls:8,offsides:1,corners:4,yellow:2,red:0},{observedAt:status})
+}});
+assert.deepEqual(withStats.statistics,{
+ shots:{home:10,away:5},shotsOnTarget:{home:4,away:2},fouls:{home:7,away:8},
+ offsides:{home:2,away:1},corners:{home:6,away:4},yellow:{home:1,away:2},
+ red:{home:0,away:0},cards:{home:1,away:2}
+},'HT snapshot archives the cumulative first-half statistic counters');
 assert.ok(HALFTIME_RESULT_SQL.includes('app_match_half_result'));
 for(const phase of ['LIVE','PREMATCH','1H','']){
  assert.equal(extractConfirmedHalfTimeCandidate({...live,feed_status:phase}),null);
@@ -48,7 +58,7 @@ assert.equal(extractConfirmedHalfTimeCandidate({...live,
 assert.ok(extractConfirmedHalfTimeCandidate({...live,feed_status:'2H',
  home_score:3,away_score:1}),'Later known first-period score may still be captured');
 const half={home_team:'Red FC',away_team:'Blue FC',half_home_score:2,
- half_away_score:1,confirmed_at:'2026-11-11T20:46:00Z'};
+ half_away_score:1,confirmed_at:'2026-11-11T20:46:00Z',statistics:withStats.statistics};
 const pick=(market_name,outcome_name,opts={})=>({
  market_name,outcome_name,outcome_key:outcome_name,period:1,
  line:'',...opts
@@ -56,6 +66,12 @@ const pick=(market_name,outcome_name,opts={})=>({
 const check=(line,expected)=>assert.equal(gradeAtVerifiedHalfTime(line,half),expected,
  JSON.stringify(line));
 check(pick('1st half - Total Goals','Over',{line:'2.5'}),'WON');
+check(pick('1st half - Total Shots','Over',{line:'14.5'}),'WON');
+check(pick('1st half - Total Shots on Target','Over',{line:'5.5'}),'WON');
+check(pick('1st half - Total Fouls','Over',{line:'14.5'}),'WON');
+check(pick('1st half - Total Offsides','Over',{line:'2.5'}),'WON');
+check(pick('1st half - Total Corners','Over',{line:'9.5'}),'WON');
+check(pick('1st half - Total Cards','Over',{line:'2.5'}),'WON');
 check(pick('1st half - Total Goals','Under',{line:'2.5'}),'LOST');
 check(pick('1st half - Result','1'),'WON');
 check(pick('1st half - Result','2'),'LOST');
@@ -85,11 +101,11 @@ for(const line of [
  pick('HT/FT','1/1'),
  pick('2nd half - Result','1',{period:2}),
  pick('Both teams to score in both halves','Yes'),
- pick('1st half - Total Corners','Over',{line:'2.5'}),
  pick('1st half - Exact cards','3'),
  pick('First corner','1'),
  pick('Anytime goalscorer','Yes'),
- pick('1st half - Total Fouls','Over',{line:'5.5'})
+ pick('First corner','1'),
+ pick('Anytime goalscorer','Yes')
 ]){
  assert.equal(firstHalfScoreOnly(line),false,'Other scopes require different evidence: '+line.market_name);
  assert.equal(gradeAtVerifiedHalfTime(line,half),null);
@@ -101,6 +117,7 @@ assert.match(sql,/confirmed_at=now\(\)/);
 assert.match(sql,/first_seen_at=app_match_half_result\.first_seen_at/);
 assert.doesNotMatch(sql,/interval '5 seconds'/);
 assert.equal(args[0],123);
+assert.equal(JSON.parse(args[7]).shots.home,10,'persisted HT statistics use the new durable JSON argument');
 // First-half corners/cards use the actual verified PRIMARY chronology; the
 // half-time score alone is insufficient to decide their event totals.
 const facts=[
