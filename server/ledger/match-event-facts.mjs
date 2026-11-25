@@ -533,37 +533,37 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  ), raw_events as (
    select f.*,
      case
-       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+       when regexp_replace(lower(coalesce(f.phase,'')),'[^a-z0-9]','','g') in
         ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1') and f.minute>45 then 45
-       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^45[0-9]{1,2}$' and f.minute>45 then 45
-       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+       when regexp_replace(lower(coalesce(f.phase,'')),'[^a-z0-9]','','g') ~ '^45[0-9]{1,2}$' and f.minute>45 then 45
+       when regexp_replace(lower(coalesce(f.phase,'')),'[^a-z0-9]','','g') in
         ('2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2') and f.minute>90 then 90
-       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^90[0-9]{1,2}$' and f.minute>90 then 90
-       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+       when regexp_replace(lower(coalesce(f.phase,'')),'[^a-z0-9]','','g') ~ '^90[0-9]{1,2}$' and f.minute>90 then 90
+       when regexp_replace(lower(coalesce(f.phase,'')),'[^a-z0-9]','','g') in
         ('regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime',
          '90','stoppage','stoppagetime','injurytime') and f.minute>90 then 90
        else f.minute end as contract_minute,
-     (lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+     (regexp_replace(lower(coalesce(f.phase,'')),'[^a-z0-9]','','g') in
        ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1',
         '2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2',
         'regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime',
         '90','stoppage','stoppagetime','injurytime')
-       or lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^45[0-9]{1,2}$'
-       or lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^90[0-9]{1,2}$'
+       or regexp_replace(lower(coalesce(f.phase,'')),'[^a-z0-9]','','g') ~ '^45[0-9]{1,2}$'
+       or regexp_replace(lower(coalesce(f.phase,'')),'[^a-z0-9]','','g') ~ '^90[0-9]{1,2}$'
        or (nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90)) as normal_time,
      case
-       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+       when regexp_replace(lower(coalesce(f.phase,'')),'[^a-z0-9]','','g') in
         ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1') then 1
-       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+       when regexp_replace(lower(coalesce(f.phase,'')),'[^a-z0-9]','','g') in
         ('2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2') then 2
-       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^45[0-9]{1,2}$' then 1
-       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^90[0-9]{1,2}$' then 2
-       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+       when regexp_replace(lower(coalesce(f.phase,'')),'[^a-z0-9]','','g') ~ '^45[0-9]{1,2}$' then 1
+       when regexp_replace(lower(coalesce(f.phase,'')),'[^a-z0-9]','','g') ~ '^90[0-9]{1,2}$' then 2
+       when regexp_replace(lower(coalesce(f.phase,'')),'[^a-z0-9]','','g') in
         ('regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime',
          '90','stoppage','stoppagetime','injurytime') then case when f.minute<=45 then 1 else 2 end
        when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=45 then 1
        when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90 then 2
-       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+       when regexp_replace(lower(coalesce(f.phase,'')),'[^a-z0-9]','','g') in
         ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf') then 3
        else 4
      end as phase_order
