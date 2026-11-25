@@ -21,7 +21,9 @@ export function competitionPriority(row){
  // them to a generic category such as "international-clubs" instead of "europe".
  // Rank them before domestic leagues so the administrator's prematch cap is
  // applied only after the intended competition order has been established.
- if(/\b(?:champions league|europa league|conference league|nations league|european championship)\b/.test(label))return {priority:1,protected:true};
+ const nonEuropeanCompetition=/\b(?:afc|caf|concacaf|conmebol|ofc|asian|african|north american|south american)\b/.test(label)
+  ||['asia','africa','south-america','north-america','central-america','oceania','concacaf','conmebol','afc','caf','ofc'].includes(country);
+ if(!nonEuropeanCompetition&&/\b(?:champions league|europa league|conference league|nations league|european championship)\b/.test(label))return {priority:1,protected:true};
  if(decision.tier&&countries.includes(country))return {priority:10+countries.indexOf(country)+(decision.tier-1)*10,protected:true};
  if(decision.tier===1&&isEuropeanFootballCountry(country))return {priority:40,protected:true};
  return {priority:100,protected:false};
