@@ -30,7 +30,8 @@ export function competitionPriority(row){
 }
 const time=value=>{const n=new Date(value??0).getTime();return Number.isFinite(n)?n:0;};
 const kickoffDay=value=>{
- const date=new Date(value??0);if(!Number.isFinite(date.getTime()))return Number.MAX_SAFE_INTEGER;
+ if(value==null||value==='')return Number.MAX_SAFE_INTEGER;
+ const date=new Date(value);if(!Number.isFinite(date.getTime()))return Number.MAX_SAFE_INTEGER;
  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Tirane',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date).map(part=>[part.type,part.value]));
  return Number(parts.year+parts.month+parts.day);
 };
