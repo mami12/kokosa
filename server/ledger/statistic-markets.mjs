@@ -6,7 +6,7 @@ const number=value=>value!=null&&/^\d+(?:[.,]\d+)?$/.test(String(value).trim())?
 export function isStatisticMarket(line){
  const name=nameOf(line),hasLine=number(line?.line??line?.specifier)!==null;
  return /\b(?:shots?|fouls?)\b|goditj|faulle?/.test(name)||
-  ((/\b(?:total|number of|over|under)\b/.test(name)||hasLine)&&/\b(?:cards?|bookings?|corners?)\b|karton/.test(name));
+  ((/\b(?:total|number of|over|under)\b/.test(name)||hasLine)&&/\b(?:cards?|bookings?)\b|karton/.test(name));
 }
 export function statisticMarketContract(line){
  if(!isStatisticMarket(line))return null;
