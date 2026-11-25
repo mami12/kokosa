@@ -10,7 +10,7 @@ import {parseHandicapContract} from './handicap-contracts.mjs';
 import {parsePlayerOrdinalScorer} from './player-ordinal-scorer.mjs';
 import {parsePlayerGoalSpecial} from './player-goal-specials.mjs';
 import {parseHalfExactMarket} from './half-exact-markets.mjs';
-import {isRegularTimeEvent,normalTimeMinute} from './event-contract.mjs';
+import {isRegularTimeEvent,normalTimeMinute,eventPeriod} from './event-contract.mjs';
 const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(home|away)team\b/g,'$1 team').replace(/\s+/g,' ').trim();
 const number=v=>v==null||v===''||!Number.isFinite(Number(v))?null:Number(v);
 const yesNo=line=>{
@@ -707,7 +707,7 @@ const fullCoverage=(evidence,event,through)=>{
 };
 const eventPhaseUnknown=event=>{
  const phase=String(event?.phase??event?.period??'').toLowerCase().replace(/[^a-z0-9]/g,'');
- return !phase||(!isRegularTimeEvent(event)&&!/(?:extratime|overtime|shootout|penalty)/.test(phase));
+ return Number(event?.minute)>90&&eventPeriod(event)==null&&!/(?:extratime|overtime|shootout|penalty)/.test(phase);
 };
 /** Returns WON, LOST or null. Never infers an absence from a missing event.
  * 'ended' requires a confirmed terminal feed phase, not wall-clock time.
