@@ -117,6 +117,10 @@ assert.equal(isExcludedOfferMarket({market_key:'zz18640@e30',market_name:'Total 
 assert.equal(isExcludedOfferMarket({market_key:'zz18641@e30',market_name:'Total Red Cards'}),false);
 assert.equal(isExcludedOfferMarket({market_key:'yb18639@e30',market_name:'Total Cards'}),true,
  'secondary-book card quotes cannot enter the sportsbook');
+assert.equal(isExcludedOfferMarket({extId:'yb18640@e30',market_name:'Total Cards'}),true,
+ 'the client market identity also rejects non-Zizobet card offers');
+assert.equal(isExcludedOfferMarket({extId:'zz18640@e30',market_name:'Total Cards'}),false,
+ 'the client market identity retains native Zizobet cards');
 assert.equal(isExcludedOfferMarket({market_key:'external-card-market',market_name:'Total Cards'}),true,
  'a card offer without a native Zizobet identity is rejected');
 assert.equal(isExcludedOfferMarket({name:'Total Cards',key:'total cards'}),false,
