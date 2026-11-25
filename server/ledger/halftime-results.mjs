@@ -1,7 +1,7 @@
 /**
  * Durable half-time score evidence. NEVER store half-time values in
  * app_match_result, whose scores mean the 90-minute final result.
- * Two independent primary observations >=5s apart must agree.
+ * A single valid primary HT transition closes the first-half score period.
  */
 import {getMatches,getMatchById} from '../matches.mjs';
 import {matchSnapshots} from './match-snapshots.mjs';
@@ -40,8 +40,7 @@ export function extractConfirmedHalfTimeCandidate(row){
  const scoreAt=milliseconds(row.score_at),phaseAt=milliseconds(row.feed_status_at),
   clockAt=milliseconds(row.clock_at);
  // score_at and feed_status_at identify the original score/HT transition.
- // clock_at advances with each new primary match-info snapshot, even while
- // the score and phase remain unchanged. Use it to prove the second poll.
+ // clock_at proves this is a fresh primary snapshot of the HT transition.
  if(!Number.isFinite(scoreAt)||!Number.isFinite(phaseAt)||
     !Number.isFinite(clockAt)||Math.abs(scoreAt-phaseAt)>120000||
     clockAt<Math.max(scoreAt,phaseAt))return null;
