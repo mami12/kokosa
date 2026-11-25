@@ -47,6 +47,8 @@ const genericCardCatalogFamily=market=>{
  const key=clean(market?.key);
  return !!key&&titlesOf(market).some(title=>CARD_MARKET_WORDS.test(title)&&title===key);
 };
+const aggregateTotalCards=market=>titlesOf(market).some(title=>
+ /^(?:(?:full time|match) )?total cards?(?: (?:total|over\/?under))?$/.test(title));
 const nonZizobetCardQuote=market=>{
  if(!titlesOf(market).some(title=>CARD_MARKET_WORDS.test(title)))return false;
  const quoteKey=market?.market_key??market?.marketKey??market?.extId;
@@ -67,7 +69,7 @@ export function isRetiredPlayerOfferMarket(market){
  const type=clean(market?.marketType??market?.market_type??market?.category??
   market?.column??market?.board_column??'');
  const unsupportedType=/^(?:fouls?|faull\w*|players?|lojtar\w*|player props?|tackles?|throw[ -]?ins?|saves?|handicap|handikap\w*)$/.test(type);
- const retiredCard=!nativeZizobetCardQuote(market)&&titlesOf(market).some(title=>CARD_MARKET_WORDS.test(title));
+ const retiredCard=!nativeZizobetCardQuote(market)&&!aggregateTotalCards(market)&&titlesOf(market).some(title=>CARD_MARKET_WORDS.test(title));
  return unsupportedType||retiredCard||isPlayerOfferMarket(market)||
   titlesOf(market).some(title=>UNSUPPORTED_STATS.test(title)||NAMED_PLAYER.test(title))||isHandicapOfferMarket(market);
 }
