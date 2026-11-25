@@ -226,8 +226,8 @@ export async function getResult(matchId,{execute=query,readEvidence=loadEventEvi
   const review=(await execute('select payload from app_stat_review where match_id=$1',[Number(matchId)])).rows[0]?.payload;
   result.statistics_review=review??null;
   result.statistics_review_pending=process.env.STATS_PROVIDERS_ENABLED==='true'&&!review;
-  // Secondary consensus remains visible in statistics_review for admin
-  // diagnostics only. It is never merged into financial settlement facts.
+  // The resolver uses secondary consensus only when the corresponding
+  // Zizobet statistic is absent; Zizobet values and the final score stay primary.
   // Optional timeline storage must not stop ordinary result/statistics tickets.
   try{result.event_evidence=await readEvidence(matchId);}catch(error){
     result.event_evidence=null;
