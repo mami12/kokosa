@@ -468,8 +468,8 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
          observedAt: new Date(now()).toISOString()
        });
       }
-      } else if(finalReviewNeeded)unavailable.fotmob=fotMobTransportStatus().lastError??'FOTMOB_DETAILS_UNAVAILABLE';
-     }
+      } else if(finalReviewNeeded)unavailable.fotmob='STATS_NOT_FINAL';
+     } else if(finalReviewNeeded)unavailable.fotmob=fotMobTransportStatus().lastError??'FOTMOB_DETAILS_UNAVAILABLE';
     } catch(error) {
       if(finalReviewNeeded)unavailable.fotmob='FOTMOB_ENRICHMENT_ERROR';
       health.providers.fotmob={...health.providers.fotmob,
