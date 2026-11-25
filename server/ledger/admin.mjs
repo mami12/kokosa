@@ -46,13 +46,13 @@ const guard = (fn) => (req, res, next) => {
         ['ADMIN', 'MANAGER'].includes(req.user?.role)) {
       try {
         const target = req.path.match(/\/(users|matches|markets|outcomes|tickets)\/([^/]+)/);
-        const safeKeys = ['username', 'role', 'managerId', 'initialBalance', 'amount', 'status', 'isSuspended', 'odds', 'price', 'homeScore', 'awayScore', 'country', 'competitionId', 'category', 'suspended', 'hidden', 'countrySlug', 'tournamentId'];
+        const safeKeys = ['username', 'role', 'managerId', 'initialBalance', 'amount', 'status', 'isSuspended', 'odds', 'price', 'homeScore', 'awayScore', 'country', 'competitionId', 'category', 'suspended', 'hidden', 'countrySlug', 'tournamentId', 'reason'];
         const input = Object.fromEntries(
           safeKeys.filter((key) => req.body?.[key] !== undefined).map((key) => [key, req.body[key]]),
         );
         const targetId = target?.[2] ?? body?.id ?? null;
         const targetType = target
-          ? ({ users: 'user', matches: 'match', markets: 'market', outcomes: 'outcome', tickets: 'ticket' })[target[1]]
+          ? ({ users: 'user', matches: 'match', markets: 'market', outcomes: 'outcome', tickets: 'ticket', lines: 'ticket_line' })[target[1]]
           : req.path.includes('commission') ? 'settings' : 'system';
         await query(
           `insert into app_admin_audit
