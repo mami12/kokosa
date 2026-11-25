@@ -250,9 +250,10 @@ export async function getResult(matchId,{execute=query,readEvidence=loadEventEvi
        away:Number(full.away)-Number(half.away)};
     }
   }
-  resolved.statistics={...resolved.statistics,
-   periods:{...(resolved.statistics?.periods??{}),firstHalf,
-    ...(Object.keys(secondHalf).length?{secondHalf}:{})}};
+  const periods={...(resolved.statistics?.periods??{})};
+  if(Object.keys(firstHalf).length)periods.firstHalf=firstHalf;
+  if(Object.keys(secondHalf).length)periods.secondHalf=secondHalf;
+  if(Object.keys(periods).length)resolved.statistics={...resolved.statistics,periods};
   return resolved;
 }
 
