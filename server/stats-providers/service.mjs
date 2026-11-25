@@ -286,7 +286,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    let archivedStats=result?.statistics??{};if(typeof archivedStats==='string'){try{archivedStats=JSON.parse(archivedStats);}catch{archivedStats={};}}
    const finalRowStats=verifiedFinalStatistics(row);
    const primaryArchive={...finalRowStats,...archivedStats,
-    corners:{home:result?.corners_home??finalRowStats.corners?.home,away:result?.corners_away??finalRowStats.corners?.away},
+    corners:{home:result?.corners_home??archivedStats.corners?.home??finalRowStats.corners?.home,away:result?.corners_away??archivedStats.corners?.away??finalRowStats.corners?.away},
     cards:{home:result?.cards_home,away:result?.cards_away},
     yellow:{home:archivedStats.yellow?.home??finalRowStats.yellow?.home,away:archivedStats.yellow?.away??finalRowStats.yellow?.away},
     red:{home:archivedStats.red?.home??finalRowStats.red?.home,away:archivedStats.red?.away??finalRowStats.red?.away}};
