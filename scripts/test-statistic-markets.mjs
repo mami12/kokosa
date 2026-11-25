@@ -154,6 +154,19 @@ try{
  await db.query(FINISHED_RESULT_INSERT,finishedResultParameters(partial));
  stored=(await db.query('select * from app_match_result where match_id=900')).rows[0];
  assert.deepEqual(stored.statistics.shotsOnTarget,{home:3,away:5});assert.deepEqual(stored.statistics.fouls,{home:9,away:11});
+ const laterCards={...base,stats:{
+  home:normalizeTeamStatistics({corners:6,yellow:2,red:1},{observedAt:at}),
+  away:normalizeTeamStatistics({corners:4,yellow:1,red:0},{observedAt:at})
+ }};
+ await db.query(FINISHED_RESULT_INSERT,finishedResultParameters(laterCards));
+ stored=(await db.query('select * from app_match_result where match_id=900')).rows[0];
+ assert.deepEqual([stored.corners_home,stored.corners_away],[6,4],
+  'late final corner counters merge into the durable result');
+ assert.deepEqual([stored.cards_home,stored.cards_away],[3,1],
+  'late final yellow+red counters update the aggregate card columns');
+ assert.deepEqual(stored.statistics.yellow,{home:2,away:1});
+ assert.deepEqual(stored.statistics.red,{home:1,away:0});
+ assert.deepEqual(stored.statistics.cards,{home:3,away:1});
  const snapshots=createMatchSnapshotStore(db.query.bind(db));await snapshots.save(row);
  const restored=(await createMatchSnapshotStore(db.query.bind(db)).load([900]))[0];
  assert.deepEqual(verifiedFinalStatistics(restored),result.statistics,'restart keeps independentstat evidence');
