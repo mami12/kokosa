@@ -30,7 +30,7 @@ async function harness({env={},rows=[row()],stats=()=>totals,override=()=>null,e
    if(path.endsWith('/incidents/')&&match)return json({incidents:events(provider,match)});
    if(path.endsWith('/availability/'))return json({available:{incidents:true}});
    if(path.endsWith('/lineups/'))return json({lineup_status:'confirmed',lineups:{}});
-   if(match&&path==='/api/v2/events/'+id+'/')return json({status:match.feed_status==='FT'?'finished':'live',home_score:0,away_score:0});
+   if(match&&path==='/api/v2/events/'+id+'/')return json({status:match.feed_status==='FT'?'finished':'live',home_score:match.home_score??0,away_score:match.away_score??0});
   }
   if(provider==='worldcup26'){
    if(path.endsWith('/scoreboard'))return json({events:all.map(r=>({id:r.match_id,date:r.start_at,competitions:[{status:{type:{completed:r.feed_status==='FT'}},competitors:['home','away'].map(side=>({id:(side==='home'?'h':'a')+r.match_id,homeAway:side,team:{displayName:r[side]},statistics:Object.entries(stats(provider,r)[side]??{}).map(([key,value])=>({name:names[key],displayValue:value}))}))}]}))});
