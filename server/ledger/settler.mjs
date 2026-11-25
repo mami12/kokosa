@@ -41,7 +41,7 @@ import {isPeriodGoalTotal,parsePeriodGoalTotal,gradePeriodGoalTotal} from './per
 import {isHalfExactMarketFamily} from './half-exact-markets.mjs';
 import {cornerTotalContract} from './corner-total-contract.mjs';
 import {parseTeamCountMarket} from './live-contract-rules.mjs';
-import {statisticsNeedReview} from './settlement-review.mjs';
+import {statisticsNeedReview,settlementStatisticFields} from './settlement-review.mjs';
 import {createLiveSettlementPreviews} from './live-shadow-settlement.mjs';
 import {gradeStoredEventContract,SUPPORTED_FACT_KINDS} from './match-event-facts.mjs';
 import {recoverLegacyZizobetCornerContract} from './legacy-zizobet-corner-contract.mjs';
@@ -731,6 +731,8 @@ export function hasRequiredSettlementEvidence(line, result) {
   if(/^full[\s.-]*time[\s:.-]*(?:1up|2up|3up)$/i.test(String(line.market_name??'').trim()))
     return hasRequiredSettlementEvidence({...line,market_name:'Full Time Result',live_contract:null},result);
   if (!result||scoreValue(result.home_score)===null||scoreValue(result.away_score)===null)return false;
+  // Conflicts block only selections whose settlement depends on that statistic.
+  if(statisticsNeedReview(line,result))return false;
   const cornerResult=gradeFinalTeamCornerMarket(line,result);
   if(cornerResult!==undefined)return ['WON','LOST','VOID'].includes(cornerResult);
   const namedResult=gradeNamedFinalTeamMarket(line,result);
