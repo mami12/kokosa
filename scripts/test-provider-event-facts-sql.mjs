@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
 import {LEDGER_SQL} from '../server/ledger/schema.mjs';
 import {normalizeLiveFrame} from '../server/ledger/live-observation-store.mjs';
-import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
+import {gradeStoredEventContract,persistVerifiedEventFacts} from '../server/ledger/match-event-facts.mjs';
 import {providerTimeline} from '../server/live-event-timeline.mjs';
 import {parseHalfTotal} from '../server/ledger/live-contract-rules.mjs';
 import {parseParityMarket} from '../server/ledger/parity-markets.mjs';
@@ -54,6 +54,18 @@ try{
  await db.exec(LEDGER_SQL);
  const run=(sql,params=[])=>db.query(sql,params);
  const matchId=7199981,now=new Date();
+ const finalImmediateId=matchId+50,finalObservedAt=new Date('2026-11-25T12:00:00.000Z');
+ const finalFrame=normalizeLiveFrame({
+  Match:{Score:'0:0',MatchTimeExtended:'90:00',EventStatus:40,MatchStatusID:40,
+   CornersTeam1:1,CornersTeam2:0,YellowCardsTeam1:0,YellowCardsTeam2:0,
+   RedCardsTeam1:0,RedCardsTeam2:0},
+  TimeLines:[{id:'ft-corner-1',type:'corner_kick',team:1,gt:70,clk:'70:05',isTaken:true}]
+ });
+ await persistVerifiedEventFacts(finalImmediateId,finalFrame,run,finalObservedAt);
+ const firstFinalProof=(await run("select complete,confirmed_at from app_match_event_coverage where match_id=$1 and provider='zizobet' and kind='corner'",[finalImmediateId])).rows[0];
+ assert.equal(firstFinalProof.complete,true);
+ assert.ok(firstFinalProof.confirmed_at,
+  'One complete FT Zizobet timeline reconciled to its own final counters is confirmed on the first poll');
  for(const [id,team,minute,seconds] of [
   ['kick-1','home',10,605],['kick-2','away',15,905],
   ['kick-3','home',23,1405]
@@ -296,5 +308,18 @@ try{
  assert.equal(await gradeStoredEventContract({...lateLine,id:'00000000-0000-4000-8000-000000000014',
   match_id:unknownPhaseMatch},{...lateResult,home_score:1},{execute:run}),null,
   'An unlabelled event after 90 remains pending');
+  const unknown45Match=lateMatch+4;
+  await run(`insert into app_match_event_fact
+   (match_id,provider,provider_event_id,kind,team,minute,phase,active)
+   values($1,'zizobet','goal-45-no-phase','goal','home',45,null,true)`,[unknown45Match]);
+  await run(`insert into app_match_event_coverage
+   (match_id,provider,kind,through_minute,count_home,count_away,complete,observed_at,confirmed_at)
+   values($1,'zizobet','goal',91,1,0,true,$2,$2)`,[unknown45Match,now]);
+  await run('insert into app_live_event_cursor(match_id,last_seen_at) values($1,$2)',[unknown45Match,now]);
+  const unknown45Race={id:'00000000-0000-4000-8000-000000000015',match_id:unknown45Match,
+   live_contract:{version:1,kind:'race',event:'goal',target:1,side:'home'}};
+  assert.equal(await gradeStoredEventContract(unknown45Race,{...lateResult,home_score:1},{execute:run}),null,
+   'An unlabelled 45th-minute event cannot decide event-race ordering');
+
  console.log('PASS real PostgreSQL engine: taken-corner evidence, primary event races/windows/interval totals, stoppage-time and extra-time phase safeguards');
 }finally{await db.close();}

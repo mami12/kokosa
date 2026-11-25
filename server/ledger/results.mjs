@@ -12,6 +12,7 @@ import {matchSnapshots} from './match-snapshots.mjs';
 import {eventMarketRequirement} from './event-market-policy.mjs';
 import {teamStatisticsFromRow,verifiedFinalStatistics} from '../match-statistics.mjs';
 import {isStatisticMarket,hasStatisticEvidence} from './statistic-markets.mjs';
+import {resolveSettlementStatistics,statisticsNeedReview,settlementStatisticFields} from './settlement-review.mjs';
 
 /**
  * Do not settle bets from a made-up 0-0 or a kickoff timer. A final score
@@ -82,6 +83,10 @@ export const FINISHED_RESULT_INSERT = `
       'shots',coalesce(app_match_result.statistics->'shots','{}'::jsonb)||coalesce(excluded.statistics->'shots','{}'::jsonb),
       'shotsOnTarget',coalesce(app_match_result.statistics->'shotsOnTarget','{}'::jsonb)||coalesce(excluded.statistics->'shotsOnTarget','{}'::jsonb),
       'fouls',coalesce(app_match_result.statistics->'fouls','{}'::jsonb)||coalesce(excluded.statistics->'fouls','{}'::jsonb),
+      'corners',coalesce(app_match_result.statistics->'corners','{}'::jsonb)||coalesce(excluded.statistics->'corners','{}'::jsonb),
+      'yellow',coalesce(app_match_result.statistics->'yellow','{}'::jsonb)||coalesce(excluded.statistics->'yellow','{}'::jsonb),
+      'red',coalesce(app_match_result.statistics->'red','{}'::jsonb)||coalesce(excluded.statistics->'red','{}'::jsonb),
+      'cards',coalesce(app_match_result.statistics->'cards','{}'::jsonb)||coalesce(excluded.statistics->'cards','{}'::jsonb),
       'cornerPeriods',coalesce(excluded.statistics->'cornerPeriods',app_match_result.statistics->'cornerPeriods')),
     source = 'ZIZOBET'
   -- A verified admin correction or already-settled result must not be
@@ -91,32 +96,21 @@ export const FINISHED_RESULT_INSERT = `
 `;
 
 export function finishedResultParameters(row) {
-  // The push feed stores stats under its competitor IDs, e.g.
-  // { "87150": {corners:3}, "87155": {corners:4} }, NOT under
-  // stats.home/stats.away. Failing to map this made corner/card tickets
-  // VOID or eternally pending even when full-time stats were available.
   const {home:homeTeam,away:awayTeam}=teamStatisticsFromRow(row);
-  const home = homeTeam ? statNum(homeTeam.corners) : null;
-  const away = awayTeam ? statNum(awayTeam.corners) : null;
-  const cards = team => {
-    if (!team) return null;
-    const yellow = statNum(team.yellow);
-    const red = statNum(team.red);
-    // A missing red/yellow component is UNKNOWN, not zero. An incomplete
-    // final-card sum could otherwise mark a valid Over as LOST or Under WON.
-    return yellow === null || red === null ? null : yellow + red;
+  const statistics=verifiedFinalStatistics(row);
+  const home=statNum(statistics.corners?.home),away=statNum(statistics.corners?.away);
+  const cards=(side)=>{
+    const yellow=statNum(statistics.yellow?.[side]),red=statNum(statistics.red?.[side]);
+    return yellow===null||red===null?null:yellow+red;
   };
-  const half = verifiedFirstHalf(row.periods_score);
+  if(statistics.yellow&&statistics.red&&['home','away'].every(side=>statistics.yellow[side]!=null&&statistics.red[side]!=null))
+    statistics.cards={home:Number(statistics.yellow.home)+Number(statistics.red.home),away:Number(statistics.yellow.away)+Number(statistics.red.away)};
+  const half=verifiedFirstHalf(row.periods_score);
   const cornerHalfHT={home:statNum(homeTeam?.cornersHT),away:statNum(awayTeam?.cornersHT)};
   const cornerHalf2H={home:statNum(homeTeam?.corners2H),away:statNum(awayTeam?.corners2H)};
-  const cornerFull={home:statNum(homeTeam?.cornersFT??homeTeam?.corners),
-    away:statNum(awayTeam?.cornersFT??awayTeam?.corners)};
+  const cornerFull={home,away};
   const validPair=pair=>pair!=null&&Number.isSafeInteger(pair.home)&&pair.home>=0&&
     Number.isSafeInteger(pair.away)&&pair.away>=0;
-  // Zizobet can publish either the first-half or second-half corner split.
-  // When exactly one half is supplied, derive the other only from the same
-  // provider's verified full-time total. If both halves are supplied, require
-  // them to reconcile exactly before exposing period statistics to settlement.
   let cornerFirst=validPair(cornerHalfHT)?cornerHalfHT:null;
   let cornerSecond=validPair(cornerHalf2H)?cornerHalf2H:null;
   if(validPair(cornerFull)){
@@ -129,11 +123,9 @@ export function finishedResultParameters(row) {
     cornerFirst.home+cornerSecond.home===cornerFull.home&&
     cornerFirst.away+cornerSecond.away===cornerFull.away
     ?{firstHalf:cornerFirst,secondHalf:cornerSecond,fullTime:cornerFull,source:'ZIZOBET'}:null;
-  const statistics=verifiedFinalStatistics(row);
   if(cornerPeriods)statistics.cornerPeriods=cornerPeriods;
-  return [row.match_id, row.home, row.away, Number(row.home_score), Number(row.away_score),
-    cornerFull.home??home, cornerFull.away??away,cards(homeTeam),cards(awayTeam),
-    half?.home ?? null, half?.away ?? null,JSON.stringify(statistics)];
+  return [row.match_id,row.home,row.away,Number(row.home_score),Number(row.away_score),
+    home,away,cards('home'),cards('away'),half?.home??null,half?.away??null,JSON.stringify(statistics)];
 }
 
 /**
@@ -221,19 +213,23 @@ export async function getResult(matchId,{execute=query,readEvidence=loadEventEvi
     const snapshot=current?.raw?.provider?current:
       (await matchSnapshots.load([Number(matchId)]))[0]??null;
     if(String(snapshot?.raw?.provider??'').toUpperCase()!=='ZIZOBET')return null;
+    // FEED is a legacy DB label. Once its live snapshot proves Zizobet identity,
+    // expose the canonical source to the settlement engine and audit trail.
+    result.source='ZIZOBET';
+    result._zizobetVerified=true;
   }else if(source!=='ZIZOBET'&&source!=='ADMIN')return null;
   const review=(await execute('select payload from app_stat_review where match_id=$1',[Number(matchId)])).rows[0]?.payload;
   result.statistics_review=review??null;
   result.statistics_review_pending=process.env.STATS_PROVIDERS_ENABLED==='true'&&!review;
-  // Secondary consensus remains visible in statistics_review for admin
-  // diagnostics only. It is never merged into financial settlement facts.
+  // The resolver uses secondary consensus only when the corresponding
+  // Zizobet statistic is absent; Zizobet values and the final score stay primary.
   // Optional timeline storage must not stop ordinary result/statistics tickets.
   try{result.event_evidence=await readEvidence(matchId);}catch(error){
     result.event_evidence=null;
     if(onEvidenceError)onEvidenceError(error);
     else if(Date.now()-evidenceWarningAt>60000){evidenceWarningAt=Date.now();console.warn('[settle] optional event evidence unavailable; event selections remain pending');}
   }
-  return result;
+  return resolveSettlementStatistics(result);
 }
 
 /** manual result (admin "settle" button): stores the score the admin entered */
@@ -292,9 +288,17 @@ export async function pendingSettlementReview(limit = 100) {
   );
   if (!rows.length) return [];
 
-  const recorded = await resultsFor(rows.map(r => Number(r.match_id)));
+  const matchIds=rows.map(r=>Number(r.match_id));
+  const recorded = await resultsFor(matchIds);
+  const reviewRows=matchIds.length?(await query('select match_id,payload from app_stat_review where match_id=any($1::bigint[])',[matchIds])).rows:[];
+  const reviews=new Map(reviewRows.map(item=>[String(item.match_id),item.payload]));
+  const overrideRows=matchIds.length?(await query('select l.match_id,l.id as line_id,l.market_name,l.outcome_name,o.status,o.actor_id,u.username as actor_name,o.reason,o.source,o.updated_at from app_settlement_override o join app_ticket_line l on l.id=o.line_id left join app_user u on u.id=o.actor_id where l.match_id=any($1::bigint[]) order by l.match_id,l.id',[matchIds])).rows:[];
+  const manualByMatch=new Map();for(const item of overrideRows){const key=String(item.match_id);if(!manualByMatch.has(key))manualByMatch.set(key,[]);manualByMatch.get(key).push(item);}
   return Promise.all(rows.map(async row => {
-    const stored = recorded.get(String(row.match_id));
+    const storedBase=recorded.get(String(row.match_id));
+    const review=reviews.get(String(row.match_id))??null;
+    const stored=storedBase?resolveSettlementStatistics({...storedBase,statistics_review:review,
+      statistics_review_pending:process.env.STATS_PROVIDERS_ENABLED==='true'&&!review}):null;
     const current = await getMatchById(Number(row.match_id));
     const kickoff = current?.start_at ? new Date(current.start_at).toISOString() : null;
     const timestamp = new Date(row.oldest_ticket_at).getTime();
@@ -305,7 +309,7 @@ export async function pendingSettlementReview(limit = 100) {
       eventMarketRequirement({name}) ||
       (/\b(?:first|1st)\s*half\b/i.test(name) &&
         (stored.half_home_score == null || stored.half_away_score == null)) ||
-      (isStatisticMarket({market_name:name}) && !hasStatisticEvidence({market_name:name},stored)) ||
+      (isStatisticMarket({market_name:name}) && (statisticsNeedReview({market_name:name},stored)||!hasStatisticEvidence({market_name:name},stored))) ||
       (/\bcorners?\b/i.test(name) && (stored.corners_home == null || stored.corners_away == null)) ||
       (/\bcards?\b|booking/i.test(name) && (stored.cards_home == null || stored.cards_away == null)) ||
       /early\s*payout/i.test(name));
@@ -320,6 +324,15 @@ export async function pendingSettlementReview(limit = 100) {
       oldestTicketAt: row.oldest_ticket_at, ageHours,
       kickoff, finalScore, reason,
       marketNames,
+      manualOverrides:manualByMatch.get(String(row.match_id))??[],
+      statisticsReview:review,
+      statisticMarkets:marketNames.filter(name=>isStatisticMarket({market_name:name})).map(name=>({
+       marketName:name,needsManualReview:statisticsNeedReview({market_name:name},stored),
+       evidence:Object.fromEntries(settlementStatisticFields({market_name:name}).map(field=>[field,{
+        primary:stored?.statistics?.[field]??(field==='corners'?{home:stored?.corners_home,away:stored?.corners_away}:field==='cards'?{home:stored?.cards_home,away:stored?.cards_away}:null),
+        sources:stored?._settlementSources?.[field]??[],conflict:review?.conflicts?.[field]??null
+       }]))
+      })),
       feedStatus: current?.feed_status ?? null,
       feedScoreAt: current?.score_at ?? null,
     };

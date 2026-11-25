@@ -11,6 +11,7 @@
  * corners and cards, those markets can be graded instead of always being voided.
  */
 import { pool, query } from '../db.mjs';
+import {createHash} from 'node:crypto';
 import {isPlayerOfferMarket} from '../market-policy.mjs';
 import {gradeEventLine,needsEvents,gradeClosedCornerWindow,loadEventEvidence} from './event-evidence.mjs';
 import { getMatchById } from '../matches.mjs';
@@ -41,12 +42,14 @@ import {isPeriodGoalTotal,parsePeriodGoalTotal,gradePeriodGoalTotal} from './per
 import {isHalfExactMarketFamily} from './half-exact-markets.mjs';
 import {cornerTotalContract} from './corner-total-contract.mjs';
 import {parseTeamCountMarket} from './live-contract-rules.mjs';
-import {statisticsNeedReview} from './settlement-review.mjs';
+import {statisticsNeedReview,settlementStatisticFields} from './settlement-review.mjs';
 import {createLiveSettlementPreviews} from './live-shadow-settlement.mjs';
 import {gradeStoredEventContract,SUPPORTED_FACT_KINDS} from './match-event-facts.mjs';
 import {recoverLegacyZizobetCornerContract} from './legacy-zizobet-corner-contract.mjs';
 import {backfillPendingTeamGoalContracts} from './live-contract-backfill.mjs';
 import {settleVerifiedLiveProposals} from './verified-live-settlement.mjs';
+import {nativeZizobetContractRow} from './native-zizobet-contract.mjs';
+import {isWinningMethodMarket,gradeWinningMethod} from './winning-method.mjs';
 
 const legacyHandicapResult=(line,result)=>{
  const saved=line?.live_contract?.kind==='score-handicap'?line.live_contract:null;
@@ -97,7 +100,7 @@ export function unverifiedCompositeLine(line={},result={}){
  */
 export function gradeHeldNativeCombo(line,result){
  const saved=line?.accepted_contract,reason=String(saved?.settlementHold??'');
- if(!['NATIVE_FINAL_RULE_UNMAPPED','NATIVE_HALF_COMBO_UNMAPPED',
+ if(!['NATIVE_PARAMETERS_UNMAPPED','NATIVE_FINAL_RULE_UNMAPPED','NATIVE_HALF_COMBO_UNMAPPED',
       'NATIVE_PERIOD_GOAL_UNMAPPED','NATIVE_CONTRACT_REVIEW',
       'NATIVE_LIVE_HANDICAP_UNMAPPED','NATIVE_HANDICAP_UNMAPPED'].includes(reason))return null;
  if(String(saved?.sourceProviderId??'').toUpperCase()!=='ZIZOBET')return null;
@@ -111,6 +114,27 @@ export function gradeHeldNativeCombo(line,result){
  const rawPeriod=Number(saved.providerPeriod??0);
  if(![0,1,2].includes(rawPeriod)||
     (line.period!=null&&Number(line.period)!==rawPeriod))return null;
+ if(reason==='NATIVE_PARAMETERS_UNMAPPED'){
+  if(!saved.nativeMarketName||!saved.providerMarketKey||saved.nativeMarketId==null)return null;
+  let decoded;
+  try{decoded=nativeZizobetContractRow({
+   provider_id:saved.sourceProviderId,market_key:saved.providerMarketKey,
+   native_market_id:saved.nativeMarketId,native_market_name:saved.nativeMarketName,
+   native_parameters:saved.nativeParameters,line:String(saved.line??''),
+   market_name:saved.providerMarketName
+  },{competitors:{
+   home:saved.homeTeamName??result?.home_team,
+   away:saved.awayTeamName??result?.away_team
+  }});}catch{return null;}
+  if(!decoded?.market_name)return null;
+  const repaired={...line,market_name:decoded.market_name,
+   outcome_name:saved.providerOutcomeName,outcome_key:saved.providerOutcomeKey,
+   line:String(saved.line??''),period:rawPeriod,
+   accepted_contract:{...saved,settlementHold:null}};
+  if(!hasRequiredSettlementEvidence(repaired,result))return null;
+  const status=gradeLine(repaired,result);
+  return ['WON','LOST','VOID'].includes(status)?status:null;
+ }
  const frozen={
   market_name:saved.providerMarketName,
   outcome_name:saved.providerOutcomeName,
@@ -513,6 +537,7 @@ export function classify(marketName = '') {
   if (isResultBttsMarket(marketName)) return 'RESULT_BTTS';
   if (/^which team to score$/i.test(String(marketName).trim())) return 'WHICH_TEAM_TO_SCORE';
   if (isWinningMarginMarket({market_name:marketName})) return 'WINNING_MARGIN';
+  if (isWinningMethodMarket(marketName)) return 'WINNING_METHOD';
   if (isMultiscoresMarket(marketName)) return 'MULTISCORES';
   if (isMatchbetFirstGoalMarket(marketName)) return 'MATCHBET_FIRST_GOAL';
   if (isQualificationMarket(marketName)) return 'TO_QUALIFY';
@@ -723,6 +748,7 @@ const periodScores=(line,result)=>{
  * inventing a win/loss or immediately refunding a valid winning proposition.
  */
 export function hasRequiredSettlementEvidence(line, result) {
+  if(String(result?.source??'').toUpperCase()==='FEED'&&settlementStatisticFields(line).length&&!result?._zizobetVerified)return false;
   // A native quote awaiting rule review must never be graded by a
   // coincidentally similar legacy market-name fallback.
   if(line?.accepted_contract?.settlementHold)
@@ -731,6 +757,11 @@ export function hasRequiredSettlementEvidence(line, result) {
   if(/^full[\s.-]*time[\s:.-]*(?:1up|2up|3up)$/i.test(String(line.market_name??'').trim()))
     return hasRequiredSettlementEvidence({...line,market_name:'Full Time Result',live_contract:null},result);
   if (!result||scoreValue(result.home_score)===null||scoreValue(result.away_score)===null)return false;
+  // Conflicts block only selections whose settlement depends on that statistic.
+  if(statisticsNeedReview(line,result))return false;
+  // Aggregate team-stat contracts use their own final statistic evidence;
+  // do not route yellow/red cards through the legacy generic CARDS family.
+  if(isStatisticMarket(line))return hasStatisticEvidence(line,result);
   const cornerResult=gradeFinalTeamCornerMarket(line,result);
   if(cornerResult!==undefined)return ['WON','LOST','VOID'].includes(cornerResult);
   const namedResult=gradeNamedFinalTeamMarket(line,result);
@@ -749,19 +780,19 @@ export function hasRequiredSettlementEvidence(line, result) {
   if(isMultiscoresMarket(String(line.market_name??'')))return gradeMultiscores(line,result)!==null;
   if(isMatchbetFirstGoalMarket(String(line.market_name??'')))return gradeMatchbetFirstGoal(line,result)!==null;
   if(isQualificationMarket(String(line.market_name??'')))return gradeQualification(line,result)!==null;
+  if(isWinningMethodMarket(line.market_name))return gradeWinningMethod(line,result)!==null;
   if(isPeriodGoalTotal(line))return gradePeriodGoalTotal(parsePeriodGoalTotal(line,result),result)!==null;
   if(isScoringPropMarket(line))return gradeScoringPropMarket(line,result)!==null;
   if(isHalfExactMarketFamily(line))return false; // FT counts are not 1H/2H corner/card facts
   if(isParityLikeMarket(line))return gradeParityMarket(line,result)!==null;
   if(isHandicapMarket(line))return legacyHandicapResult(line,result)!==null;
   // A final aggregate card count cannot tell red from yellow cards.
-  if(/\b(?:yellow|red)\s+cards?\b/i.test(String(line?.market_name??'')))return false;
   // Zizobet is the declared settlement authority. A missing secondary-provider
   // comparison must not hold a verified Zizobet final corner/statistics result
   // in PENDING; secondary feeds are enrichment only, not payout vetoes.
   if(String(result?.source??'').toUpperCase()!=='ZIZOBET'&&statisticsNeedReview(line,result))return false;
   if (Array.isArray(line.builder_legs)) return line.builder_legs.every(leg => hasRequiredSettlementEvidence(leg, result));
-  if (needsEvents(line)) return ['WON','LOST','VOID'].includes(gradeEventLine(line,result));
+  if (needsEvents(line)&&!isStatisticMarket(line)) return ['WON','LOST','VOID'].includes(gradeEventLine(line,result));
   if (isStatisticMarket(line)) return hasStatisticEvidence(line,result);
   const marketName = String(line.market_name ?? '');
   const period=scorePeriodOf(line);
@@ -835,8 +866,12 @@ export function hasRequiredSettlementEvidence(line, result) {
  * VOID is allowed only for a proved settlement-rule push/cancellation.
  */
 export function gradeLine(line, result) {
+  if(String(result?.source??'').toUpperCase()==='FEED'&&settlementStatisticFields(line).length&&!result?._zizobetVerified)return null;
   if(line?.accepted_contract?.settlementHold)
     return gradeHeldNativeCombo(line,result);
+  line=withFrozenPeriod(line);
+  if(statisticsNeedReview(line,result))return null;
+  if(isWinningMethodMarket(line?.market_name))return gradeWinningMethod(line,result);
   const cornerResult=gradeFinalTeamCornerMarket(line,result);
   if(cornerResult!==undefined)return cornerResult;
   const namedResult=gradeNamedFinalTeamMarket(line,result);
@@ -872,7 +907,7 @@ export function gradeLine(line, result) {
     return gradePeriodGoalTotal(parsePeriodGoalTotal(line,result),result);
   if(!Array.isArray(line.builder_legs)&&isScoringPropMarket(line))
     return gradeScoringPropMarket(line,result);
-  if(needsEvents(line)&&!Array.isArray(line.builder_legs))return gradeEventLine(line,result)??null;
+  if(needsEvents(line)&&!isStatisticMarket(line)&&!Array.isArray(line.builder_legs))return gradeEventLine(line,result)??null;
   if (line.builder_legs !== null && line.builder_legs !== undefined) {
     const legs = line.builder_legs;
     if (!Array.isArray(legs) || legs.length < 2 || legs.length > 5 || legs.some(l => l.builder_legs)) return null;
@@ -1400,6 +1435,69 @@ export async function recalcTicket(ticketId, { database = pool } = {}) {
   }
 }
 
+/** Admin may decide only an unresolved individual line. Manual decisions
+ * are recorded with the exact stored provider facts, then the normal locked
+ * ticket recalculation performs any wallet movement exactly once.
+ */
+export async function manualSettleLine(lineId,status,{actorId,reason,database=pool,recalc=recalcTicket}={}){
+ const selected=String(status??'').toUpperCase();
+ if(!['WON','LOST','PENDING'].includes(selected))throw Object.assign(new Error('Statusi manual duhet të jetë WON, LOST ose PENDING.'),{status:400});
+ if(!actorId)throw Object.assign(new Error('Mungon administratori përgjegjës.'),{status:400});
+ const note=String(reason??'').trim();
+ if(note.length<8||note.length>500)throw Object.assign(new Error('Arsyeja duhet të ketë 8 deri në 500 karaktere.'),{status:400});
+ const client=await database.connect();
+ let ticketId;
+ try{
+  await client.query('begin');
+  const found=await client.query(`select l.*,t.status as ticket_status
+   from app_ticket_line l join app_ticket t on t.id=l.ticket_id
+   where l.id=$1 for update of t,l`,[lineId]);
+  const line=found.rows[0];
+  if(!line)throw Object.assign(new Error('Përzgjedhja nuk u gjet.'),{status:404});
+  if(line.ticket_status!=='PENDING'||line.status!=='PENDING')
+   throw Object.assign(new Error('Mund të vendoset manualisht vetëm një përzgjedhje ende PENDING.'),{status:409});
+  ticketId=line.ticket_id;
+  await client.query(`insert into app_settlement_override(line_id,status,actor_id,reason,source,updated_at)
+   values($1,$2,$3,$4,'ADMIN',now())
+   on conflict(line_id) do update set status=excluded.status,actor_id=excluded.actor_id,
+    reason=excluded.reason,source='ADMIN',updated_at=now()`,
+   [line.id,selected,actorId,note]);
+  if(selected==='PENDING'){
+   await client.query('update app_ticket_line set settlement_reason=$2 where id=$1 and status=$3',
+    [line.id,note,'PENDING']);
+  }else{
+   const result=(await client.query('select * from app_match_result where match_id=$1',[Number(line.match_id)])).rows[0]??null;
+   const review=(await client.query('select payload from app_stat_review where match_id=$1',[Number(line.match_id)])).rows[0]?.payload??null;
+   const facts={
+    decision:'MANUAL',actorId:String(actorId),reason:note,decidedAt:new Date().toISOString(),
+    match:result?{source:result.source??null,homeScore:result.home_score??null,awayScore:result.away_score??null,
+     corners:{home:result.corners_home??null,away:result.corners_away??null},
+     cards:{home:result.cards_home??null,away:result.cards_away??null},
+     statistics:result.statistics??{}}:null,
+    statisticsReview:review,
+    selection:{marketKey:line.market_key??null,marketName:line.market_name,
+     line:line.line??null,outcomeKey:line.outcome_key??null,outcomeName:line.outcome_name,
+     acceptedContract:line.accepted_contract??null,liveContract:line.live_contract??null}
+   };
+   const evidenceHash=createHash('sha256').update(JSON.stringify(facts)).digest('hex');
+   await client.query('update app_ticket_line set status=$2,settlement_reason=null where id=$1 and status=$3',
+    [line.id,selected,'PENDING']);
+   await client.query(`insert into app_settlement_audit
+    (line_id,ticket_id,match_id,status,market_key,market_name,outcome_name,source,reason,facts,evidence_hash)
+    values($1,$2,$3,$4,$5,$6,$7,'ADMIN',$8,$9::jsonb,$10)
+    on conflict(line_id,status,evidence_hash) do nothing`,
+    [line.id,line.ticket_id,line.match_id,selected,line.market_key??null,line.market_name,
+     line.outcome_name??'',note,JSON.stringify(facts),evidenceHash]);
+  }
+  await client.query('commit');
+ }catch(error){
+  await client.query('rollback').catch(()=>{});
+  throw error;
+ }finally{client.release();}
+ const ticket=selected==='PENDING'?null:await recalc(ticketId);
+ return {lineId:String(lineId),ticketId:String(ticketId),status:selected,ticket};
+}
+
 /**
  * A legacy VOID can mean unsupported parsing. Refund only a confirmed
  * two-way full-integer total push, never an unknown market or outcome.
@@ -1515,18 +1613,18 @@ export async function settleVerifiedHalftimes({
   "and exists(select 1 from app_match_snapshot s where s.match_id=h.match_id and s.snapshot->'raw'->>'provider'='ZIZOBET' and s.snapshot->'periods_score'->0->>'t1'=h.half_home_score::text and s.snapshot->'periods_score'->0->>'t2'=h.half_away_score::text)",
   'and not exists(select 1 from app_settlement_override o where o.line_id=l.id)'
  ].join(' '),5000);
- const tickets=new Set();let graded=0,held=0;
+ const proposals=[];let held=0;
  for(const line of rows){
   const status=gradeAtVerifiedHalfTime(line,line);
   if(!status){held++;continue;}
-  const settledOdds=settledOddsFor(line,line,status);
-  if(await update(line.id,status,line.ticket_id,{settledOdds})){graded++;tickets.add(line.ticket_id);}
+  proposals.push({lineId:line.id,ticketId:line.ticket_id,status,
+   settledOdds:settledOddsFor(line,line,status),line,result:line,
+   audit:settlementAuditForLine(line,line,status)});
  }
- const closed=[];
- for(const ticketId of tickets){
-  const result=await recalc(ticketId);
-  if(result)closed.push(result);
- }
+ const changed=await applyLineUpdates(proposals,{update});
+ const tickets=new Set(changed.map(row=>row.ticket_id));
+ const closed=(await mapLimit([...tickets],4,recalc)).filter(Boolean);
+ const graded=changed.length;
  return {examined:rows.length,graded,held,closed};
 }
 
@@ -1540,6 +1638,107 @@ export async function updatePendingLine(lineId,status,ticketId,{database=pool,se
     await client.query('commit');return changed.rowCount;
   }catch(error){await client.query('rollback').catch(()=>{});throw error;}finally{client.release();}
 }
+function settlementAuditForLine(line,result,status){
+ const fields=settlementStatisticFields(line),review=result?.statistics_review??{};
+ const statistics={};
+ const primarySource=String(result?.source??'ZIZOBET').toUpperCase();
+ const eventKind=String(line?.live_contract?.event??'');
+ const eventSources=eventKind?(result?._settlementEventSources?.[eventKind]??[]):[];
+ const sources=new Set([primarySource==='FEED'?'ZIZOBET':primarySource,...eventSources]);
+ for(const field of fields){
+  const stat=result?.statistics?.[field]??(field==='corners'?{home:result?.corners_home,away:result?.corners_away}:field==='cards'?{home:result?.cards_home,away:result?.cards_away}:null);
+  const providerFacts=result?._settlementSources?.[field]??[];
+  for(const item of providerFacts)sources.add(typeof item==='string'?item:String(item?.provider??''));
+  statistics[field]={value:stat??null,sources:providerFacts,
+   consensus:review.consensus?.[field]??null,conflict:review.conflicts?.[field]??null};
+ }
+ const evidence=result?.event_evidence;
+ const facts={
+  status,match:{id:line.match_id,source:result?.source??null,
+   score:{home:result?.home_score??null,away:result?.away_score??null},
+   halfScore:{home:result?.half_home_score??null,away:result?.half_away_score??null},
+   corners:{home:result?.corners_home??null,away:result?.corners_away??null},
+   cards:{home:result?.cards_home??null,away:result?.cards_away??null}},
+  selection:{marketKey:line.market_key,marketName:line.market_name,line:line.line,
+   outcomeKey:line.outcome_key,outcomeName:line.outcome_name,period:line.period??null,
+   acceptedContract:line.accepted_contract??null,liveContract:line.live_contract??null},
+  statistics,statisticsReview:{status:review.status??null,checkedAt:review.checkedAt??null,
+   conflicts:Object.fromEntries(fields.filter(field=>review.conflicts?.[field]).map(field=>[field,review.conflicts[field]]))},
+  events:eventKind?{
+   kind:eventKind,source:eventSources.length===1?eventSources[0]:eventSources.length?eventSources.join('+'):null,
+   providers:eventSources,
+   complete:eventSources.length>0,
+   ...(evidence?{primarySource:evidence.source??null,coverage:evidence.coverage??null,
+    eventCount:Array.isArray(evidence.events)?evidence.events.length:null}:{})
+  }:evidence?{source:evidence.source??null,complete:evidence.complete===true,
+   coverage:evidence.coverage??null,eventCount:Array.isArray(evidence.events)?evidence.events.length:null}:null
+ };
+ const source=[...sources].filter(Boolean).join('+')||'ZIZOBET';
+ return {source,reason:'VERIFIED_FACTS_MATCHED_ACCEPTED_MARKET_RULE',facts,
+  evidenceHash:createHash('sha256').update(JSON.stringify(facts)).digest('hex')};
+}
+/** One transaction applies all resolved legs for a match and records their provenance.
+ * Ticket locks are taken in stable order; only still-pending, non-overridden lines move.
+ */
+export async function updatePendingLinesBulk(items,{database=pool}={}){
+ const rows=(items??[]).filter(item=>item&&['WON','LOST','VOID'].includes(item.status)&&item.lineId&&item.ticketId);
+ if(!rows.length)return [];
+ const unique=new Map();for(const item of rows)unique.set(String(item.lineId),item);
+ const batch=[...unique.values()];
+ const ticketIds=[...new Set(batch.map(item=>String(item.ticketId)))].sort();
+ const client=await database.connect();
+ try{
+  await client.query('begin');
+  await client.query("select id from app_ticket where id=any($1::uuid[]) and status='PENDING' order by id for update",[ticketIds]);
+  const changed=await client.query(`update app_ticket_line l
+   set status=x.status,settled_odds=x.settled_odds,settlement_reason=null
+   from jsonb_to_recordset($1::jsonb) as x(id uuid,ticket_id uuid,status text,settled_odds numeric)
+   join app_ticket t on t.id=x.ticket_id and t.status='PENDING'
+   where l.id=x.id and l.ticket_id=x.ticket_id and l.status='PENDING'
+    and x.status in ('WON','LOST','VOID')
+    and not exists(select 1 from app_settlement_override o where o.line_id=l.id)
+   returning l.id,l.ticket_id,l.match_id,l.status`,
+   [JSON.stringify(batch.map(item=>({id:item.lineId,ticket_id:item.ticketId,status:item.status,settled_odds:item.settledOdds??null})))]);
+  if(changed.rows.length){
+   const byId=new Map(batch.map(item=>[String(item.lineId),item]));
+   const auditRows=changed.rows.map(row=>{
+    const item=byId.get(String(row.id)),audit=item.audit??settlementAuditForLine(item.line,item.result,row.status);
+    return {line_id:row.id,ticket_id:row.ticket_id,match_id:row.match_id,status:row.status,
+     market_key:item.line?.market_key??null,market_name:item.line?.market_name??'Unknown market',
+     outcome_name:item.line?.outcome_name??'',source:audit.source,reason:audit.reason,
+     facts:audit.facts,evidence_hash:audit.evidenceHash};
+   });
+   await client.query(`insert into app_settlement_audit
+    (line_id,ticket_id,match_id,status,market_key,market_name,outcome_name,source,reason,facts,evidence_hash)
+    select x.line_id,x.ticket_id,x.match_id,x.status,x.market_key,x.market_name,x.outcome_name,
+     x.source,x.reason,x.facts,x.evidence_hash
+    from jsonb_to_recordset($1::jsonb) as x(
+     line_id uuid,ticket_id uuid,match_id bigint,status text,market_key text,market_name text,
+     outcome_name text,source text,reason text,facts jsonb,evidence_hash text)
+    on conflict(line_id,status,evidence_hash) do nothing`,[JSON.stringify(auditRows)]);
+  }
+  await client.query('commit');
+  return changed.rows;
+ }catch(error){await client.query('rollback').catch(()=>{});throw error;}
+ finally{client.release();}
+}
+async function applyLineUpdates(items,{update=updatePendingLine,database=pool}={}){
+ if(update===updatePendingLine)return updatePendingLinesBulk(items,{database});
+ const changed=[];
+ for(const item of items){
+  if(await update(item.lineId,item.status,item.ticketId,{settledOdds:item.settledOdds??null}))
+   changed.push({id:item.lineId,ticket_id:item.ticketId,match_id:item.line?.match_id,status:item.status});
+ }
+ return changed;
+}
+async function mapLimit(items,limit,fn){
+ const list=[...items],out=new Array(list.length);let next=0;
+ const workers=Array.from({length:Math.min(list.length,Math.max(1,limit))},async()=>{
+  while(true){const index=next++;if(index>=list.length)return;out[index]=await fn(list[index],index);}
+ });
+ await Promise.all(workers);return out;
+}
+
 /** Informational only. Never use these labels as evidence or financial decisions.
  * The codes deliberately describe unproven prerequisites, not a guessed cause.
  */
@@ -1622,9 +1821,8 @@ export async function settleMatch(matchId) {
   ).rows;
   if (!lines.length) return { matchId: String(matchId), settled: 0 };
 
-  const tickets = new Set();
   const unresolved=[];
-  let graded = 0;
+  const proposals=[];
   for (const line of lines) {
     // Player propositions are not part of this sportsbook. Never auto-grade
     // an old or malformed player ticket through any fallback settlement path.
@@ -1661,16 +1859,15 @@ export async function settleMatch(matchId) {
       continue; // incomplete feed or missing market rule => PENDING
     }
     const settledOdds=settledOddsFor(line,result,status);
-    const updated=await updatePendingLine(line.id,status,line.ticket_id,{settledOdds});
-    if(updated>0){graded++;tickets.add(line.ticket_id);}
+    proposals.push({lineId:line.id,ticketId:line.ticket_id,status,settledOdds,line,result,
+     audit:settlementAuditForLine(line,result,status)});
   }
 
   await recordPendingReasons(unresolved);
-  const closed = [];
-  for (const ticketId of tickets) {
-    const done = await recalcTicket(ticketId);
-    if (done) closed.push(done);
-  }
+  const changed=await updatePendingLinesBulk(proposals);
+  const graded=changed.length;
+  const tickets=[...new Set(changed.map(row=>row.ticket_id))];
+  const closed=(await mapLimit(tickets,4,recalcTicket)).filter(Boolean);
 
   // Keep accepting later provider corner/card/HT statistics until every
   // selection is gradeable. Premature settled_at blocked archival refreshes.
@@ -1703,12 +1900,19 @@ export async function settleVerifiedEventFacts({
      and not exists(select 1 from app_settlement_override o where o.line_id=l.id)
      and exists(select 1 from app_match_event_coverage e
        where e.match_id=l.match_id and e.kind=l.live_contract->>'event'
-         and e.provider='zizobet')`,cap);
+         and (
+           e.provider='zizobet'
+           or (e.provider in ('fotmob','apifootball','sportapi','goalapi','bsd','worldcup26')
+             and e.complete=true and e.confirmed_at is not null
+             and exists(select 1 from app_match_result mr where mr.match_id=l.match_id
+               and mr.source in ('ZIZOBET','ADMIN','RECOVERY')
+               and mr.home_score is not null and mr.away_score is not null))
+         ))`,cap);
  if(!rows.length)return {examined:0,graded:0,closed:[]};
  const ids=[...new Set(rows.map(l=>l.match_id))];
- const finals=(await runQuery("select match_id,home_score,away_score,corners_home,corners_away,cards_home,cards_away from app_match_result where source='ZIZOBET' and match_id=any($1::bigint[])",[ids])).rows;
+ const finals=(await runQuery("select match_id,home_score,away_score,corners_home,corners_away,cards_home,cards_away,source from app_match_result where source in ('ZIZOBET','ADMIN','RECOVERY') and home_score is not null and away_score is not null and match_id=any($1::bigint[])",[ids])).rows;
  const results=new Map(finals.map(r=>[String(r.match_id),r]));
- const tickets=new Set(),unresolved=[];let graded=0;
+ const unresolved=[],proposals=[];
  for(const line of rows){
   if(isPlayerOfferMarket(line)||!SUPPORTED_FACT_KINDS.has(line.live_contract?.kind))continue;
   const status=await grade(line,results.get(String(line.match_id))??null,{execute:runQuery});
@@ -1716,11 +1920,14 @@ export async function settleVerifiedEventFacts({
     unresolved.push({line,result:results.get(String(line.match_id))??null});
     continue;
   }
-  if(await update(line.id,status,line.ticket_id)){graded++;tickets.add(line.ticket_id);}
+  proposals.push({lineId:line.id,ticketId:line.ticket_id,status,line,
+   result:results.get(String(line.match_id))??null,
+   audit:settlementAuditForLine(line,results.get(String(line.match_id))??null,status)});
  }
  await recordPendingReasons(unresolved,runQuery);
- const closed=[];
- for(const id of tickets){const done=await recalc(id);if(done)closed.push(done);}
+ const changed=await applyLineUpdates(proposals,{update});
+ const graded=changed.length,tickets=[...new Set(changed.map(row=>row.ticket_id))];
+ const closed=(await mapLimit(tickets,4,recalc)).filter(Boolean);
  return {examined:rows.length,graded,closed};
 }
 
@@ -1738,19 +1945,20 @@ export async function settleClosedCornerWindows({runQuery=query,loadEvidence=loa
      and coalesce(l.accepted_contract->>'settlementHold','')=''
      and not exists(select 1 from app_settlement_override o where o.line_id=l.id)
    order by l.match_id,l.id`);
- const cache=new Map(),tickets=new Set();let graded=0;
+ const cache=new Map(),proposals=[];
  for(const line of rows){
   if(isPlayerOfferMarket(line))continue;
   const id=String(line.match_id);
   if(!cache.has(id))cache.set(id,await loadEvidence(id).catch(()=>null));
   const status=gradeClosedCornerWindow(line,cache.get(id));
   if(status!== 'WON'&&status!=='LOST')continue;
-  if(await update(line.id,status,line.ticket_id)){
-   graded++;tickets.add(line.ticket_id);
-  }
+  proposals.push({lineId:line.id,ticketId:line.ticket_id,status,line,
+   result:{source:'ZIZOBET',event_evidence:cache.get(id)},
+   audit:settlementAuditForLine(line,{source:'ZIZOBET',event_evidence:cache.get(id)},status)});
  }
- const closed=[];
- for(const id of tickets){const ticket=await recalc(id);if(ticket)closed.push(ticket);}
+ const changed=await applyLineUpdates(proposals,{update});
+ const graded=changed.length,tickets=[...new Set(changed.map(row=>row.ticket_id))];
+ const closed=(await mapLimit(tickets,4,recalc)).filter(Boolean);
  return {graded,closed};
 }
 
@@ -1765,14 +1973,11 @@ export async function recoverResolvedTickets() {
       and (exists(select 1 from app_ticket_line l where l.ticket_id=t.id and l.status='LOST')
         or not exists(select 1 from app_ticket_line l where l.ticket_id=t.id and l.status='PENDING'))
     order by t.placed_at,t.id`);
-  const recovered = [];
-  for (const { id } of rows) {
-    try {
-      const ticket = await recalcTicket(id);
-      if (ticket) recovered.push(ticket);
-    } catch (error) { console.error('[settle] resolved ticket', id, 'retry failed:', error.message); }
-  }
-  return recovered;
+  const recovered = await mapLimit(rows,4,async({id})=>{
+    try{return await recalcTicket(id);}
+    catch(error){console.error('[settle] resolved ticket',id,'retry failed:',error.message);return null;}
+  });
+  return recovered.filter(Boolean);
 }
 
 /** one pass: store newly finished results, then settle everything that can be settled */
@@ -1795,11 +2000,14 @@ export async function settleAll() {
   catch (error) { console.error('[settle] result capture failed:', error.message); }
   const ids = await unsettledMatchIds();
 
-  const results = [];
-  for (const id of ids) {
-    try { results.push(await settleMatch(id)); }
-    catch (e) { console.error('[settle] match', id, 'failed:', e.message); }
-  }
+  // Matches are independent work units. Bound concurrency to protect the local DB,
+  // while each match shares one final snapshot and writes all resolved lines in bulk.
+  const matchConcurrency=Math.max(1,Math.min(8,Number(process.env.SETTLEMENT_MATCH_CONCURRENCY)||4));
+  const settledBatch=await mapLimit(ids,matchConcurrency,async id=>{
+    try{return await settleMatch(id);}
+    catch(error){console.error('[settle] match',id,'failed:',error.message);return null;}
+  });
+  const results=settledBatch.filter(Boolean);
   let primaryFacts={examined:0,graded:0,closed:[]};
   try{primaryFacts=await settleVerifiedEventFacts();}
   catch(error){console.error('[settle] verified primary event facts failed:',error.message);}

@@ -104,7 +104,7 @@ export function teamStatisticsFromRow(row){
 export function verifiedFinalStatistics(row,{maxAgeMs=120000}={}){
  const teams=teamStatisticsFromRow(row),phaseAt=new Date(row?.feed_status_at??row?.score_at).getTime();
  const result={};if(!Number.isFinite(phaseAt))return result;
- for(const field of ['shots','shotsOnTarget','fouls','offsides']){
+ for(const field of ['shots','shotsOnTarget','fouls','offsides','corners','yellow','red']){
   const values={};
   for(const side of ['home','away']){
    const team=teams[side],at=new Date(team?._observedAt?.[field]).getTime();

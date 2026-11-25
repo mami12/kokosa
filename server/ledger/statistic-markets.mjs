@@ -3,40 +3,43 @@ import {statisticNumber} from '../match-statistics.mjs';
 const text=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/over\s*\/\s*under/g,'over under').replace(/[_:.,()]+/g,' ').replace(/\s+/g,' ').trim();
 const nameOf=line=>text(line?.market_name??line?.marketName??line?.name);
 const number=value=>value!=null&&/^\d+(?:[.,]\d+)?$/.test(String(value).trim())?Number(String(value).replace(',','.')):null;
-export function isStatisticMarket(line){return /\b(?:shots?|fouls?)\b|goditj|faulle?/.test(nameOf(line));}
+export function isStatisticMarket(line){
+ const name=nameOf(line),hasLine=number(line?.line??line?.specifier)!==null;
+ return /\b(?:shots?|fouls?)\b|goditj|faulle?/.test(name)||
+  ((/\b(?:total|number of|over|under)\b/.test(name)||hasLine)&&/\b(?:cards?|bookings?)\b|karton/.test(name));
+}
 export function statisticMarketContract(line){
  if(!isStatisticMarket(line))return null;
  const name=nameOf(line);
- const stat=/\bshots? (?:on target|on goal)\b|goditj\w* ne porte/.test(name)?'shotsOnTarget'
+ const stat=/\byellow\b/.test(name)?'yellow':/\bred\b/.test(name)?'red':
+  /\bcorners?\b/.test(name)?'corners':
+  /\bcards?\b|\bbookings?\b|karton/.test(name)?'cards':
+  /\bshots? (?:on target|on goal)\b|goditj\w* ne porte/.test(name)?'shotsOnTarget'
   :/\bfouls?\b|faulle?/.test(name)?'fouls':/\bshots?\b|goditj/.test(name)?'shots':null;
  const unsupported=!stat||Number(line?.period??0)!==0||/\b(?:players?|scorer|first|1st|second|2nd|half|halves|ht|1h|2h|quarter|period|minute|minutes|next|last|race|handicap|asian|overtime|extra|both|each|off target|blocked|odd|even|exact|range)\b|[+&/]|lojtari|pjesa|minut/.test(name);
- const home=/\b(?:team 1|1 team|home(?: team)?)\b|skuadra 1|ekipi 1/.test(name);
- const away=/\b(?:team 2|2 team|away(?: team)?)\b|skuadra 2|ekipi 2/.test(name);
- // A plain two-way "winner/most" may return stakes on a draw. Only an
- // explicitly three-way 1X2 contract proves that a draw is its own selection.
+ const home=/\b(?:team 1|1 team|home\s*team|home)\b|skuadra 1|ekipi 1/.test(name);
+ const away=/\b(?:team 2|2 team|away\s*team|away)\b|skuadra 2|ekipi 2/.test(name);
  const result=/\b1x2\b/.test(name);
  const unclearResult=!result&&/\b(?:result|winner|most)\b/.test(name);
  const lineValue=number(line?.line??line?.specifier);
- const total=/\btotal|over\s*under/.test(name)||lineValue!==null;
+ const total=/\btotal|over\s*under|number of/.test(name)||lineValue!==null;
  const scope=home?'home':away?'away':result?'result':'total';
- // Unknown qualifiers can name a team/player or change the statistic. Never
- // treat "Arsenal total..." as both teams, or fouls WON as fouls COMMITTED.
  const comparison=result?name.replace(/\b(?:which team|who)\s+(?:has|have|commits?|makes?|takes?|will have)\s+(?:the\s+)?(?:most|more)\b/g,' '):name;
  let remainder=comparison
   .replace(/\bshots? on (?:target|goal)\b|\bshots?\b|\bfouls?(?: committed)?\b|goditj\w* ne porte|goditj\w*|faulle?/g,' ')
-  .replace(/\b(?:home(?: team)?|away(?: team)?|team [12]|[12] team)\b|skuadra [12]|ekipi [12]/g,' ')
-  .replace(/\b(?:full time|regular time|match|total|totals|over|under|result|winner|most|1x2|totali|totalit|ndeshjes|ndeshja|lart|poshte|mbi|nen)\b/g,' ');
- // Team-comparison statistics are settlement-safe only for an explicit
- // three-way 1/X/2 quote. A two-way 'most fouls' may refund on a tie.
+  .replace(/\b(?:yellow|red)?\s*cards?\b|\bbookings?\b|karton\w*|\bcorners?\b/g,' ')
+  .replace(/\b(?:home\s*team|home|away\s*team|away|team [12]|[12] team)\b|skuadra [12]|ekipi [12]/g,' ')
+  .replace(/\b(?:full time|regular time|match|total|totals|over|under|number of|result|winner|most|1x2|totali|totalit|ndeshjes|ndeshja|lart|poshte|mbi|nen)\b/g,' ');
  if((home||away))remainder=remainder.replace(/\bby\b/g,' ');
- if(lineValue!==null){const literal=text(line.line??line.specifier).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');remainder=remainder.replace(new RegExp(`\\b${literal}\\b`,'g'),' ');}
+ if(lineValue!==null){const literal=text(line.line??line.specifier).replace(/[.*+?^\$\{\}()|[\]\\]/g,'\\$&');remainder=remainder.replace(new RegExp('\\b'+literal+'\\b','g'),' ');}
  const unrecognized=/[a-z0-9]/.test(remainder);
  return {stat,scope,supported:!unsupported&&!unrecognized&&!unclearResult&&!(home&&away)&&(result?!home&&!away:total&&lineValue!==null&&Number.isInteger(lineValue*2)),line:lineValue};
 }
 function pair(result,stat){
  let stats=result?.statistics;
  if(typeof stats==='string'){try{stats=JSON.parse(stats);}catch{stats=null;}}
- const values=stats?.[stat];return {home:statisticNumber(values?.home),away:statisticNumber(values?.away)};
+ const values=stats?.[stat]??(stat==='corners'?{home:result?.corners_home,away:result?.corners_away}:stat==='cards'?{home:result?.cards_home,away:result?.cards_away}:null);
+ return {home:statisticNumber(values?.home),away:statisticNumber(values?.away)};
 }
 export function hasStatisticEvidence(line,result){
  const contract=statisticMarketContract(line);if(!contract?.supported||!result)return false;

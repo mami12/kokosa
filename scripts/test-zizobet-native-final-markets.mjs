@@ -2,6 +2,8 @@ import './fixtures/isolated-casino-env.mjs';
 import assert from 'node:assert/strict';
 import {gradeLine,hasRequiredSettlementEvidence} from '../server/ledger/settler.mjs';
 import {liveContract} from '../server/ledger/live-contract-rules.mjs';
+import {nativeZizobetContractRow} from '../server/ledger/native-zizobet-contract.mjs';
+import {gradeWinningMethod} from '../server/ledger/winning-method.mjs';
 
 const result={
  home_team:'Chelsea Women',away_team:'Paris Saint-Germain Women',
@@ -135,4 +137,55 @@ assert.equal(liveContract(quote(
  'Goal in first 10 min. (00:00 - 09:59) (0.5)','Over',{line:'1.5'}
 )),null);
 
-console.log('PASS Zizobet clean sheets, joined team labels, half/full multigoals, multiscores grid and opening 10-minute totals');
+// Native placeholders are decoded with fixture names supplied by the server.
+const nativeOffer=(id,title,params,outcome='1:1')=>({
+ provider_id:'ZIZOBET',
+ market_key:'zz'+id+'@'+Buffer.from(JSON.stringify(params)).toString('base64url'),
+ native_market_id:String(id),native_market_name:title,native_parameters:params,
+ market_name:'old translated title',outcome_name:outcome,line:''
+});
+const competitorOffer=nativeOffer(9030,'{competitor1} vs {competitor2} - Result',{});
+assert.equal(nativeZizobetContractRow(competitorOffer,{competitors:{
+ home:'Chelsea Women',away:'Paris Saint-Germain Women'
+ }}).market_name,'Chelsea Women vs Paris Saint-Germain Women - Result');
+
+const halfScoreOffer=nativeOffer(18640,'1st half - correct score [{score}]',{p3:'0:0'},'1:1');
+const decodedHalfScore=nativeZizobetContractRow(halfScoreOffer);
+assert.equal(decodedHalfScore.market_name,'1st half - correct score 0:0');
+const halfScoreResult={...result,half_home_score:1,half_away_score:1};
+assert.equal(gradeLine({...decodedHalfScore,outcome_name:'1:1',outcome_key:'1:1',period:1},halfScoreResult),'WON');
+assert.equal(gradeLine({...decodedHalfScore,outcome_name:'0:0',outcome_key:'0:0',period:1},halfScoreResult),'LOST');
+
+const heldNativeSnapshot={
+ sourceProviderId:'ZIZOBET',settlementHold:'NATIVE_PARAMETERS_UNMAPPED',
+ providerMarketName:'old translated title',providerOutcomeName:'1:1',
+ providerMarketKey:halfScoreOffer.market_key,providerOutcomeKey:'1:1',
+ line:'',providerPeriod:1,nativeMarketId:'18640',
+ nativeMarketName:halfScoreOffer.native_market_name,nativeParameters:{p3:'0:0'},
+ homeTeamName:'Chelsea Women',awayTeamName:'Paris Saint-Germain Women'
+};
+const heldNativeLine={
+ market_name:'old translated title',outcome_name:'1:1',outcome_key:'1:1',
+ market_key:halfScoreOffer.market_key,line:'',period:1,accepted_contract:heldNativeSnapshot
+};
+assert.equal(gradeLine(heldNativeLine,halfScoreResult),'WON',
+ 'Old native holds decode only after the frozen quote, teams and HT result match');
+assert.equal(gradeLine({...heldNativeLine,accepted_contract:{
+ ...heldNativeSnapshot,nativeParameters:{p3:'not-a-score'}
+ }},halfScoreResult),null,'Invalid frozen parameters remain pending');
+
+const methodResult={...result,statistics:{
+ winningMethod:{source:'ZIZOBET',verified:true,winnerSide:'home',method:'regular time'}
+}};
+assert.equal(gradeWinningMethod({market_name:'Winning Method',outcome_name:'Chelsea Women regular time'},methodResult),'WON');
+assert.equal(gradeWinningMethod({market_name:'Winning Method',outcome_name:'Paris Saint-Germain Women regular time'},methodResult),'LOST');
+assert.equal(gradeWinningMethod({market_name:'Winning Method',outcome_name:'Chelsea Women penalties'},methodResult),'LOST');
+assert.equal(gradeWinningMethod({market_name:'Winning Method',outcome_name:'Chelsea Women regular time'},
+ {...methodResult,statistics:{}}),null,'Missing tie/method evidence stays pending');
+assert.equal(gradeWinningMethod({market_name:'Winning Method',outcome_name:'Chelsea Women regular time'},
+ {...methodResult,source:'FEED'}),null,'Secondary-provider evidence cannot settle Winning Method');
+assert.equal(gradeLine({market_name:'Winning Method',outcome_name:'Chelsea Women regular time'},methodResult),'WON');
+assert.equal(hasRequiredSettlementEvidence({market_name:'Winning Method',outcome_name:'Chelsea Women regular time'},methodResult),true);
+assert.equal(gradeLine({market_name:'Winning Method',outcome_name:'Chelsea Women regular time'},
+ {...methodResult,statistics:{}}),null);
+console.log('PASS native placeholder decoding, held-line repair, half correct score and Winning Method evidence');

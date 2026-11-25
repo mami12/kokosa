@@ -353,8 +353,7 @@ const idle = createIdleMonitor({
     pusher?.pause?.();
     legacyYbetsResults?.pause?.();
     stopProbe();
-    clearInterval(settleTimer);
-    settleTimer = null;
+    // The settlement timer is independent of visitors and must remain active in idle mode.
     broadcastFeedState();
   },
   onWake: () => {

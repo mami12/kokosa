@@ -1,6 +1,8 @@
+import './fixtures/isolated-casino-env.mjs';
 import assert from 'node:assert/strict';
 import {
  marketInformationNeeds,selectedInformationEndpoints,missingSupplementalNeeds,describeJsonStructure,
+ parseAiScoreFinalStatistics,
  requestFootballInformation,canonicalHttpError,isFootballFixture,
  setFootballInformationMapping,inspectFootballInformation,
  createFootballInformationCollector,FOOTBALL_INFORMATION_SQL
@@ -19,7 +21,7 @@ assert.deepEqual(goal,['player'],'Only missing player identity qualifies; Next G
 const corners=marketInformationNeeds([{market_name:'Race to 7 Corners'},
  {market_name:'Race to 6 Goals'},{market_name:'Goal in minutes 10-20'},
  {market_name:'Total Fouls'},{market_name:'Red Cards'},{market_name:'Shots on Target'}]);
-assert.deepEqual(corners,[],'All goal, corner and statistic markets use PRIMARY or dedicated statistic providers; do not route them through the player-only secondary API');
+assert.deepEqual(corners,['fouls','red','shotsOnTarget'],'Only aggregate statistic dependencies are selected; race/interval event markets remain Zizobet-only');
 assert.deepEqual(marketInformationNeeds([{market_name:'Full Time Result'}]),[]);
 const map={aiscore_id:'j374oi0xz04sgqo',thesports01_id:'4578950',mapping_status:'ADMIN_SUPPLIED_UNVERIFIED'};
 assert.deepEqual(selectedInformationEndpoints(map,[]),[]);
@@ -30,21 +32,21 @@ assert.ok(endpoints.every(x=>!x.url.includes('/match/team_stats')));
 assert.ok(endpoints.every(x=>!x.url.includes('/odds_list')));
 assert.ok(endpoints.every(x=>!x.url.includes('/user/info')));
 assert.ok(endpoints.every(x=>!x.url.includes('/chat/')));
-const statEndpoints=selectedInformationEndpoints(map,['shotsOnTarget','statistics']);
-assert.deepEqual(statEndpoints.map(x=>x.key),[],
- 'The player-identity-only information adapter must not fetch unverified team statistics');
-assert.deepEqual(missingSupplementalNeeds(['shotsOnTarget','fouls','statistics'],{
+const statEndpoints=selectedInformationEndpoints(map,['shotsOnTarget']);
+assert.deepEqual(statEndpoints.map(x=>x.key),['aiscore:match','aiscore:mlive'],
+ 'AiScore is a fallback only for a named missing statistic after the other final providers have run');
+assert.deepEqual(missingSupplementalNeeds(['shotsOnTarget','fouls'],{
  statistics:{shotsOnTarget:{home:5,away:2},fouls:{home:10,away:12}},providersEnabled:true
-}),[],'PRIMARY has all facts, no backup call');
-assert.deepEqual(missingSupplementalNeeds(['fouls','statistics'],{
+}),[],'Zizobet has all facts, no backup call');
+assert.deepEqual(missingSupplementalNeeds(['fouls'],{
  statistics:{},providersEnabled:true
-}),[],'Wait for the five existing providers to attempt their verification');
-assert.deepEqual(missingSupplementalNeeds(['fouls','statistics'],{
- statistics:{},review:{complete:true,attempted:['bsd','sportapi'],consensus:{}},providersEnabled:true
-}),['fouls','statistics'],'Missing stats after providers attempt: AiScore becomes eligible');
-assert.deepEqual(missingSupplementalNeeds(['fouls','statistics'],{
+}),[],'Wait for the configured statistics providers to complete their final attempt');
+assert.deepEqual(missingSupplementalNeeds(['fouls'],{
+ statistics:{},review:{complete:true,attempted:['bsd','sportapi','goalapi'],consensus:{}},providersEnabled:true
+}),['fouls'],'Missing stats after configured provider attempts: AiScore becomes eligible');
+assert.deepEqual(missingSupplementalNeeds(['fouls'],{
  statistics:{},review:{complete:true,attempted:['bsd'],consensus:{fouls:{home:3,away:0}}},providersEnabled:true
-}),[],'Other APIs supplied verified fouls; AiScore is unnecessary');
+}),[],'Another final provider supplied fouls; AiScore is unnecessary');
 assert.deepEqual(missingSupplementalNeeds(['player','timeline'],{
  primaryEvents:{events:[{type:'goal',player:'Test scorer'}]}
 }),['player','timeline'],'A scorer string without own-goal evidence is still ambiguous');
@@ -73,7 +75,28 @@ await assert.rejects(()=>requestFootballInformation('https://evil.example.org/co
 assert.equal((await requestFootballInformation('https://api.aiscore.com/v1/web/api/match/s',{request:async()=>response({},403)})).error,'AUTH_REQUIRED');
 assert.equal((await requestFootballInformation('https://api.aiscore.com/v1/web/api/match/s',{request:async()=>response('invalid')})).error,'NON_JSON_RESPONSE');
 
-const ledgerMatch={match_id:101,sport_id:1,home:'BKMA',away:'Alashkert',start_at:new Date('2026-11-06T16:00:00Z')};
+const ledgerMatch={match_id:101,sport_id:1,home:'BKMA',away:'Alashkert',start_at:'2026-11-06T16:00:00.000Z'};
+const verifiedAiPayload={data:{match:{
+ id:'j374oi0xz04sgqo',home_team:{name:'BKMA',stats:{corners:5,yellowCards:2,redCards:1,shotsOnTarget:4,fouls:9}},
+ away_team:{name:'Alashkert',stats:{corners:3,yellowCards:1,redCards:0,shotsOnTarget:2,fouls:12}},
+ start_at:'2026-11-06T16:00:00.000Z',status:'FT'
+}}};
+const aiFinal=parseAiScoreFinalStatistics(verifiedAiPayload,'j374oi0xz04sgqo',ledgerMatch);
+assert.equal(aiFinal?.provider,'aiscore');
+assert.deepEqual(aiFinal?.values.corners,{home:5,away:3});
+assert.deepEqual(aiFinal?.values.yellow,{home:2,away:1});
+assert.deepEqual(aiFinal?.values.red,{home:1,away:0});
+assert.deepEqual(aiFinal?.values.cards,{home:3,away:1});
+assert.deepEqual(aiFinal?.values.shotsOnTarget,{home:4,away:2});
+assert.equal(parseAiScoreFinalStatistics({...verifiedAiPayload,data:{match:{...verifiedAiPayload.data.match,status:'LIVE'}}},'j374oi0xz04sgqo',ledgerMatch),null,
+ 'a live or not explicitly finished AiScore response is never final settlement evidence');
+assert.equal(parseAiScoreFinalStatistics(verifiedAiPayload,'wrong-id',ledgerMatch),null,
+ 'a different AiScore match ID cannot supply settlement facts');
+assert.equal(parseAiScoreFinalStatistics(verifiedAiPayload,'j374oi0xz04sgqo',{...ledgerMatch,away:'Different Team'}),null,
+ 'a mismatch in either team blocks AiScore settlement data');
+assert.equal(parseAiScoreFinalStatistics(verifiedAiPayload,'j374oi0xz04sgqo',{...ledgerMatch,start_at:'2026-11-06T21:00:00.000Z'}),null,
+ 'a kickoff mismatch blocks AiScore settlement data');
+
 const mapSql=[];
 const mapped=await setFootballInformationMapping({
  matchId:101,aiscoreId:'j374oi0xz04sgqo',thesports01Id:'4578950',actorId:'fake-admin'
@@ -121,9 +144,9 @@ const noMarket=await inspectFootballInformation(101,{
  },loadMatch:async()=>ledgerMatch,
  request:async()=>{throw Error('Must not hit the secondary API');}
 });
-assert.equal(noMarket.status,'NO_PRIMARY_BETTED_MARKETS');
+assert.equal(noMarket.status,'NO_SUPPLEMENTARY_NEEDS');
 let hit=0;
-const disabled=createFootballInformationCollector({env:{},runQuery:async()=>{throw Error('No DB request when disabled');}});
+const disabled=createFootballInformationCollector({env:{AISCORE_INFO_ENABLED:'false'},runQuery:async()=>{throw Error('No DB request when disabled');}});
 assert.equal((await disabled.tick()).enabled,false);
 const enabled=createFootballInformationCollector({
  env:{AISCORE_INFO_ENABLED:'true'},now:()=>Date.parse('2026-11-06T16:30:00Z'),

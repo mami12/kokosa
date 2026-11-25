@@ -8,7 +8,7 @@ import {isFinished,getResult,FINISHED_RESULT_INSERT} from '../server/ledger/resu
 import {extractConfirmedHalfTimeCandidate} from '../server/ledger/halftime-results.mjs';
 import {toDbOddsShape,buildMarkets} from '../server/collector.mjs';
 import {SCHEMA_SQL} from '../server/schema.mjs';
-import {MARKET_CATEGORY_IDS,catalogRows,setCatalogRows,marketIsEnabled} from '../server/market-catalog.mjs';
+import {MARKET_CATEGORY_IDS,catalogRows,setCatalogRows,marketIsEnabled,marketCategories,setCategoryPolicies} from '../server/market-catalog.mjs';
 import {snapshotRow} from '../server/ledger/match-snapshots.mjs';
 import {createEventEvidenceStore,gradeEventLine} from '../server/ledger/event-evidence.mjs';
 import {eventMarketRequirement} from '../server/ledger/event-market-policy.mjs';
@@ -32,6 +32,16 @@ const interval=liveContract({
 assert.deepEqual(interval,{
  version:1,kind:'nth-time',event:'goal',target:2,choice:'range',from:50,to:130
 });
+
+const totalCardsContract=liveContract({market_name:'Total Cards',outcome_name:'Over',line:'2.5'});
+assert.deepEqual(totalCardsContract,{version:1,kind:'over',event:'card',threshold:2.5},
+ 'the native Total Cards offer must retain a Zizobet event-settlement contract');
+const yellowCardsContract=liveContract({market_name:'Total Yellow Cards',outcome_name:'Over',line:'0.5'});
+assert.equal(yellowCardsContract?.event,'card');
+assert.equal(yellowCardsContract?.cardColor,'yellow');
+const redCardsContract=liveContract({market_name:'Total Red Cards',outcome_name:'Over',line:'0.5'});
+assert.equal(redCardsContract?.event,'card');
+assert.equal(redCardsContract?.cardColor,'red');
 
 // At half-time, the first goal exists but goal #2 has not happened. The 50+
 // interval is still ahead, so a half-time snapshot cannot mark it LOST.
@@ -105,14 +115,28 @@ assert.equal(evidenceQueries,0,'secondary evidence is not written to settlement 
 
 // Offers that the operator does not use are rejected at the global ingest gate.
 for(const name of [
- 'Asian Handicap','Total Fouls','Total Cards','Player Shots On Target',
+ 'Asian Handicap','Total Fouls','Player Shots On Target',
  'Anytime Goalscorer','First Goal Scorer','Goalkeeper Saves','Total Tackles','Throw-ins'
 ])assert.equal(isExcludedOfferMarket({market_name:name}),true,name+' must be excluded');
 assert.equal(isExcludedOfferMarket({market_name:'Total Goals'}),false);
 assert.equal(isExcludedOfferMarket({market_name:'Total Corners'}),false);
-assert.equal(isExcludedOfferMarket({market_name:'Corners and Total Cards'}),true,
- 'a combined corners/cards offer must not bypass the explicit card exclusion');
-assert.equal(isExcludedOfferMarket({market_name:'Corners and Total Shots'}),true,
+const zizobetCards={market_key:'zz18639@e30',market_name:'Total Cards'};
+assert.equal(isExcludedOfferMarket(zizobetCards),false,
+ 'a native Zizobet Total Cards quote is publishable');
+assert.equal(isExcludedOfferMarket({market_key:'zz18640@e30',market_name:'Total Yellow Cards'}),false);
+assert.equal(isExcludedOfferMarket({market_key:'zz18641@e30',market_name:'Total Red Cards'}),false);
+assert.equal(isExcludedOfferMarket({market_key:'yb18639@e30',market_name:'Total Cards'}),true,
+ 'secondary-book card quotes cannot enter the sportsbook');
+assert.equal(isExcludedOfferMarket({extId:'yb18640@e30',market_name:'Total Cards'}),true,
+ 'the client market identity also rejects non-Zizobet card offers');
+assert.equal(isExcludedOfferMarket({extId:'zz18640@e30',market_name:'Total Cards'}),false,
+ 'the client market identity retains native Zizobet cards');
+assert.equal(isExcludedOfferMarket({market_key:'external-card-market',market_name:'Total Cards'}),true,
+ 'a card offer without a native Zizobet identity is rejected');
+assert.equal(isExcludedOfferMarket({name:'Total Cards',key:'total cards'}),false,
+ 'the generic card family remains available in the admin catalogue');
+assert.deepEqual(marketCategories('Total Cards'),['totals','cards']);
+assert.equal(isExcludedOfferMarket({market_key:'zz18642@e30',market_name:'Corners and Total Shots'}),true,
  'a combined corners/shots offer must not bypass the explicit shots exclusion');
 assert.equal(isExcludedOfferMarket({market_name:'Full Time Result'}),false);
 assert.equal(isExcludedOfferMarket({market_name:'Early Payout'}),true,
@@ -186,11 +210,11 @@ assert.equal(isPlayerOfferMarket({market_name:'Total Goals',accepted_contract:{
 assert.equal(isPlayerOfferMarket({market_name:'Total Goals',native_market_name:'Anytime Goalscorer'}),true);
 for(const market of [
  'Player Shots On Target','Anytime Goalscorer','First Goal Scorer',
- 'Goalkeeper Saves','Total Fouls','Total Cards','Total Tackles','Throw-ins',
+ 'Goalkeeper Saves','Total Fouls','Total Tackles','Throw-ins',
  'Asian Handicap'
 ])assert.equal(isRetiredPlayerOfferMarket({market_name:market}),true,market);
 for(const market of ['Home team to score','Away team to win','Manchester United to win',
- 'Total Goals','Full Time Result','Total Corners'])
+ 'Total Goals','Full Time Result','Total Corners','Total Cards'])
  assert.equal(isRetiredPlayerOfferMarket({market_name:market}),false,market+' must not be misclassified');
 
 
@@ -202,13 +226,18 @@ setCatalogRows([
  {key:'early-payout-market',name:'Early Payout',enabled:true},
  {key:'goals-market',name:'Total Goals',enabled:true}
 ]);
-assert.deepEqual(catalogRows().map(row=>row.key),['goals-market']);
+assert.deepEqual(catalogRows().map(row=>row.key),['cards-market','goals-market']);
 assert.equal(marketIsEnabled({market_name:'Early Payout'}),false,
  'excluded promotions cannot pass a catalog-only market check');
 assert.equal(marketIsEnabled({market_name:'Asian Handicap'}),false,
  'excluded handicap offers cannot pass a catalog-only market check');
-for(const category of ['players','cards','fouls'])
+assert.equal(MARKET_CATEGORY_IDS.includes('cards'),true,'Cards must be globally manageable from the admin catalogue');
+for(const category of ['players','fouls'])
  assert.equal(MARKET_CATEGORY_IDS.includes(category),false,category+' category must not be offered');
+setCategoryPolicies([{category:'cards',enabled:false}]);
+assert.equal(marketIsEnabled(zizobetCards),false,'the global Cards category switch blocks new card wagers');
+setCategoryPolicies([{category:'cards',enabled:true}]);
+assert.equal(marketIsEnabled(zizobetCards),true,'the global Cards category switch re-enables native Zizobet card offers');
 
 // DB odds mode must retain the same native identity as memory mode. Otherwise
 // placement silently stops recognizing a verified Zizobet quote.
@@ -234,5 +263,16 @@ const oldDbPlayerRow=buildMarkets([{
  line:'',outcome_key:'yes',outcome_name:'Yes',price:2,suspended:false
 }]);
 assert.equal(oldDbPlayerRow.length,0,'legacy DB player quotes are hidden by native metadata');
+const nativeCardRows=buildMarkets([{
+ match_id:123,market_key:'zz18639@e30',market_name:'Total Cards',
+ line:'2.5',outcome_key:'over',outcome_name:'Over',price:1.9,suspended:false
+}]);
+assert.equal(nativeCardRows.length,1,'native Zizobet card markets must reach the match detail catalogue');
+assert.equal(nativeCardRows[0].column,'cards','the Zizobet card quote must be categorized as Cards');
+const foreignCardRows=buildMarkets([{
+ match_id:123,market_key:'yb18639@e30',market_name:'Total Cards',
+ line:'2.5',outcome_key:'over',outcome_name:'Over',price:1.9,suspended:false
+}]);
+assert.equal(foreignCardRows.length,0,'non-Zizobet card odds must never be displayed');
 
 console.log('PASS Zizobet-only settlement, 50+ halftime protection, and excluded-market policy');

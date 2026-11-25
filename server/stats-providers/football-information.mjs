@@ -54,11 +54,12 @@ export function isFootballFixture(row){
  return false;
 }
 /**
- * The PRIMARY feed alone grades goals, corners, race-to-X, event windows,
- * cards and all ordinary totals. Request secondary information ONLY for a
- * missing player identity or football shots-on-target/fouls statistics.
+ * Zizobet alone supplies offers, market definitions and odds. AiScore is
+ * requested only for final statistic fields still missing after configured
+ * statistics providers have completed their own comparison.
  */
-/** AiScore supplies scorer names only. All game facts are Zizobet's. */
+const SETTLEMENT_STAT_FIELDS=['corners','cards','yellow','red','shots','shotsOnTarget','fouls'];
+const aggregateMarketName=name=>!(/\b(?:first|last|next|race|interval|window|minute|minutes|half|1h|2h|period|player|scorer|assist|exact|range|handicap|asian|between|before|after)\b/.test(name));
 export function marketInformationNeeds(markets=[]){
  const needs=new Set();
  for(const market of markets){
@@ -66,8 +67,14 @@ export function marketInformationNeeds(markets=[]){
   if(market.live_contract?.kind==='player-goal'){needs.add('player');continue;}
   if(/\b(?:goalscorer|goal scorer|scorer|player)\b.*\b(?:goal|score|scoring|sh[eë]non)\b|\b(?:first|last|anytime)\s+goalscorer/i.test(name))
    needs.add('player');
-  if(/\b(?:shots?|goditje|on target|target|fouls?|faulle?)\b/i.test(name))
-   needs.add('stats');
+  if(!aggregateMarketName(name))continue;
+  if(/\byellow\b/.test(name))needs.add('yellow');
+  else if(/\bred\b/.test(name))needs.add('red');
+  else if(/\b(?:cards?|bookings?|karton)\b/.test(name))needs.add('cards');
+  if(/\bcorners?|korner/.test(name))needs.add('corners');
+  if(/shots?\s+(?:on\s+)?(?:target|goal)|goditj.*port/.test(name))needs.add('shotsOnTarget');
+  else if(/\bshots?\b|goditj/.test(name))needs.add('shots');
+  if(/\bfouls?|faulle?/.test(name))needs.add('fouls');
  }
  return [...needs];
 }
@@ -79,10 +86,10 @@ export const INFORMATION_ENDPOINTS=[
 ];
 export function selectedInformationEndpoints(map,needs){
  if(!Array.isArray(needs)||!needs.length)return [];
- const wanted=new Set(needs);
+ const wanted=new Set(needs),wantsStats=needs.some(field=>SETTLEMENT_STAT_FIELDS.includes(field));
  return INFORMATION_ENDPOINTS.filter(spec=>
   (spec.kind==='aiscore'?map.aiscore_id:map.thesports01_id)&&
-  spec.needs.some(k=>wanted.has(k))).map(spec=>({
+  spec.needs.some(k=>wanted.has(k)||(k==='stats'&&wantsStats))).map(spec=>({
    key:spec.key,url:spec.path(spec.kind==='aiscore'?map.aiscore_id:map.thesports01_id)
   }));
 }
@@ -141,27 +148,33 @@ export async function requestFootballInformation(url,{request=fetch,maxBytes=700
 }
 const nonnegative=v=>v!=null&&v!==''&&Number.isInteger(Number(v))&&Number(v)>=0;
 const json=v=>{try{return typeof v==='string'?JSON.parse(v):v;}catch{return null;}};
-export function missingSupplementalNeeds(needs,{statistics,review,primaryEvents,providersEnabled=false}={}){
- const selected=new Set(needs);
- const stats=json(statistics)??{},assessed=json(review);
- for(const field of ['shotsOnTarget','fouls']){
+export function missingSupplementalNeeds(needs,{statistics,review,primaryEvents,cornersHome,cornersAway,cardsHome,cardsAway,providersEnabled=false}={}){
+ const selected=new Set(needs),stats=json(statistics)??{},assessed=json(review);
+ const primary={
+  ...stats,
+  corners:stats.corners??{home:cornersHome??stats.corners_home,away:cornersAway??stats.corners_away},
+  cards:stats.cards??{home:cardsHome??stats.cards_home,away:cardsAway??stats.cards_away}
+ };
+ const validPair=value=>value&&nonnegative(value.home)&&nonnegative(value.away);
+ for(const field of SETTLEMENT_STAT_FIELDS){
   if(!selected.has(field))continue;
-  const candidate=stats[field]??(assessed?.conflicts?.[field]?null:assessed?.consensus?.[field]);
-  if(candidate&&nonnegative(candidate.home)&&nonnegative(candidate.away)){
-   selected.delete(field);continue;
-  }
-  // The configured five statistics providers must have their first chance
-  // before AiScore or TheSports01. A missing review isn't evidence of failure.
+  const candidate=primary[field]??(assessed?.conflicts?.[field]?null:assessed?.consensus?.[field]);
+  if(validPair(candidate)){selected.delete(field);continue;}
+  // A known disagreement remains for manual review. AiScore does not break
+  // a conflict by majority vote or silently replace either source.
+  if(assessed?.conflicts?.[field]){selected.delete(field);continue;}
+  // Configured providers must get their final attempt before AiScore.
   if(providersEnabled&&(!assessed?.complete||!Array.isArray(assessed.attempted)))selected.delete(field);
  }
- if(!selected.has('shotsOnTarget')&&!selected.has('fouls'))selected.delete('statistics');
+ if(selected.has('cards')){
+  const yellow=primary.yellow??assessed?.consensus?.yellow,red=primary.red??assessed?.consensus?.red;
+  if(validPair(yellow)&&validPair(red))selected.delete('cards');
+ }
  if(selected.has('player')){
   const events=json(primaryEvents)?.events;
   const goals=Array.isArray(events)?events.filter(e=>e.type==='goal'&&!e.disabled):[];
-  // A player string alone does not establish that the goal was NOT an own goal.
-  // Request verified supplementary identity whenever own-goal status is unknown.
   if(goals.length&&goals.every(e=>typeof e.player==='string'&&e.player.trim()&&e.ownGoal===false))
-    {selected.delete('player');selected.delete('timeline');}
+   {selected.delete('player');selected.delete('timeline');}
  }
  return [...selected];
 }
@@ -172,7 +185,7 @@ export async function sourceMatchNeeds(matchId,{runQuery=query,env=process.env}=
  const needs=marketInformationNeeds(rows);
  if(!needs.length)return needs;
  const facts=(await runQuery(
-  'select r.statistics,v.payload as review from (select $1::bigint as id) i '+
+  'select r.statistics,r.corners_home,r.corners_away,r.cards_home,r.cards_away,v.payload as review from (select $1::bigint as id) i '+
   'left join app_match_result r on r.match_id=i.id '+
   'left join app_stat_review v on v.match_id=i.id',[matchId])).rows[0]??{};
  let primaryEvents=null;
@@ -204,6 +217,87 @@ export async function setFootballInformationMapping({matchId,aiscoreId,thesports
   'returning match_id,aiscore_id,thesports01_id,mapping_status',
   [id,aiscore_id,thesports01_id,actorId]);
  return rows[0];
+}
+const statAliases={
+ corners:['corners','corner','corner_kicks','cornerKicks'],
+ cards:['cards','total_cards','totalCards'],
+ yellow:['yellow','yellow_cards','yellowCards'],
+ red:['red','red_cards','redCards'],
+ shots:['shots','total_shots','totalShots'],
+ shotsOnTarget:['shots_on_target','shotsOnTarget','shots_on_goal','shotsOnGoal'],
+ fouls:['fouls','fouls_committed','foulsCommitted']
+};
+const normalizedKey=value=>String(value??'').replace(/([a-z0-9])([A-Z])/g,'$1_$2').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');
+const statValue=value=>{
+ if(value&&typeof value==='object')value=value.value??value.total??value.count;
+ return nonnegative(value)?Number(value):null;
+};
+const statForSide=(side,field)=>{
+ if(!side||typeof side!=='object')return null;
+ const candidates=[side.statistics,side.stats,side];
+ for(const object of candidates){
+  if(!object||typeof object!=='object'||Array.isArray(object))continue;
+  for(const [key,value] of Object.entries(object)){
+   if(statAliases[field].some(alias=>normalizedKey(alias)===normalizedKey(key))){
+    const count=statValue(value);if(count!==null)return count;
+   }
+  }
+ }
+ return null;
+};
+const statPair=(home,away,field)=>{
+ const h=statForSide(home,field),a=statForSide(away,field);
+ return h===null||a===null?null:{home:h,away:a};
+};
+const finalStatus=detail=>{
+ const raw=detail?.status??detail?.match_status??detail?.matchStatus??detail?.status_name??detail?.statusName;
+ const label=typeof raw==='object'?raw.name??raw.label??raw.text??raw.status_name??'':raw;
+ return detail?.finished===true||detail?.isFinished===true||detail?.is_finished===true||
+  raw?.finished===true||/^(?:ft|full.?time|finished|ended)$/i.test(String(label??'').trim());
+};
+/** Parse only a mapped exact fixture with a certified final flag and explicit
+ * two-team statistic values. An absent stat is unknown, never zero.
+ */
+export function parseAiScoreFinalStatistics(payload,mappedId,match){
+ const detail=payload?.data?.match??payload?.data?.fixture??payload?.data?.match_info??null;
+ if(!detail||typeof detail!=='object'||!finalStatus(detail))return null;
+ const identifier=detail.id??detail.match_id??detail.matchId;
+ const name=side=>{
+  const v=detail[side+'_team']??detail[side+'Team']??detail[side]??payload?.data?.[side]??payload?.data?.[side+'Team'];
+  return typeof v==='string'?v:v?.name??v?.Name??null;
+ };
+ const providerKickoff=Date.parse(detail.start_at??detail.startAt??detail.start_time??detail.startTime??detail.kickoff??'');
+ const primaryKickoff=Date.parse(match?.start_at??match?.startAt??'');
+ if(identifier==null||String(identifier)!==String(mappedId)||
+    !Number.isFinite(providerKickoff)||!Number.isFinite(primaryKickoff)||
+    Math.abs(providerKickoff-primaryKickoff)>7200000||
+    !teamsMatch(name('home'),match?.home)||!teamsMatch(name('away'),match?.away))return null;
+ const home=detail.home??detail.homeTeam??detail.home_team??payload.data.home??payload.data.homeTeam??{};
+ const away=detail.away??detail.awayTeam??detail.away_team??payload.data.away??payload.data.awayTeam??{};
+ const values={};
+ for(const field of SETTLEMENT_STAT_FIELDS){
+  const pair=statPair(home,away,field);if(pair)values[field]=pair;
+ }
+ const arrays=[detail.statistics,detail.stats,payload?.data?.statistics,payload?.data?.stats].filter(Array.isArray);
+ for(const list of arrays)for(const item of list){
+  const key=normalizedKey(item?.type??item?.key??item?.name??item?.label);
+  const field=Object.keys(statAliases).find(name=>statAliases[name].some(alias=>normalizedKey(alias)===key));
+  const h=statValue(item?.home??item?.home_value),a=statValue(item?.away??item?.away_value);
+  if(field&&h!==null&&a!==null)values[field]={home:h,away:a};
+ }
+ if(!values.cards&&values.yellow&&values.red)
+  values.cards={home:values.yellow.home+values.red.home,away:values.yellow.away+values.red.away};
+ return {provider:'aiscore',final:true,fixtureId:String(mappedId),observedAt:new Date().toISOString(),values};
+}
+export async function readAiScoreFinalStatistics(matchId,match,{runQuery=query,now=Date.now}={}){
+ const id=Number(matchId);
+ if(!Number.isSafeInteger(id)||id<=0)return null;
+ const mapping=(await runQuery('select aiscore_id,mapping_status from app_football_information_map where match_id=$1',[id])).rows[0];
+ if(mapping?.mapping_status!=='CONFIRMED'||!mapping.aiscore_id)return null;
+ const snapshot=(await runQuery("select payload from app_football_information_snapshot where match_id=$1 and source='aiscore:match' order by observed_at desc,id desc limit 1",[id])).rows[0];
+ if(!snapshot?.payload)return null;
+ const observation=parseAiScoreFinalStatistics(json(snapshot.payload),mapping.aiscore_id,match);
+ return observation?{...observation,observedAt:new Date(now()).toISOString()}:null;
 }
 /** Trust scorer identity only after the same AiScore match ID, home
  * team and away team are explicitly confirmed against the main fixture.

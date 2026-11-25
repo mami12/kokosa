@@ -15,6 +15,8 @@ try{
     corners_home integer,corners_away integer,cards_home integer,cards_away integer);
   create table app_stat_review(match_id bigint primary key,payload jsonb not null,
     updated_at timestamptz default now());
+  create table app_ticket(id uuid primary key,status text not null);
+  create table app_ticket_line(id uuid primary key,ticket_id uuid,match_id bigint,market_name text,status text);
  `);
  await database.query(
   'insert into app_match_result(match_id,statistics,corners_home,corners_away,cards_home,cards_away) values($1,$2::jsonb,$3,$4,$5,$6)',
@@ -34,6 +36,6 @@ try{
  const data=(await database.query('select payload from app_stat_review where match_id=$1',[101])).rows[0]?.payload;
  assert.equal(data?.status,'VERIFIED');
  assert.deepEqual(data?.attempted,[]);
- assert.deepEqual(data?.sources.map(x=>x.provider),['primary']);
+ assert.deepEqual(data?.sources.map(x=>x.provider),['ZIZOBET']);
 }finally{await database.close();}
 console.log('PASS no secondary statistics request when Zizobet final stats are complete');

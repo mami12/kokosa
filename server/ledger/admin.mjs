@@ -12,7 +12,7 @@ import {assertAccountPassword} from './account-password-policy.mjs';
 import * as ledger from './store.mjs';
 import * as bets from './bets.mjs';
 import * as overrides from './overrides.mjs';
-import { settleMatch, settleAll } from './settler.mjs';
+import { settleMatch, settleAll, manualSettleLine } from './settler.mjs';
 import { recentResults, storeResult, pendingSettlementReview } from './results.mjs';
 import { query } from '../db.mjs';
 import { getMatches as getMatchRows, getMatchById as getMatchRow, boostMatch } from '../matches.mjs';
@@ -45,14 +45,14 @@ const guard = (fn) => (req, res, next) => {
     if (res.statusCode < 400 && mutatingRequest &&
         ['ADMIN', 'MANAGER'].includes(req.user?.role)) {
       try {
-        const target = req.path.match(/\/(users|matches|markets|outcomes|tickets)\/([^/]+)/);
-        const safeKeys = ['username', 'role', 'managerId', 'initialBalance', 'amount', 'status', 'isSuspended', 'odds', 'price', 'homeScore', 'awayScore', 'country', 'competitionId', 'category', 'suspended', 'hidden', 'countrySlug', 'tournamentId'];
+        const target = req.path.match(/\/(users|matches|markets|outcomes|tickets|lines)\/([^/]+)/);
+        const safeKeys = ['username', 'role', 'managerId', 'initialBalance', 'amount', 'status', 'isSuspended', 'odds', 'price', 'homeScore', 'awayScore', 'country', 'competitionId', 'category', 'suspended', 'hidden', 'countrySlug', 'tournamentId', 'reason'];
         const input = Object.fromEntries(
           safeKeys.filter((key) => req.body?.[key] !== undefined).map((key) => [key, req.body[key]]),
         );
         const targetId = target?.[2] ?? body?.id ?? null;
         const targetType = target
-          ? ({ users: 'user', matches: 'match', markets: 'market', outcomes: 'outcome', tickets: 'ticket' })[target[1]]
+          ? ({ users: 'user', matches: 'match', markets: 'market', outcomes: 'outcome', tickets: 'ticket', lines: 'ticket_line' })[target[1]]
           : req.path.includes('commission') ? 'settings' : 'system';
         await query(
           `insert into app_admin_audit
@@ -736,6 +736,19 @@ adminRouter.get(
     res.json({ pending: await pendingSettlementReview(req.query.limit) });
   }),
 );
+
+/** Decide one unresolved selection without changing unrelated lines.
+ * This is an API-only addition; the existing admin UI is left untouched.
+ */
+adminRouter.patch('/admin/settlement/lines/:id', ...admin, guard(async (req,res) => {
+  const id=String(req.params.id??'');
+  if(!uuidPattern.test(id))throw badRequest('ID e përzgjedhjes nuk është i vlefshëm.');
+  const status=String(req.body?.status??'').toUpperCase();
+  if(!['WON','LOST','PENDING'].includes(status))
+    throw badRequest('Statusi duhet të jetë WON, LOST ose PENDING.');
+  const result=await manualSettleLine(id,status,{actorId:req.user.id,reason:req.body?.reason});
+  res.json({ok:true,...result});
+}));
 
 /** stored results plus a settlement pass (safe: idempotent) */
 const runSettlementHandler = guard(async (_req, res) => {

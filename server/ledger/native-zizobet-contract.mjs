@@ -13,7 +13,7 @@ const equalParams=(a,b)=>{
     JSON.stringify(a[key])===JSON.stringify(b[key]));
 };
 
-export function nativeZizobetContractRow(row){
+export function nativeZizobetContractRow(row,{competitors}={}){
   if(!row||String(row.provider_id??'').toUpperCase()!=='ZIZOBET')return row;
   const raw=String(row.native_market_name??'').trim();
   if(!raw)return row;
@@ -34,8 +34,9 @@ export function nativeZizobetContractRow(row){
   if(row.line!=null&&String(row.line).trim()!=='')quote.h=row.line;
   // The full-game feed uses a special score placeholder for the remaining
   // match. Its native contract is the score at purchase, never an FT score.
-  const template=Number(key[1])===18639?'Correct score [{score}]':raw;
-  const canonical=resolveMarketTitle(template,quote);
+  const template=Number(key[1])===18639&&/^Correct score \[\{score\}\]$/i.test(raw)
+    ?'Correct score [{score}]':raw;
+  const canonical=resolveMarketTitle(template,quote,{competitors});
   if(!canonical||/\[[^\]]+\]|\{[^}]+\}|\brace to x\b/i.test(canonical))
     throw unsupported('Mungon parametri i saktë i tregut Zizobet.');
   return {...row,market_name:canonical};

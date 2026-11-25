@@ -69,6 +69,8 @@ alter table app_match_event_coverage add column if not exists confirmed_at times
 `;
 const validKind = new Set(['goal','corner','card','foul','offside']);
 const validSide = new Set(['home','away']);
+// A complete, fixture-matched historical timeline may fill a missing Zizobet event chronology.
+const HISTORICAL_TIMED_EVENT_PROVIDERS = new Set(['fotmob','apifootball','sportapi','goalapi','bsd','worldcup26']);
 /**
  * A newer contradictory Zizobet counter/timeline suspends a previous proof.
  * Keep the last good incident rows for audit, but never sell their old
@@ -209,7 +211,8 @@ export async function persistVerifiedEventFacts(matchId, frame, execute, observe
   await execute(`insert into app_match_event_coverage
     (match_id,provider,kind,through_minute,count_home,count_away,complete,
      sample_signature,sample_first_seen_at,confirmed_at,observed_at,card_colors_verified)
-    values ($1,'zizobet',$2,$3,$4,$5,$6,$7,$8::timestamptz,null,$8::timestamptz,$9::boolean)
+    values ($1,'zizobet',$2,$3,$4,$5,$6,$7,$8::timestamptz,
+     case when $6::boolean then $8::timestamptz else null end,$8::timestamptz,$9::boolean)
     on conflict(match_id,provider,kind) do update
     set through_minute=excluded.through_minute,count_home=excluded.count_home,
         count_away=excluded.count_away,complete=excluded.complete,
@@ -220,6 +223,9 @@ export async function persistVerifiedEventFacts(matchId, frame, execute, observe
           then coalesce(app_match_event_coverage.sample_first_seen_at,excluded.sample_first_seen_at)
           else excluded.sample_first_seen_at end,
         confirmed_at=case
+          -- One complete FT frame with counters reconciled to its own full
+          -- timeline is enough. Live frames still need a stable second poll.
+          when excluded.complete=true then excluded.observed_at
           when app_match_event_coverage.sample_signature=excluded.sample_signature
             and app_match_event_coverage.sample_first_seen_at is not null
             and (app_match_event_coverage.confirmed_at is not null or
@@ -521,7 +527,7 @@ function gradeOfficialCornerPeriodContract(contract,result){
  return null;
 }
 async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}={}){
- if(provider!=='zizobet')return null;
+ if(provider!=='zizobet'&&!HISTORICAL_TIMED_EVENT_PROVIDERS.has(provider))return null;
  const c=line?.live_contract;
  if(!c||!SUPPORTED_FACT_KINDS.has(c.kind)||!validKind.has(c.event)||typeof execute!=='function')return null;
  const periodCornerResult=gradeOfficialCornerPeriodContract(c,result);
@@ -561,8 +567,9 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
        when regexp_replace(lower(coalesce(f.phase,'')),'[^a-z0-9]','','g') in
         ('regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime',
          '90','stoppage','stoppagetime','injurytime') then case when f.minute<=45 then 1 else 2 end
-       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=45 then 1
-       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90 then 2
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<45 then 1
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute=45 then 1.5
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute>45 and f.minute<=90 then 2
        when regexp_replace(lower(coalesce(f.phase,'')),'[^a-z0-9]','','g') in
         ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf') then 3
        else 4
@@ -583,7 +590,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
     count(*) filter(where team='away')::int as away,
     (select count(*)::int from normal_ordered where team='home') as normal_home,
     (select count(*)::int from normal_ordered where team='away') as normal_away,
-    bool_or(minute>90 and not normal_time and (nullif(trim(coalesce(phase,'')),'') is null or regexp_replace(lower(coalesce(phase,'')),'[^a-z0-9]','','g') not in ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf'))) as phase_ambiguous,
+    bool_or((minute=45 and nullif(trim(coalesce(phase,'')),'') is null) or
+      (minute>90 and not normal_time and (nullif(trim(coalesce(phase,'')),'') is null or regexp_replace(lower(coalesce(phase,'')),'[^a-z0-9]','','g') not in ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf')))) as phase_ambiguous,
     count(*) filter(where card_color=$15::text)::int as color_total,
     count(*) filter(where team='home' and card_color=$15::text)::int as color_home,
     count(*) filter(where team='away' and card_color=$15::text)::int as color_away,
@@ -731,8 +739,16 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    kind==='offside'?[stats?.offsides?.home,stats?.offsides?.away]:[null,null];
  const expectedTotals=totalFor(c.event);
  const finalCounts=expectedTotals.every(x=>x!=null&&Number.isSafeInteger(Number(x))&&Number(x)>=0);
- const full=!!(result&&data.complete===true&&finalCounts&&
-   Number(data.home)===Number(expectedTotals[0])&&Number(data.away)===Number(expectedTotals[1]));
+ // Zizobet timelines must match their own FT counters. A historical source
+ // must match any available Zizobet counters exactly; if those are missing,
+ // its own complete and fixture-validated timeline supplies the counts.
+ const providerCountsMatch=finalCounts
+  ? Number(data.home)===Number(expectedTotals[0])&&Number(data.away)===Number(expectedTotals[1])
+  // A verified complete FT frame already reconciled its event rows to the
+  // same provider's own counters during ingestion. Do not require those
+  // counters to be copied a second time into app_match_result.
+  : data.complete===true;
+ const full=!!(result&&data.complete===true&&providerCountsMatch);
  const matchFinished=!!(result&&data.complete===true);
  const normalFull=normalTimeOnly?matchFinished:full;
  // Only the confirmed Zizobet timeline and its own second-poll/archive
@@ -741,9 +757,11 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  const confirmed=new Date(data.confirmed_at).getTime();
  const stored=new Date(data.observed_at).getTime();
  if(![confirmed,stored].every(Number.isFinite)||confirmed>stored)return null;
- const watcher=data.second_poll_at==null?NaN:new Date(data.second_poll_at).getTime();
- const archive=data.archive_poll_at==null?NaN:new Date(data.archive_poll_at).getTime();
- if(stored!==watcher&&stored!==archive)return null;
+ if(provider==='zizobet'){
+  const watcher=data.second_poll_at==null?NaN:new Date(data.second_poll_at).getTime();
+  const archive=data.archive_poll_at==null?NaN:new Date(data.archive_poll_at).getTime();
+  if(stored!==watcher&&stored!==archive)return null;
+ }
  if(c.cardColor!=null&&
    (c.event!=='card'||!['yellow','red'].includes(c.cardColor)||
     data.card_colors_verified!==true))return null;
@@ -990,6 +1008,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
  }
  if(c.kind==='race'){
+  if(data.phase_ambiguous===true)return null;
   if(!Number.isInteger(c.target)||c.target<1||
      !['home','away','none'].includes(c.side))return null;
   const h=data.race_home_time==null?null:Number(data.race_home_time);
@@ -1142,9 +1161,67 @@ export async function gradeStoredEventContract(line,result,{execute}={}){
  if(line?.live_contract?.kind==='score-handicap'&&
     !(line.live_contract.event==='corner'&&line.live_contract.half))
   return gradeHandicapContract(line.live_contract,result);
+ const c=line?.live_contract;
  const primary=await gradeSingleEventProvider(line,result,{execute,provider:'zizobet'});
- if(primary!==null)return primary;
- // Zizobet is the only settlement authority. Enrichment providers may add
- // display metadata, but cannot decide or confirm a financial result.
- return null;
+ if(primary!==null){
+  if(result&&c?.event){
+   result._settlementEventSources??={};
+   result._settlementEventSources[c.event]=['zizobet'];
+  }
+  return primary;
+ }
+ // A present Zizobet period-corner snapshot is authoritative even when its
+ // internal totals do not reconcile. Such a contradiction is a hard hold:
+ // do not bypass it with a secondary event timeline.
+ const resultStats=typeof result?.statistics==='string'?(()=>{
+  try{return JSON.parse(result.statistics);}catch{return null;}
+ })():result?.statistics;
+ const isOfficialPeriodCornerContract=c?.event==='corner'&&(
+  ['half-total','half-exact-count','half-parity','corner-comparison'].includes(c.kind)||
+  c.kind==='score-handicap'&&[1,2].includes(c.half));
+ if(isOfficialPeriodCornerContract&&
+    String(result?.source??'').toUpperCase()==='ZIZOBET'&&
+    resultStats?.cornerPeriods!=null)return null;
+ // Never combine two different event sequences. A complete secondary-provider
+ // timeline may stand in for a missing/incomplete Zizobet chronology only after
+ // it is validated against this fixture's final score and any available FT counters.
+ const historicalGoalKinds=new Set([
+  'sequence','window','interval-leader','race','player-goal',
+  'player-ordinal-goal','player-goal-special'
+ ]);
+ if(!result||!c||typeof execute!=='function'||
+    !(['corner','card'].includes(c.event)||
+      c.event==='goal'&&historicalGoalKinds.has(c.kind)))return null;
+ const review=result?.statistics_review??{};
+ const conflictField=c.event==='corner'?'corners':c.event==='card'?'cards':null;
+ if(conflictField&&(
+    review.conflicts?.[conflictField]||
+    c.event==='card'&&c.cardColor&&review.conflicts?.[String(c.cardColor).toLowerCase()]))return null;
+ const totals=c.event==='goal'?[result?.home_score,result?.away_score]:
+  c.event==='corner'?[result?.corners_home,result?.corners_away]:
+   [result?.cards_home,result?.cards_away];
+ const validTotal=value=>value!=null&&Number.isSafeInteger(Number(value))&&Number(value)>=0;
+ const {rows}=await execute(`select provider from app_match_event_coverage
+  where match_id=$1 and kind=$2 and provider=any($3::text[])
+    and complete=true and confirmed_at is not null
+    and ($4::int is null or count_home=$4)
+    and ($5::int is null or count_away=$5)
+  order by case provider when 'fotmob' then 0 else 1 end,provider`,
+ [line.match_id,c.event,[...HISTORICAL_TIMED_EVENT_PROVIDERS],
+  validTotal(totals[0])?Number(totals[0]):null,
+  validTotal(totals[1])?Number(totals[1]):null]);
+ const verdicts=[];
+ for(const row of rows){
+  const provider=String(row.provider);
+  const verdict=await gradeSingleEventProvider(line,result,{execute,provider});
+  if(['WON','LOST','VOID'].includes(verdict))verdicts.push({provider,status:verdict});
+ }
+ const unique=[...new Set(verdicts.map(item=>item.status))];
+ if(unique.length!==1)return null;
+ if(result){
+  result._settlementEventSources??={};
+  result._settlementEventSources[c.event]=verdicts
+   .filter(item=>item.status===unique[0]).map(item=>item.provider);
+ }
+ return unique[0];
 }
