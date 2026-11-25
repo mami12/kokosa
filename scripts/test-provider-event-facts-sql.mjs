@@ -274,6 +274,52 @@ try{
   (match_id,provider,kind,through_minute,count_home,count_away,complete,observed_at,confirmed_at)
   values($1,'zizobet','goal',130,1,0,true,$2,$2)`,[extraTimeMatch,now]);
  await run('insert into app_live_event_cursor(match_id,last_seen_at) values($1,$2)',[extraTimeMatch,now]);
+ const phaseProbe=await run(`select phase,
+  regexp_replace(lower(coalesce(phase,'')),'[^a-z0-9]','','g') as phase_key,
+  (regexp_replace(lower(coalesce(phase,'')),'[^a-z0-9]','','g') in
+   ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1',
+    '2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2',
+    'regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime',
+    '90','stoppage','stoppagetime','injurytime')
+   or regexp_replace(lower(coalesce(phase,'')),'[^a-z0-9]','','g') ~ '^45[0-9]{1,2}
+  match_id:extraTimeMatch},{...lateResult,home_score:1},{execute:run}),'LOST',
+  'Extra Time at 92 is excluded from the 76-90 interval');
+
+ const unknownPhaseMatch=lateMatch+3;
+ await run(`insert into app_match_event_fact
+  (match_id,provider,provider_event_id,kind,team,minute,phase,active)
+  values($1,'zizobet','goal-unknown-92','goal','home',92,null,true)`,[unknownPhaseMatch]);
+ await run(`insert into app_match_event_coverage
+  (match_id,provider,kind,through_minute,count_home,count_away,complete,observed_at,confirmed_at)
+  values($1,'zizobet','goal',130,1,0,true,$2,$2)`,[unknownPhaseMatch,now]);
+ await run('insert into app_live_event_cursor(match_id,last_seen_at) values($1,$2)',[unknownPhaseMatch,now]);
+ assert.equal(await gradeStoredEventContract({...lateLine,id:'00000000-0000-4000-8000-000000000014',
+  match_id:unknownPhaseMatch},{...lateResult,home_score:1},{execute:run}),null,
+  'An unlabelled event after 90 remains pending');
+ console.log('PASS real PostgreSQL engine: taken-corner evidence, primary event races/windows/interval totals, unreached race VOID and mismatched-counter PENDING');
+}finally{await db.close();}
+
+   or regexp_replace(lower(coalesce(phase,'')),'[^a-z0-9]','','g') ~ '^90[0-9]{1,2}
+  match_id:extraTimeMatch},{...lateResult,home_score:1},{execute:run}),'LOST',
+  'Extra Time at 92 is excluded from the 76-90 interval');
+
+ const unknownPhaseMatch=lateMatch+3;
+ await run(`insert into app_match_event_fact
+  (match_id,provider,provider_event_id,kind,team,minute,phase,active)
+  values($1,'zizobet','goal-unknown-92','goal','home',92,null,true)`,[unknownPhaseMatch]);
+ await run(`insert into app_match_event_coverage
+  (match_id,provider,kind,through_minute,count_home,count_away,complete,observed_at,confirmed_at)
+  values($1,'zizobet','goal',130,1,0,true,$2,$2)`,[unknownPhaseMatch,now]);
+ await run('insert into app_live_event_cursor(match_id,last_seen_at) values($1,$2)',[unknownPhaseMatch,now]);
+ assert.equal(await gradeStoredEventContract({...lateLine,id:'00000000-0000-4000-8000-000000000014',
+  match_id:unknownPhaseMatch},{...lateResult,home_score:1},{execute:run}),null,
+  'An unlabelled event after 90 remains pending');
+ console.log('PASS real PostgreSQL engine: taken-corner evidence, primary event races/windows/interval totals, unreached race VOID and mismatched-counter PENDING');
+}finally{await db.close();}
+
+   or (nullif(trim(coalesce(phase,'')),'') is null and minute<=90)) as normal_time
+  from app_match_event_fact where match_id=$1 and provider_event_id='goal-extra-time'`,[extraTimeMatch]);
+ console.log('[extra-time-phase-probe]',JSON.stringify(phaseProbe.rows));
  assert.equal(await gradeStoredEventContract({...lateLine,id:'00000000-0000-4000-8000-000000000013',
   match_id:extraTimeMatch},{...lateResult,home_score:1},{execute:run}),'LOST',
   'Extra Time at 92 is excluded from the 76-90 interval');
