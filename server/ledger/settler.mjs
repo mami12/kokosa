@@ -1717,9 +1717,8 @@ export async function settleMatch(matchId) {
   ).rows;
   if (!lines.length) return { matchId: String(matchId), settled: 0 };
 
-  const tickets = new Set();
   const unresolved=[];
-  let graded = 0;
+  const proposals=[];
   for (const line of lines) {
     // Player propositions are not part of this sportsbook. Never auto-grade
     // an old or malformed player ticket through any fallback settlement path.
@@ -1756,16 +1755,15 @@ export async function settleMatch(matchId) {
       continue; // incomplete feed or missing market rule => PENDING
     }
     const settledOdds=settledOddsFor(line,result,status);
-    const updated=await updatePendingLine(line.id,status,line.ticket_id,{settledOdds});
-    if(updated>0){graded++;tickets.add(line.ticket_id);}
+    proposals.push({lineId:line.id,ticketId:line.ticket_id,status,settledOdds,line,result,
+     audit:settlementAuditForLine(line,result,status)});
   }
 
   await recordPendingReasons(unresolved);
-  const closed = [];
-  for (const ticketId of tickets) {
-    const done = await recalcTicket(ticketId);
-    if (done) closed.push(done);
-  }
+  const changed=await updatePendingLinesBulk(proposals);
+  const graded=changed.length;
+  const tickets=[...new Set(changed.map(row=>row.ticket_id))];
+  const closed=(await mapLimit(tickets,4,recalcTicket)).filter(Boolean);
 
   // Keep accepting later provider corner/card/HT statistics until every
   // selection is gradeable. Premature settled_at blocked archival refreshes.
@@ -1803,7 +1801,7 @@ export async function settleVerifiedEventFacts({
  const ids=[...new Set(rows.map(l=>l.match_id))];
  const finals=(await runQuery("select match_id,home_score,away_score,corners_home,corners_away,cards_home,cards_away from app_match_result where source='ZIZOBET' and match_id=any($1::bigint[])",[ids])).rows;
  const results=new Map(finals.map(r=>[String(r.match_id),r]));
- const tickets=new Set(),unresolved=[];let graded=0;
+ const unresolved=[],proposals=[];
  for(const line of rows){
   if(isPlayerOfferMarket(line)||!SUPPORTED_FACT_KINDS.has(line.live_contract?.kind))continue;
   const status=await grade(line,results.get(String(line.match_id))??null,{execute:runQuery});
@@ -1811,11 +1809,14 @@ export async function settleVerifiedEventFacts({
     unresolved.push({line,result:results.get(String(line.match_id))??null});
     continue;
   }
-  if(await update(line.id,status,line.ticket_id)){graded++;tickets.add(line.ticket_id);}
+  proposals.push({lineId:line.id,ticketId:line.ticket_id,status,line,
+   result:results.get(String(line.match_id))??null,
+   audit:settlementAuditForLine(line,results.get(String(line.match_id))??null,status)});
  }
  await recordPendingReasons(unresolved,runQuery);
- const closed=[];
- for(const id of tickets){const done=await recalc(id);if(done)closed.push(done);}
+ const changed=await applyLineUpdates(proposals,{update});
+ const graded=changed.length,tickets=[...new Set(changed.map(row=>row.ticket_id))];
+ const closed=(await mapLimit(tickets,4,recalc)).filter(Boolean);
  return {examined:rows.length,graded,closed};
 }
 
@@ -1833,19 +1834,20 @@ export async function settleClosedCornerWindows({runQuery=query,loadEvidence=loa
      and coalesce(l.accepted_contract->>'settlementHold','')=''
      and not exists(select 1 from app_settlement_override o where o.line_id=l.id)
    order by l.match_id,l.id`);
- const cache=new Map(),tickets=new Set();let graded=0;
+ const cache=new Map(),proposals=[];
  for(const line of rows){
   if(isPlayerOfferMarket(line))continue;
   const id=String(line.match_id);
   if(!cache.has(id))cache.set(id,await loadEvidence(id).catch(()=>null));
   const status=gradeClosedCornerWindow(line,cache.get(id));
   if(status!== 'WON'&&status!=='LOST')continue;
-  if(await update(line.id,status,line.ticket_id)){
-   graded++;tickets.add(line.ticket_id);
-  }
+  proposals.push({lineId:line.id,ticketId:line.ticket_id,status,line,
+   result:{source:'ZIZOBET',event_evidence:cache.get(id)},
+   audit:settlementAuditForLine(line,{source:'ZIZOBET',event_evidence:cache.get(id)},status)});
  }
- const closed=[];
- for(const id of tickets){const ticket=await recalc(id);if(ticket)closed.push(ticket);}
+ const changed=await applyLineUpdates(proposals,{update});
+ const graded=changed.length,tickets=[...new Set(changed.map(row=>row.ticket_id))];
+ const closed=(await mapLimit(tickets,4,recalc)).filter(Boolean);
  return {graded,closed};
 }
 
@@ -1860,14 +1862,11 @@ export async function recoverResolvedTickets() {
       and (exists(select 1 from app_ticket_line l where l.ticket_id=t.id and l.status='LOST')
         or not exists(select 1 from app_ticket_line l where l.ticket_id=t.id and l.status='PENDING'))
     order by t.placed_at,t.id`);
-  const recovered = [];
-  for (const { id } of rows) {
-    try {
-      const ticket = await recalcTicket(id);
-      if (ticket) recovered.push(ticket);
-    } catch (error) { console.error('[settle] resolved ticket', id, 'retry failed:', error.message); }
-  }
-  return recovered;
+  const recovered = await mapLimit(rows,4,async({id})=>{
+    try{return await recalcTicket(id);}
+    catch(error){console.error('[settle] resolved ticket',id,'retry failed:',error.message);return null;}
+  });
+  return recovered.filter(Boolean);
 }
 
 /** one pass: store newly finished results, then settle everything that can be settled */
