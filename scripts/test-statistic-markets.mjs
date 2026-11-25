@@ -74,6 +74,14 @@ assert.deepEqual(verifiedFinalStatistics(staleCards),{},
 const zizoStatResult={source:'ZIZOBET',home_team:'Home',away_team:'Away',
  home_score:1,away_score:0,corners_home:null,corners_away:null,cards_home:null,cards_away:null,
  statistics:{},statistics_review_pending:false};
+const primaryColorResult=resolveSettlementStatistics({
+ source:'ZIZOBET',statistics:{
+  yellow:{home:2,away:1},red:{home:1,away:0}
+ },statistics_review:null
+});
+assert.deepEqual(primaryColorResult.statistics.cards,{home:3,away:1},
+ 'a complete Zizobet yellow+red pair supplies full-time total cards even without secondary review');
+assert.equal(statisticsNeedReview(totalCards,primaryColorResult),false);
 const missingZizoReview=compareFinalStatistics([{
  provider:'fotmob',final:true,fixtureId:'fm-900',observedAt:at,
  values:{corners:{home:6,away:4},shotsOnTarget:{home:3,away:2},
