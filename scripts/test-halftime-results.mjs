@@ -95,10 +95,11 @@ for(const line of [
  assert.equal(gradeAtVerifiedHalfTime(line,half),null);
 }
 let sql='',args;
-await persistHalfTimeCandidate(candidate,{execute:async(q,p)=>{sql=q;args=p;return {rowCount:1,rows:[{confirmed_at:null,correction_count:0}]};}});
+await persistHalfTimeCandidate(candidate,{execute:async(q,p)=>{sql=q;args=p;return {rowCount:1,rows:[{confirmed_at:'2026-11-11T20:45:30Z',correction_count:0}]};}});
 assert.match(sql,/excluded\.observed_at>app_match_half_result\.observed_at/);
-assert.match(sql,/interval '5 seconds'/);
-assert.match(sql,/when app_match_half_result\.signature<>excluded\.signature then null/);
+assert.match(sql,/confirmed_at=now\(\)/);
+assert.match(sql,/first_seen_at=app_match_half_result\.first_seen_at/);
+assert.doesNotMatch(sql,/interval '5 seconds'/);
 assert.equal(args[0],123);
 // First-half corners/cards use the actual verified PRIMARY chronology; the
 // half-time score alone is insufficient to decide their event totals.
@@ -129,4 +130,4 @@ const noHT=async sql=>sql.includes('from app_match_half_result')?{rows:[]}:verif
 assert.equal(await gradeStoredEventContract({id:'a',match_id:123,live_contract:cornerContract},
  null,{execute:noHT}),null,'No HT confirmation => no 1H corner payout');
 
-console.log('PASS HT-only grades 1st half, rejects FT/2H, freezes real periods and requires 2 primary snapshots');
+console.log('PASS HT-only grades 1st half at the recorded HT transition, rejects FT/2H and freezes real periods');
