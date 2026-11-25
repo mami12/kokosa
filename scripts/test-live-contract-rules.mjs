@@ -2,8 +2,38 @@ import assert from 'node:assert/strict';
 import {parseEventWindow,parseSequenceBet,parseOrdinalGoalTime,parseLastEvent,parseCountMarket,parseSendingOffMarket,parseLeadUpMarket,liveContract,gradeLiveContract,gradeFromAcceptedCounters} from '../server/ledger/live-contract-rules.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
 import {eventContract,eventInWindow} from '../server/ledger/event-contract.mjs';
+import {acceptedCountersForMatch} from '../server/ledger/bets.mjs';
 
 const windowLine=(market,side)=>({market_name:market,outcome_name:side});
+
+// Accepted LIVE baselines must come from fresh Zizobet counters. A missing
+// score or card colour count is unknown, not an assumed zero.
+const observedAt=Date.parse('2026-11-26T12:00:00.000Z');
+const observedStamp=new Date(observedAt).toISOString();
+const liveBaseline={
+ service:'LIVE',clock_at:observedStamp,score_at:observedStamp,
+ home_score:2,away_score:1,
+ stats:{
+  home:{corners:4,yellow:1,red:0,_observedAt:{corners:observedStamp,yellow:observedStamp,red:observedStamp}},
+  away:{corners:3,yellow:0,red:1,_observedAt:{corners:observedStamp,yellow:observedStamp,red:observedStamp}}
+ }
+};
+const accepted=acceptedCountersForMatch(liveBaseline,{at:observedAt});
+assert.deepEqual([accepted.goal.home,accepted.goal.away],[2,1]);
+assert.deepEqual([accepted.corner.home,accepted.corner.away],[4,3]);
+assert.deepEqual([accepted.card.home,accepted.card.away],[1,1]);
+const missingScore=acceptedCountersForMatch({...liveBaseline,home_score:null,away_score:null,score_at:null},{at:observedAt});
+assert.equal(missingScore.goal,null,'Missing LIVE score must not become a 0:0 Next Goal baseline');
+const missingCards=acceptedCountersForMatch({...liveBaseline,stats:{
+ home:{corners:4,_observedAt:{corners:observedStamp}},
+ away:{corners:3,_observedAt:{corners:observedStamp}}
+}},{at:observedAt});
+assert.equal(missingCards.card,null,'Missing yellow/red counters must not be filled with zero');
+const stale=acceptedCountersForMatch({...liveBaseline,clock_at:new Date(observedAt-60000).toISOString()},{at:observedAt});
+assert.equal(stale.goal,null,'Stale live clock invalidates the accepted score baseline');
+assert.deepEqual(acceptedCountersForMatch({service:'PREMATCH'},{at:observedAt,unstartedPrematch:true}),{
+ goal:{home:0,away:0},corner:{home:0,away:0},card:{home:0,away:0},foul:{home:0,away:0}
+},'Only an unstarted PREMATCH fixture has a known zero baseline');
 
 // A live "next goal" interval is the next goal AFTER the accepted score,
 // not an absolute reference to goal #1.
