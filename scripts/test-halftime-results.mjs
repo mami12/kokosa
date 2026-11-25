@@ -55,8 +55,10 @@ assert.equal(extractConfirmedHalfTimeCandidate({...live,home_score:3}),null,
  'At HT, current score and confirmed first period must agree');
 assert.equal(extractConfirmedHalfTimeCandidate({...live,
  feed_status_at:'2026-11-11T20:50:00Z'}),null,'reject stale half time scores');
-assert.ok(extractConfirmedHalfTimeCandidate({...live,feed_status:'2H',
- home_score:3,away_score:1}),'Later known first-period score may still be captured');
+assert.equal(extractConfirmedHalfTimeCandidate({...live,feed_status:'2H',
+ home_score:3,away_score:1}),null,'a later 2H snapshot cannot establish the cutoff for live bets placed after HT');
+assert.equal(extractConfirmedHalfTimeCandidate({...live,feed_status:'FT',
+ home_score:3,away_score:1}),null,'an FT snapshot cannot be backdated as the HT transition');
 const half={home_team:'Red FC',away_team:'Blue FC',half_home_score:2,
  half_away_score:1,confirmed_at:'2026-11-11T20:46:00Z',statistics:withStats.statistics};
 const pick=(market_name,outcome_name,opts={})=>({
@@ -102,8 +104,6 @@ for(const line of [
  pick('2nd half - Result','1',{period:2}),
  pick('Both teams to score in both halves','Yes'),
  pick('1st half - Exact cards','3'),
- pick('First corner','1'),
- pick('Anytime goalscorer','Yes'),
  pick('First corner','1'),
  pick('Anytime goalscorer','Yes')
 ]){
