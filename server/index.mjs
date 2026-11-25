@@ -458,13 +458,21 @@ app.get('/api/leagues', async (_req, res, next) => {
 app.get('/api/matches', async (req, res, next) => {
   try {
     const service = req.query.service && req.query.service !== 'all' ? String(req.query.service) : null;
-    const rows = (await getMatches({
+    const limit = asInt(req.query.limit, 500, 2000);
+    const offset = Math.max(0, Math.trunc(Number(req.query.offset) || 0));
+    const catalog = await getMatches({
       service,
       league: req.query.league ? String(req.query.league) : null,
       q: req.query.q ? String(req.query.q) : null,
-      limit: asInt(req.query.limit, 500, 2000),
-      offset: asInt(req.query.offset, 0, 100000),
-    })).filter(row=>!isSyntheticFootballMatch(row)&&!overrides.isMatchHidden(row));
+      catalog: true,
+    });
+    // Apply the canonical date/competition order to the full result set BEFORE
+    // slicing a page. Sorting only the first 24 fixtures can omit UEFA Champions
+    // League games when earlier-arriving GT/domestic fixtures fill the page.
+    const rows = selectPublishedMatches(
+      catalog.filter(row=>!isSyntheticFootballMatch(row)&&!overrides.isMatchHidden(row)),
+      {prematchLimit:0},
+    ).rows.slice(offset, offset + limit);
     // List endpoints are always lightweight. Only /api/matches/:id requests
     // a full selected fixture; do not serialize old cached extra markets here.
     const items = req.query.odds === '0' ? rows.map((r) => r) : await withOdds(rows,Date.now(),{board:true});

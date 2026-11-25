@@ -12,7 +12,6 @@ import { useLanguage } from '../context/LanguageContext';
 import { CalendarDays, Search, ListOrdered, Ticket, X } from 'lucide-react';
 import type { MatchViewMode } from '../components/Sports/MatchList';
 import { formatOdds } from '../utils/formatOdds';
-import { useLiveFeed } from '../api/liveFeed';
 
 /**
  * The board. Three columns on a desktop (leagues | matches | betslip); on a phone the two side
@@ -25,7 +24,6 @@ export default function SportsbookPage() {
   const navigate = useNavigate();
   const { t,lang } = useLanguage();
   const { selections, totalOdds, ticketType, columns } = useBetslip();
-  const {liveAlerts,dismissLiveAlert}=useLiveFeed();
   const [selectedTournament, setSelectedTournament] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedSport, setSelectedSport] = useState<string>('');
@@ -187,17 +185,7 @@ export default function SportsbookPage() {
           <div className="hidden lg:flex">{sidebar}</div>
 
           <div data-sportsbook-scroll className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-primary pb-0 md:pb-16 xl:pb-0 xl:border-x xl:border-[#462d5e] xl:bg-[#170c24]">
-            {liveAlerts.length>0&&<section aria-label={lang==='en'?'Live event alerts':'Njoftime për ngjarje live'} aria-live="polite" className="space-y-2 border-b border-amber-500/25 bg-amber-500/5 px-3 py-3">
-              {liveAlerts.slice(-5).reverse().map(alert=>{
-                const labels:Record<string,string>={goal:lang==='en'?'Goal':'Gol',corner:lang==='en'?'Corner':'Korner','yellow-card':lang==='en'?'Yellow card':'Karton i verdhë','red-card':lang==='en'?'Red card':'Karton i kuq',foul:lang==='en'?'Foul':'Faull','shot-on-target':lang==='en'?'Shot on target':'Goditje në portë',offside:lang==='en'?'Offside':'Pozicion jashtë loje',shot:lang==='en'?'Shot':'Goditje'};
-                const team=alert.team==='home'?(alert.homeTeam||(lang==='en'?'Home team':'Vendasit')):(alert.awayTeam||(lang==='en'?'Away team':'Miqtë'));
-                return <div key={alert.id} className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-primary/70 px-3 py-2 text-xs">
-                  <span className="min-w-0 flex-1 text-white"><strong>{labels[alert.kind]??alert.kind}</strong> · {team}{alert.count>1?' · +'+alert.count:''}{alert.minute!=null?' · '+alert.minute+"′":''}</span>
-                  <span className="shrink-0 text-[10px] text-text-secondary">{new Date(alert.at).toLocaleTimeString(lang==='en'?'en-GB':'sq-AL',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>
-                  <button type="button" onClick={()=>dismissLiveAlert(alert.id)} aria-label={lang==='en'?'Dismiss live alert':'Mbyll njoftimin live'} className="shrink-0 rounded px-2 py-1 text-text-secondary hover:bg-secondary hover:text-white">×</button>
-                </div>;
-              })}
-            </section>}
+
             {id ? (
               <MatchDetail />
             ) : (
