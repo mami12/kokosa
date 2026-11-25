@@ -136,13 +136,20 @@ try{
  {
   const h=await harness({rows:[row(101,{feed_status:'FT'}),row(102,{status:'ended'}),row(103,{service:'FINISHED'})]});
   for(const id of h.matches.keys())await h.bet(id);
-  await h.service.tick();assert.ok(h.calls.length>0,'finished watched fixtures receive a final statistics check');h.verify();
+  await database.query("update app_ticket_line set market_name='Total Corners Over/Under'");
+  const oldFetch=globalThis.fetch;globalThis.fetch=async()=>new Response('{}',{status:503});
+  try{await h.service.tick();}finally{globalThis.fetch=oldFetch;}
+  assert.ok(h.calls.length>0,'finished watched fixtures with an aggregate-stat market receive a final statistics check');h.verify();
  }
  // Round-robin starting providers persist across restart; a success stops the chain.
  {
   const h=await harness({env:{BSD_API_KEY:'test-key',SPORTAPI_API_KEY:'test-key',GOALAPI_API_KEY:'test-key',APIFOOTBALL_API_KEY:'test-key'},rows:[row(101,{feed_status:'FT'})],
    stats:provider=>provider==='worldcup26'?{...totals,home:{...totals.home,corners:4}}:totals});
-  await h.bet(101);await database.query('insert into app_match_result values(101,0,0)');await h.service.tick();
+  await h.bet(101);
+  await database.query("update app_ticket_line set market_name='Total Corners Over/Under' where match_id=101");
+  await database.query('insert into app_match_result values(101,0,0)');
+  const oldFetch=globalThis.fetch;globalThis.fetch=async()=>new Response('{}',{status:503});
+  try{await h.service.tick();}finally{globalThis.fetch=oldFetch;}
   const review=(await database.query('select payload from app_stat_review where match_id=101')).rows[0].payload;
   assert.deepEqual(new Set(review.attempted),new Set(['bsd']),'Stop after first provider fills missing FT statistics');
   assert.deepEqual(new Set(review.sources.map(s=>s.provider)),new Set(['primary','bsd']));
