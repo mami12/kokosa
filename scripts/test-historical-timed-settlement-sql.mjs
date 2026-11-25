@@ -108,5 +108,41 @@ try{
  const conflicting={...result,corners_away:2};
  assert.equal(await gradeStoredEventContract(bet('corner','sequence',{target:1,side:'home'}),
   conflicting,{execute:run}),null,'Disagreement with final totals cannot change the wallet');
- console.log('PASS historical corners/cards SQL: Next Corner, Race, windows, card colours, duplicates, conflicts and rolling holds');
+
+ // Missing Zizobet corner counters may be filled by one complete, independently
+ // matched FT timeline. The alternate provider never changes the stored score.
+ const missingTotalsId=id+1;
+ await run(`insert into app_match_result(match_id,home_team,away_team,home_score,away_score,
+   corners_home,corners_away,cards_home,cards_away,source)
+   values($1,'Home','Away',0,0,null,null,null,null,'ZIZOBET')`,[missingTotalsId]);
+ const missingTotalsSaved=await persistHistoricalTimedEvents(missingTotalsId,{
+  ...history,homeScore:0,awayScore:0
+ },{database});
+ assert.equal(missingTotalsSaved.stored,true,
+  'Complete alternate events fill missing Zizobet aggregate counters');
+ const missingTotalsLine={...bet('corner','sequence',{target:1,side:'home'}),match_id:missingTotalsId};
+ assert.equal(await gradeStoredEventContract(missingTotalsLine,{
+  home_score:0,away_score:0,corners_home:null,corners_away:null,cards_home:null,cards_away:null
+ },{execute:run}),'WON','A verified FotMob chronology settles a missing primary corner timeline');
+
+ // Two complete fallback sources with different event order must not be
+ // merged or used to guess the result of an ordinal selection.
+ const disagreementId=id+2;
+ await run(`insert into app_match_result(match_id,home_team,away_team,home_score,away_score,
+   corners_home,corners_away,cards_home,cards_away,source)
+   values($1,'Home','Away',0,0,null,null,null,null,'ZIZOBET')`,[disagreementId]);
+ const reverseHistory={...history,source:'apifootball',homeScore:0,awayScore:0,
+  events:[
+   {...history.events[0],id:'a1',team:'away',minute:10},
+   {...history.events[1],id:'a2',team:'home',minute:15},
+   {...history.events[2],id:'a3',team:'home',minute:23}
+  ]};
+ assert.equal((await persistHistoricalTimedEvents(disagreementId,
+  {...history,homeScore:0,awayScore:0},{database})).stored,true);
+ assert.equal((await persistHistoricalTimedEvents(disagreementId,reverseHistory,{database})).stored,true);
+ const disagreementLine={...bet('corner','sequence',{target:1,side:'home'}),match_id:disagreementId};
+ assert.equal(await gradeStoredEventContract(disagreementLine,{
+  home_score:0,away_score:0,corners_home:null,corners_away:null,cards_home:null,cards_away:null
+ },{execute:run}),null,'Conflicting complete timelines leave the ordinal market pending');
+ console.log('PASS historical corners/cards SQL: Next Corner, Race, windows, card colours, duplicates, conflicts, missing-primary fallback and rolling holds');
 }finally{await db.close();}

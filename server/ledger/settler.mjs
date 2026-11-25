@@ -1616,7 +1616,9 @@ function settlementAuditForLine(line,result,status){
  const fields=settlementStatisticFields(line),review=result?.statistics_review??{};
  const statistics={};
  const primarySource=String(result?.source??'ZIZOBET').toUpperCase();
- const sources=new Set([primarySource==='FEED'?'ZIZOBET':primarySource]);
+ const eventKind=String(line?.live_contract?.event??'');
+ const eventSources=eventKind?(result?._settlementEventSources?.[eventKind]??[]):[];
+ const sources=new Set([primarySource==='FEED'?'ZIZOBET':primarySource,...eventSources]);
  for(const field of fields){
   const stat=result?.statistics?.[field]??(field==='corners'?{home:result?.corners_home,away:result?.corners_away}:field==='cards'?{home:result?.cards_home,away:result?.cards_away}:null);
   const providerFacts=result?._settlementSources?.[field]??[];
@@ -1636,7 +1638,13 @@ function settlementAuditForLine(line,result,status){
    acceptedContract:line.accepted_contract??null,liveContract:line.live_contract??null},
   statistics,statisticsReview:{status:review.status??null,checkedAt:review.checkedAt??null,
    conflicts:Object.fromEntries(fields.filter(field=>review.conflicts?.[field]).map(field=>[field,review.conflicts[field]]))},
-  events:evidence?{source:evidence.source??null,complete:evidence.complete===true,
+  events:eventKind?{
+   kind:eventKind,source:eventSources.length===1?eventSources[0]:eventSources.length?eventSources.join('+'):null,
+   providers:eventSources,
+   complete:eventSources.length>0,
+   ...(evidence?{primarySource:evidence.source??null,coverage:evidence.coverage??null,
+    eventCount:Array.isArray(evidence.events)?evidence.events.length:null}:{})
+  }:evidence?{source:evidence.source??null,complete:evidence.complete===true,
    coverage:evidence.coverage??null,eventCount:Array.isArray(evidence.events)?evidence.events.length:null}:null
  };
  const source=[...sources].filter(Boolean).join('+')||'ZIZOBET';

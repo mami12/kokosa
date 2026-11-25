@@ -77,14 +77,25 @@ export async function persistHistoricalTimedEvents(matchId,payload,{database=poo
  const client=await database.connect();
  try{
   await client.query('begin');
-  const final=(await client.query(`select home_score,away_score,corners_home,corners_away,cards_home,cards_away
+  const final=(await client.query(`select home_score,away_score,corners_home,corners_away,cards_home,cards_away,source
      from app_match_result where match_id=$1 for update`,[id])).rows[0];
-  if(!final||final.home_score==null||final.away_score==null){
-   await client.query('rollback');return {stored:false,reason:'FT_NOT_RECORDED'};
+  if(!final||final.home_score==null||final.away_score==null||
+     !['ZIZOBET','ADMIN','RECOVERY'].includes(String(final.source??'').toUpperCase())){
+   await client.query('rollback');return {stored:false,reason:'FT_NOT_RECORDED_OR_NOT_PRIMARY'};
+  }
+  // Historical incidents must belong to the exact Zizobet fixture/result.
+  // A final score is mandatory; when the provider supplied its own FT score,
+  // it must match before its chronology can be used for settlement.
+  if(payload.homeScore!=null&&Number(payload.homeScore)!==Number(final.home_score)||
+     payload.awayScore!=null&&Number(payload.awayScore)!==Number(final.away_score)){
+   await client.query('rollback');return {stored:false,reason:'SCORE_CONFLICT'};
   }
   const field=data.kind==='corner'?'corners':'cards';
-  if(!validCount(final[field+'_home'])||!validCount(final[field+'_away'])||
-     data.home!==Number(final[field+'_home'])||data.away!==Number(final[field+'_away'])){
+  const primaryHome=final[field+'_home'],primaryAway=final[field+'_away'];
+  // Prefer Zizobet's final counters. A missing side may be supplied by a full
+  // alternate timeline, but any counter Zizobet did publish must agree exactly.
+  if(primaryHome!=null&&Number(primaryHome)!==data.home||
+     primaryAway!=null&&Number(primaryAway)!==data.away){
    await client.query('rollback');return {stored:false,reason:'TOTAL_CONFLICT'};
   }
   const previous=(await client.query(

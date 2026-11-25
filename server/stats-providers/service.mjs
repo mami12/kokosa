@@ -276,16 +276,76 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    if(result)final=true;
    const pendingMarkets=final?(await runQuery("select distinct l.market_name from app_ticket_line l join app_ticket t on t.id=l.ticket_id where l.match_id=$1 and l.status='PENDING' and t.status='PENDING'",[Number(id)])).rows:[];
    const settlementFields=[...new Set(pendingMarkets.flatMap(line=>settlementStatisticFields(line)))];
-   // A finished match should trigger secondary requests only for facts used by its pending markets.
+   const pendingEventRows=final?(await runQuery(
+    "select distinct l.live_contract->>'event' as kind,coalesce(l.live_contract->>'cardColor','') as card_color,l.market_name "+
+    "from app_ticket_line l join app_ticket t on t.id=l.ticket_id "+
+    "where l.match_id=$1 and l.status='PENDING' and t.status='PENDING' "+
+    "and l.live_contract->>'event' in ('corner','card')",[Number(id)])).rows:[];
+   const pendingEventKinds=[...new Set(pendingEventRows.map(row=>String(row.kind)))];
+   const statsPayload=typeof result?.statistics==='string'?(()=>{try{return JSON.parse(result.statistics);}catch{return {};}})():result?.statistics??{};
+   const statReviewRow=pendingEventKinds.length?(await runQuery(
+    'select payload from app_stat_review where match_id=$1',[Number(id)])).rows[0]:null;
+   const statReview=typeof statReviewRow?.payload==='string'?(()=>{try{return JSON.parse(statReviewRow.payload);}catch{return {};}})():statReviewRow?.payload??{};
+   const validCount=value=>value!=null&&value!==''&&Number.isSafeInteger(Number(value))&&Number(value)>=0;
+   const pairForEvent=kind=>{
+    const field=kind==='corner'?'corners':'cards';
+    let home=kind==='corner'?result?.corners_home:result?.cards_home;
+    let away=kind==='corner'?result?.corners_away:result?.cards_away;
+    home??=statsPayload[field]?.home??statReview.consensus?.[field]?.home;
+    away??=statsPayload[field]?.away??statReview.consensus?.[field]?.away;
+    if(kind==='card'&&(!validCount(home)||!validCount(away))){
+     const yellow=statsPayload.yellow??statReview.consensus?.yellow;
+     const red=statsPayload.red??statReview.consensus?.red;
+     if(validCount(yellow?.home)&&validCount(yellow?.away)&&validCount(red?.home)&&validCount(red?.away)){
+      home=Number(yellow.home)+Number(red.home);away=Number(yellow.away)+Number(red.away);
+     }
+    }
+    return {home:validCount(home)?Number(home):null,away:validCount(away)?Number(away):null};
+   };
+   let finalTimelineNeeds=[];
+   if(pendingEventKinds.length){
+    const coverageRows=(await runQuery(
+     "select provider,kind,count_home,count_away,complete,confirmed_at,card_colors_verified "+
+     "from app_match_event_coverage where match_id=$1 and kind=any($2::text[])",[Number(id),pendingEventKinds])).rows;
+    finalTimelineNeeds=pendingEventKinds.filter(kind=>{
+     const totals=pairForEvent(kind);
+     const colorRequired=kind==='card'&&pendingEventRows.some(row=>
+      row.kind==='card'&&(/yellow|red/i.test(String(row.market_name??''))||['yellow','red'].includes(String(row.card_color).toLowerCase())));
+     return !coverageRows.some(row=>{
+      if(row.kind!==kind||row.complete!==true||row.confirmed_at==null)return false;
+      if(totals.home!=null&&Number(row.count_home)!==totals.home)return false;
+      if(totals.away!=null&&Number(row.count_away)!==totals.away)return false;
+      if(colorRequired&&row.card_colors_verified!==true)return false;
+      return row.provider==='zizobet'||['fotmob','apifootball','sportapi','goalapi','bsd','worldcup26'].includes(String(row.provider));
+     });
+    });
+   }
+   // Missing event timelines trigger FotMob and historical-provider recovery,
+   // but only for event types still used by pending tickets.
    const requiredForMatch=[...new Set([...(final?[]:requiredStats),...settlementFields])];
    const matchStatsReady=entry=>statsReady(entry,requiredForMatch);
-   const finalReviewNeeded=final&&settlementFields.length>0;
+   const finalReviewNeeded=final&&(settlementFields.length>0||finalTimelineNeeds.length>0);
+   const eventKindsKey=JSON.stringify(finalTimelineNeeds.slice().sort());
    await init();const old=cached??await read('display:'+id);
    const requiredKey=[...requiredForMatch].sort().join('|');
    const cachedKey=[...(old?.settlementFields??[])].sort().join('|');
-   if(old?.version===4&&old.identity===identity&&old.next>now()&&Number.isFinite(Number(old.at))&&now()-Number(old.at)<localTtl&&!urgent.has(id)&&(!final||old.finalReview&&cachedKey===requiredKey)){displayCache.set(id,old);return;}
+   if(old?.version===5&&old.identity===identity&&old.next>now()&&Number.isFinite(Number(old.at))&&now()-Number(old.at)<localTtl&&!urgent.has(id)&&(!final||old.finalReview&&cachedKey===requiredKey&&old.finalEventKindsKey===eventKindsKey)){displayCache.set(id,old);return;}
    // Start each refresh with new facts. Keeping non-null values froze live totals forever.
-   const entry={version:4,identity,values:{},goalIntervals:null,sources:{},at:now()};
+   const entry={version:5,identity,values:{},goalIntervals:null,sources:{},at:now()};
+   const persistedHistoricalKinds=new Set();
+   const persistTimedKind=async(source,kind,homeCount,awayCount,events,timelineAvailable,homeScore,awayScore)=>{
+    if(!finalTimelineNeeds.includes(kind)||typeof persistTimedFacts!=='function'||timelineAvailable!==true||
+       !Array.isArray(events)||!validCount(homeCount)||!validCount(awayCount))return null;
+    try{
+     const saved=await persistTimedFacts(Number(id),{source,kind,final:true,complete:true,timelineAvailable:true,
+      homeCount:Number(homeCount),awayCount:Number(awayCount),homeScore,awayScore,events});
+     if(saved?.stored===true||saved?.reason==='ALREADY_VERIFIED')persistedHistoricalKinds.add(kind);
+     return saved;
+    }catch(error){
+     console.warn('[historical event fallback]',id,kind,source,String(error?.message??error));
+     return null;
+    }
+   };
    // Reuse Zizobet's persisted full-time team stats before any extra request.
    let archivedStats=result?.statistics??{};if(typeof archivedStats==='string'){try{archivedStats=JSON.parse(archivedStats);}catch{archivedStats={};}}
    const finalRowStats=verifiedFinalStatistics(row);
@@ -304,9 +364,8 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
      if(entry.values[field].home!=null&&entry.values[field].away!=null)entry.sources[field]='ZIZOBET';
     }
    }
-   // Zizobet's independently reconfirmed event history is the authority for
-   // goals, clock windows and minute buckets. Other services supply only
-   // missing scorer labels/statistics and never replace these incidents.
+   // Zizobet remains first choice. A complete fallback timeline is stored
+   // separately and is considered only when the primary event kind is missing.
    let primaryFacts=[],primaryGoal=null,primaryActors=[],goalCoverage=null;
    const actorSQL="select provider_event_id,kind,minute,team,card_color,player_name,aiscore_player_name,aiscore_verified,own_goal,fotmob_player_name,fotmob_verified,supplemental_player_name,supplemental_verified from app_match_event_fact where match_id=$1 and provider='zizobet' and kind in ('goal','card','foul','corner') and active=true";
    const refreshActors=async()=>{primaryActors=(await runQuery(actorSQL,[Number(id)])).rows;return primaryActors;};
@@ -411,6 +470,21 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
        if(finalReviewNeeded)unavailable.fotmob=fotMobTransportStatus().lastError??'FOTMOB_DETAILS_UNAVAILABLE';
       }else{
        const parsed=parseFotMobPayload(fm.match,details);
+       // FotMob may fill a missing Zizobet corner/card chronology only when
+       // this exact fixture and its FT score match the archived primary result.
+       const rawTimeline=details?.content?.matchFacts?.events?.events;
+       if(final&&parsed.finished&&result&&Number(parsed.homeScore)===Number(result.home_score)&&
+          Number(parsed.awayScore)===Number(result.away_score)&&Array.isArray(rawTimeline)){
+        for(const kind of finalTimelineNeeds){
+         const events=kind==='corner'?parsed.cornerEvents:parsed.cardEvents;
+         // Never infer a provider's final total from the same event list we are
+         // trying to validate. FotMob must supply explicit FT team counters too.
+         const homeCount=kind==='corner'?parsed.cornersHome:parsed.cardsHome;
+         const awayCount=kind==='corner'?parsed.cornersAway:parsed.cardsAway;
+         if(homeCount==null||awayCount==null)continue;
+         await persistTimedKind('fotmob',kind,homeCount,awayCount,events,true,parsed.homeScore,parsed.awayScore);
+        }
+       }
        try{
         const incidents=fotMobIncidents(details);
         const eventList=details?.content?.matchFacts?.events?.events;
@@ -476,6 +550,31 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
      console.warn('[fotmob] verified fixture enrichment failed:',String(error?.message??error));
     }
    }
+   // If FotMob did not provide a complete reconciled timeline, try the
+   // configured historical event providers. Each source remains separate;
+   // persistHistoricalTimedEvents rejects partial lists and any conflict with
+   // Zizobet's published FT counters or score.
+   const stillMissingTimelineKinds=finalTimelineNeeds.filter(kind=>!persistedHistoricalKinds.has(kind));
+   if(final&&result&&stillMissingTimelineKinds.length){
+    try{
+     const backup=await recoverHistoricalMatch(row,{
+      neededKinds:stillMissingTimelineKinds,
+      expectedScore:{home:Number(result.home_score),away:Number(result.away_score)}
+     });
+     if(backup&&Number(backup.homeScore)===Number(result.home_score)&&
+        Number(backup.awayScore)===Number(result.away_score)){
+      for(const kind of stillMissingTimelineKinds){
+       const prefix=kind==='corner'?'corner':'card';
+       const events=kind==='corner'?backup.cornerEvents:backup.cardEvents;
+       const homeCount=kind==='corner'?backup.cornersHome:backup.cardsHome;
+       const awayCount=kind==='corner'?backup.cornersAway:backup.cardsAway;
+       const timelineAvailable=kind==='corner'?backup.cornerTimelineAvailable:backup.cardTimelineAvailable;
+       await persistTimedKind(backup.source,kind,homeCount,awayCount,events,timelineAvailable,
+        backup.homeScore,backup.awayScore);
+      }
+     }
+    }catch(error){console.warn('[historical event recovery]',id,String(error?.message??error));}
+   }
    // Identity rotation: FotMob first (above), then a confirmed AiScore mapping,
    // then the configured daily-quota providers. Stop once known primary actors
    // are identified. All offers, goals, clocks and prices remain Zizobet.
@@ -537,8 +636,11 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
     entry.finalReview=review;
    }
    entry.settlementFields=requiredForMatch;
+   entry.finalEventKindsKey=eventKindsKey;
+   entry.finalEventReview=true;
    const finalRetryMs=Math.max(15000,Number(env.STATS_FINAL_RETRY_MS)||60000);
-   const finalReviewRetry=final&&(!matchStatsReady(entry)||Object.keys(unavailable).length>0);
+   const finalReviewRetry=final&&(!matchStatsReady(entry)||Object.keys(unavailable).length>0||
+    finalTimelineNeeds.some(kind=>!persistedHistoricalKinds.has(kind)));
    entry.next=now()+(finalReviewRetry?Math.min(localTtl,finalRetryMs):localTtl);
    entry.at=now();entry.mapping=mapping;
    await write('display:'+id,entry);displayCache.set(id,entry);if(displayCache.size>3000)displayCache.delete(displayCache.keys().next().value);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
 import {LEDGER_SQL} from '../server/ledger/schema.mjs';
 import {normalizeLiveFrame} from '../server/ledger/live-observation-store.mjs';
-import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
+import {gradeStoredEventContract,persistVerifiedEventFacts} from '../server/ledger/match-event-facts.mjs';
 import {providerTimeline} from '../server/live-event-timeline.mjs';
 import {parseHalfTotal} from '../server/ledger/live-contract-rules.mjs';
 import {parseParityMarket} from '../server/ledger/parity-markets.mjs';
@@ -54,6 +54,18 @@ try{
  await db.exec(LEDGER_SQL);
  const run=(sql,params=[])=>db.query(sql,params);
  const matchId=7199981,now=new Date();
+ const finalImmediateId=matchId+50,finalObservedAt=new Date('2026-11-25T12:00:00.000Z');
+ const finalFrame=normalizeLiveFrame({
+  Match:{Score:'0:0',MatchTimeExtended:'90:00',EventStatus:40,MatchStatusID:40,
+   CornersTeam1:1,CornersTeam2:0,YellowCardsTeam1:0,YellowCardsTeam2:0,
+   RedCardsTeam1:0,RedCardsTeam2:0},
+  TimeLines:[{id:'ft-corner-1',type:'corner_kick',team:1,gt:70,clk:'70:05',isTaken:true}]
+ });
+ await persistVerifiedEventFacts(finalImmediateId,finalFrame,run,finalObservedAt);
+ const firstFinalProof=(await run("select complete,confirmed_at from app_match_event_coverage where match_id=$1 and provider='zizobet' and kind='corner'",[finalImmediateId])).rows[0];
+ assert.equal(firstFinalProof.complete,true);
+ assert.ok(firstFinalProof.confirmed_at,
+  'One complete FT Zizobet timeline reconciled to its own final counters is confirmed on the first poll');
  for(const [id,team,minute,seconds] of [
   ['kick-1','home',10,605],['kick-2','away',15,905],
   ['kick-3','home',23,1405]

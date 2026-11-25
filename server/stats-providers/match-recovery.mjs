@@ -527,7 +527,7 @@ export async function recoverPendingMatch(matchId, { matchName = null, placedAt 
       if(details[flag]!==true||homeCount==null||awayCount==null)continue;
       try{
         await persistHistoricalTimedEvents(id,{source:src,kind,final:true,complete:true,
-          timelineAvailable:true,homeCount,awayCount,events:details[eventKey]??[]});
+          timelineAvailable:true,homeScore,awayScore,homeCount,awayCount,events:details[eventKey]??[]});
       }catch(error){console.warn('[recovery] timed',kind,'verification:',error.message);}
     }
   }
