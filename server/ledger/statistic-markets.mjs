@@ -5,7 +5,7 @@ const nameOf=line=>text(line?.market_name??line?.marketName??line?.name);
 const number=value=>value!=null&&/^\d+(?:[.,]\d+)?$/.test(String(value).trim())?Number(String(value).replace(',','.')):null;
 export function isStatisticMarket(line){
  const name=nameOf(line),hasLine=number(line?.line??line?.specifier)!==null;
- return /\b(?:shots?|fouls?)\b|goditj|faulle?/.test(name)||
+ return /\b(?:shots?|fouls?|offsides?)\b|goditj|faulle?/.test(name)||
   ((/\b(?:total|number of|over|under)\b/.test(name)||hasLine)&&/\b(?:cards?|bookings?)\b|karton/.test(name));
 }
 export function statisticMarketContract(line){
@@ -26,7 +26,7 @@ export function statisticMarketContract(line){
  const scope=home?'home':away?'away':result?'result':'total';
  const comparison=result?name.replace(/\b(?:which team|who)\s+(?:has|have|commits?|makes?|takes?|will have)\s+(?:the\s+)?(?:most|more)\b/g,' '):name;
  let remainder=comparison
-  .replace(/\bshots? on (?:target|goal)\b|\bshots?\b|\bfouls?(?: committed)?\b|goditj\w* ne porte|goditj\w*|faulle?/g,' ')
+  .replace(/\bshots? on (?:target|goal)\b|\bshots?\b|\bfouls?(?: committed)?\b|\boffside(?:s)?\b|goditj\w* ne porte|goditj\w*|faulle?/g,' ')
   .replace(/\b(?:yellow|red)?\s*cards?\b|\bbookings?\b|karton\w*|\bcorners?\b/g,' ')
   .replace(/\b(?:home\s*team|home|away\s*team|away|team [12]|[12] team)\b|skuadra [12]|ekipi [12]/g,' ')
   .replace(/\b(?:full time|regular time|match|total|totals|over|under|number of|result|winner|most|1x2|totali|totalit|ndeshjes|ndeshja|lart|poshte|mbi|nen)\b/g,' ');
