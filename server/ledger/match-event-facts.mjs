@@ -1170,7 +1170,7 @@ export async function gradeStoredEventContract(line,result,{execute}={}){
  // Never combine two different event sequences. A complete secondary-provider
  // timeline may stand in for a missing/incomplete Zizobet chronology only after
  // it is validated against this fixture's final score and any available FT counters.
- if(!c||!['corner','card'].includes(c.event)||typeof execute!=='function')return null;
+ if(!result||!c||!['corner','card'].includes(c.event)||typeof execute!=='function')return null;
  const review=result?.statistics_review??{};
  const conflictField=c.event==='corner'?'corners':'cards';
  if(review.conflicts?.[conflictField]||
