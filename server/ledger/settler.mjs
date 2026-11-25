@@ -757,8 +757,8 @@ function fullTimeAggregateCornerContract(line={}){
  if(!contract)return null;
  const key=String(line?.outcome_key??'').trim().toLowerCase();
  const name=String(line?.outcome_name??'').trim().toLowerCase();
- const over=key==='over'||/^over(?:\\s|$)/.test(name);
- const under=key==='under'||/^under(?:\\s|$)/.test(name);
+ const over=key==='over'||/^over(?:\s|$)/.test(name);
+ const under=key==='under'||/^under(?:\s|$)/.test(name);
  if(over===under)return null;
  return {...contract,over};
 }
