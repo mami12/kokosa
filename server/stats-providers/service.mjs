@@ -4,7 +4,7 @@ import {enrichFotMobScorerNames} from './fotmob-scorer-enrichment.mjs';
 import {enrichPrimaryActors} from './primary-actor-enrichment.mjs';
 import {SUPPLEMENTAL_INCIDENT_SQL,fotMobIncidents,backupIncidents,rawProviderIncidents,storeSupplementalIncidents} from './supplemental-incidents.mjs';
 import {teamStatisticsFromRow} from '../match-statistics.mjs';
-import {compareFinalStatistics} from '../ledger/settlement-review.mjs';
+import {compareFinalStatistics,settlementStatisticFields} from '../ledger/settlement-review.mjs';
 import {eventContract,eventSelectionSupported} from '../ledger/event-contract.mjs';
 import {supportedContract} from '../ledger/event-evidence.mjs';
 import {canonical,uniqueFixture,teamsMatch,goalCapabilities,normalizeBsd,normalizeApiFootball,normalizeSportApi,normalizeWorld,normalizeGoalApi} from './adapters.mjs';
@@ -16,7 +16,7 @@ const specs={bsd:{base:'https://sports.bzzoiro.com/api/v2',env:'BSD_API_KEY',hea
 const refreshMs=10*60*1000;
 // Zizobet alone owns score, corners, cards and the event chronology.
 // Secondary APIs may enrich verified actors and missing team statistics.
-const supplementalStats=['shotsOnTarget','fouls','shots','possession'];
+const supplementalStats=['shotsOnTarget','fouls','shots','possession','corners','yellow','red'];
 const requiredStats=['shotsOnTarget','fouls','shots'];
 const supplementalSnapshot=values=>Object.fromEntries(supplementalStats
  .filter(field=>values?.[field]!=null).map(field=>[field,values[field]]));
@@ -264,7 +264,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
   const primary=teamStatisticsFromRow(row),id=String(row.match_id??row.id),identity=identityOf(row),localTtl=refreshFor(row);
   const dataTtl=urgent.has(id)?0:localTtl;
   const cached=displayCache.get(id);
-  const statsReady=entry=>requiredStats.every(field=>['home','away'].every(side=>primary[side]?.[field]!=null||entry.values[field]?.[side]!=null));
+  const statsReady=(entry,fields=requiredStats)=>fields.every(field=>['home','away'].every(side=>entry.values[field]?.[side]!=null||primary[side]?.[field]!=null));
   // Check the durable FT archive before reusing a live timer: the catalogue
   // can still say LIVE after the final result has already been verified.
   if(displayFlights.has(id))return displayFlights.get(id);
@@ -274,16 +274,26 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    if(!(await watched(id)))return;
    const result=(await runQuery('select * from app_match_result where match_id=$1',[Number(id)])).rows[0];
    if(result)final=true;
+   const pendingMarkets=final?(await runQuery("select distinct l.market_name from app_ticket_line l join app_ticket t on t.id=l.ticket_id where l.match_id=$1 and l.status='PENDING' and t.status='PENDING'",[Number(id)])).rows:[];
+   const settlementFields=[...new Set(pendingMarkets.flatMap(line=>settlementStatisticFields(line)))];
+   const requiredForMatch=[...new Set([...requiredStats,...settlementFields])];
+   const matchStatsReady=entry=>statsReady(entry,requiredForMatch);
    await init();const old=cached??await read('display:'+id);
    if(old?.version===3&&old.identity===identity&&old.next>now()&&Number.isFinite(Number(old.at))&&now()-Number(old.at)<localTtl&&!urgent.has(id)&&(!final||old.finalReview)){displayCache.set(id,old);return;}
    // Start each refresh with new facts. Keeping non-null values froze live totals forever.
    const entry={version:3,identity,values:{},goalIntervals:null,sources:{},at:now()};
    // Reuse Zizobet's persisted full-time team stats before any extra request.
-   for(const field of supplementalStats){
-    const value=result?.statistics?.[field];
-    if(value&&['home','away'].every(side=>value[side]!=null&&Number.isFinite(Number(value[side])))){
-     entry.values[field]={home:Number(value.home),away:Number(value.away)};
-     entry.sources[field]='primary-archive';
+   let archivedStats=result?.statistics??{};if(typeof archivedStats==='string'){try{archivedStats=JSON.parse(archivedStats);}catch{archivedStats={};}}
+   const primaryArchive={...archivedStats,
+    corners:{home:result?.corners_home,away:result?.corners_away},
+    cards:{home:result?.cards_home,away:result?.cards_away},
+    yellow:{home:primary.home?.yellow,away:primary.away?.yellow},
+    red:{home:primary.home?.red,away:primary.away?.red}};
+   for(const field of [...supplementalStats,'cards']){
+    const value=primaryArchive[field];
+    if(value&&['home','away'].some(side=>value[side]!=null&&Number.isFinite(Number(value[side])))){
+     entry.values[field]={home:value.home==null?null:Number(value.home),away:value.away==null?null:Number(value.away)};
+     if(entry.values[field].home!=null&&entry.values[field].away!=null)entry.sources[field]='ZIZOBET';
     }
    }
    // Zizobet's independently reconfirmed event history is the authority for
@@ -325,25 +335,28 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    // Enrichment attaches only to a Zizobet incident, never an inferred goal.
    const needsAnyActors=()=>needsActors();
    const observations=[],attempted=[],unavailable={};
-   if(final&&result)observations.push({provider:'primary',final:true,observedAt:new Date(now()).toISOString(),values:{...(result.statistics??{}),corners:{home:result.corners_home,away:result.corners_away},cards:{home:result.cards_home,away:result.cards_away}}});
+   if(final&&result)observations.push({provider:'ZIZOBET',final:true,observedAt:new Date(now()).toISOString(),values:{...primaryArchive}});
    const state=await read('match:'+id),mapping={...(state?.identity===identity?state.mapping??{}:{}),...(old?.identity===identity?old.mapping??{}:{})};
    // Avoid using daily-limited APIs for goal minutes already supplied by
    // Zizobet. For LIVE matches, rotate only if the primary lacks other
    // required statistics. FT independent audit remains unchanged.
    // At FT request only MISSING shots/fouls; the primary archive is authoritative.
    // their goals, corners or cards into the PRIMARY settlement ledger.
-   for(const provider of (!statsReady(entry)?await providerOrder('statistics'):[])){
-    if(statsReady(entry))break;
+   for(const provider of (!matchStatsReady(entry)?await providerOrder('statistics'):[])){
+    if(matchStatsReady(entry))break;
     if(specs[provider].env&&!env[specs[provider].env])continue;
     if(final)attempted.push(provider);
     try{
      const m=mapping[provider]??await discover(provider,row);if(!m){if(final)unavailable[provider]='STATS_NO_FIXTURE';continue;}mapping[provider]=m;
-     if(!statsReady(entry)){
+     if(!matchStatsReady(entry)){
       try{
        const path=provider==='bsd'?'/events/'+m.id+'/stats/':provider==='goalapi'?'/fixtures/'+m.id+'/statistics':provider==='sportapi'?'/fixtures/'+m.id+'/stats':provider==='apifootball'?'/fixtures/statistics?fixture='+m.id:'/get/soccer/'+m.league+'/scoreboard?dates='+String(m.start).slice(0,10).replaceAll('-','');
        const payload=await api(provider,path,final?0:dataTtl),values=displayTeamStatistics(provider,payload,m);
        if(final){if(await finalFixture(provider,m,payload)){
-        observations.push({provider,final:true,values:supplementalSnapshot(values),fixtureId:m.id,observedAt:new Date(now()).toISOString()});
+        const observedValues=supplementalSnapshot(values);
+        if(values.yellow&&values.red&&['home','away'].every(side=>values.yellow[side]!=null&&values.red[side]!=null))
+         observedValues.cards={home:Number(values.yellow.home)+Number(values.red.home),away:Number(values.yellow.away)+Number(values.red.away)};
+        observations.push({provider,final:true,values:observedValues,fixtureId:m.id,observedAt:new Date(now()).toISOString()});
        }else unavailable[provider]='STATS_NOT_FINAL';}
        for(const field of supplementalStats){
         const pair=values[field];if(!pair)continue;
@@ -354,15 +367,18 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
         entry.values[field]=current;
         if(current.home!=null&&current.away!=null)entry.sources[field]=provider;
        }
+       if(values.yellow&&values.red&&['home','away'].every(side=>values.yellow[side]!=null&&values.red[side]!=null)&&entry.values.cards?.home==null&&entry.values.cards?.away==null){
+        entry.values.cards={home:Number(values.yellow.home)+Number(values.red.home),away:Number(values.yellow.away)+Number(values.red.away)};entry.sources.cards=provider;
+       }
       }catch(e){unavailable[provider]=/^STATS_[A-Z_0-9]+$/.test(e.message)?e.message:'STATS_UNAVAILABLE';health.providers[provider]={...(health.providers[provider]??{}),lastError:unavailable[provider]};}
      }
-     if(statsReady(entry))break;
+     if(matchStatsReady(entry))break;
     }catch(e){unavailable[provider]=/^STATS_[A-Z_0-9]+$/.test(e.message)?e.message:'STATS_UNAVAILABLE';health.providers[provider]={...(health.providers[provider]??{}),lastError:unavailable[provider]};}
    }
    // If the primary score has goals but the SQL event timeline is missing,
    // a detail viewer still needs an advisory FotMob scorer lookup.
    const missingGoalActors=needsFotMobScorerLookup(row,primaryGoal);
-   if (missingGoalActors || needsAnyActors() || !statsReady(entry)) {
+   if (missingGoalActors || needsAnyActors() || !matchStatsReady(entry)) {
     try {
      const targetDate = row.start_at || row.startAt || new Date().toISOString();
      const dates = candidateDateStrings(targetDate);
