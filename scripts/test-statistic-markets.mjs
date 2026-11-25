@@ -53,7 +53,7 @@ assert.equal(gradeStatisticLine({market_name:'Shots on Target. 1X2',outcome_key:
 assert.equal(gradeStatisticLine({market_name:'Fouls. 1X2',outcome_name:''},result),'VOID','missingselection is not home');
 assert.equal(hasStatisticEvidence(total,{...result,statistics:{}}),false);
 assert.equal(hasStatisticEvidence(total,{...result,statistics:{shotsOnTarget:{home:0}}}),false,'unknownaway is not zero');
-for(const market_name of ['Player Shots on Target','First Half Total Shots on Target','Shots Off Target','Fouls Handicap','Total Shots Odd/Even','Next 10 minutes Total Shots','Total Shots + Total Goals']){
+for(const market_name of ['Player Shots on Target','Shots Off Target','Fouls Handicap','Total Shots Odd/Even','Next 10 minutes Total Shots','Total Shots + Total Goals']){
  assert.equal(statisticMarketContract({...total,market_name}).supported,false,market_name);
  assert.equal(hasStatisticEvidence({...total,market_name},result),false,market_name);
 }
@@ -62,6 +62,10 @@ for(const market_name of ['Arsenal Total Shots on Target','Team Total Shots on T
  assert.equal(gradeStatisticLine(contract,{...result,statistics:{shotsOnTarget:{home:2,away:8},fouls:{home:2,away:8}}}),'VOID','namedteam or differentfoul definition never gradesas matchtotal');
 }
 assert.equal(statisticMarketContract({...total,market_name:'Match Shots on Goal'}).supported,true);
+assert.equal(statisticMarketContract({...total,market_name:'First Half Total Shots on Target',period:1}).supported,true,
+ 'first-half aggregate statistics are valid when scoped to HT');
+assert.equal(hasStatisticEvidence({...total,market_name:'First Half Total Shots on Target',period:1},result),false,
+ 'first-half markets remain pending until HT counters are actually recorded');
 for(const line of ['1.25','1.75','1.2'])assert.equal(statisticMarketContract({...total,line}).supported,false,'quarter/unknownline cannot begradedas a wholebinarywager');
 // Fresh final-frame corner and card totals are accepted; stale LIVE snapshots are not.
 const freshCards={...base,stats:{
