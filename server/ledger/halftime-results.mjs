@@ -11,7 +11,7 @@ import {verifiedFinalStatistics} from '../match-statistics.mjs';
 export const HALFTIME_RESULT_SQL=[
  'create table if not exists app_match_half_result (match_id bigint primary key, home_team text not null, away_team text not null, half_home_score integer not null check(half_home_score between 0 and 200), half_away_score integer not null check(half_away_score between 0 and 200), signature text not null, first_seen_at timestamptz not null default now(), observed_at timestamptz not null default now(), confirmed_at timestamptz, correction_count integer not null default 0, source text not null default ' + "'UNVERIFIED_LEGACY', statistics jsonb not null default '{}'::jsonb);",
  'alter table app_match_half_result alter column source set default ' + "'UNVERIFIED_LEGACY';",
- 'alter table app_match_half_result add column if not exists statistics jsonb not null default ''{}''::jsonb;',
+ "alter table app_match_half_result add column if not exists statistics jsonb not null default '{}'::jsonb;",
  ''
 ].join('\n');
 
@@ -73,6 +73,7 @@ export async function persistHalfTimeCandidate(candidate,{execute=query}={}){
  // A later correction changes the result, not the time at which HT began.
  'first_seen_at=app_match_half_result.first_seen_at,',
  'confirmed_at=now(),',
+ "statistics=coalesce(app_match_half_result.statistics,'{}'::jsonb)||excluded.statistics,",
  'observed_at=excluded.observed_at',
  'where excluded.observed_at>app_match_half_result.observed_at',
  'returning confirmed_at,correction_count'
