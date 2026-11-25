@@ -1170,7 +1170,13 @@ export async function gradeStoredEventContract(line,result,{execute}={}){
  // Never combine two different event sequences. A complete secondary-provider
  // timeline may stand in for a missing/incomplete Zizobet chronology only after
  // it is validated against this fixture's final score and any available FT counters.
- if(!result||!c||!['goal','corner','card'].includes(c.event)||typeof execute!=='function')return null;
+ const historicalGoalKinds=new Set([
+  'sequence','window','interval-leader','race','player-goal',
+  'player-ordinal-goal','player-goal-special'
+ ]);
+ if(!result||!c||typeof execute!=='function'||
+    !(['corner','card'].includes(c.event)||
+      c.event==='goal'&&historicalGoalKinds.has(c.kind)))return null;
  const review=result?.statistics_review??{};
  const conflictField=c.event==='corner'?'corners':c.event==='card'?'cards':null;
  if(conflictField&&(
