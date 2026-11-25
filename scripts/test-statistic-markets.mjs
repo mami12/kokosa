@@ -106,7 +106,7 @@ assert.equal(statisticMarketContract(totalRed).stat,'red');
 assert.equal(hasRequiredSettlementEvidence(totalCorners,fallbackResult),true);
 assert.equal(gradeLine(totalCorners,fallbackResult),'WON', 'the existing total-corner parser uses the resolved final Zizobet/FotMob counters');
 const authoritativeCornerResult={
- source:'ZIZOBET',corners_home:13,corners_away:0,
+ source:'ZIZOBET',home_score:1,away_score:0,corners_home:13,corners_away:0,
  statistics:{corners:{home:13,away:0}},
  // A secondary-feed disagreement must not veto the primary final counters.
  statistics_review:{conflicts:{corners:{
