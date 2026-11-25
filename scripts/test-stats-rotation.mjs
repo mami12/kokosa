@@ -71,6 +71,7 @@ try{
  await database.exec(`create table app_ticket(id text primary key,status text);
   create table app_ticket_line(ticket_id text,match_id bigint,status text,market_name text,live_contract jsonb);
   create table app_match_result(match_id bigint primary key,home_score int,away_score int);
+  create table app_match_event_coverage(match_id bigint,provider text,kind text,count_home int,count_away int,complete boolean,confirmed_at timestamptz,card_colors_verified boolean,through_minute int,observed_at timestamptz);
   create table app_stats_cache(cache_key text primary key,payload jsonb not null,updated_at timestamptz not null default now());
   create table app_stats_usage(provider text,period text,calls int,primary key(provider,period));
   create table app_stat_review(match_id bigint primary key,payload jsonb not null,updated_at timestamptz default now());`);
