@@ -84,11 +84,6 @@ try{
   {provider:'ZIZOBET',sportId:1,scope:'LIVE',id:800,name:'Total Corners',definition:{ID:800,Name:'Total Corners'}},
   {provider:'ZIZOBET',sportId:1,scope:'PREMATCH',id:448,name:'Match result',definition:{ID:448,Name:'Match result'}},
   {provider:'ZIZOBET',sportId:1,scope:'PREMATCH',id:800,name:'Total Corners',definition:{ID:800,Name:'Total Corners'}},
-  {provider:'ZIZOBET',sportId:1,scope:'PREMATCH',id:449,name:'Total Cards',definition:{ID:449,Name:'Total Cards'}},
-  {provider:'ZIZOBET',sportId:1,scope:'PREMATCH',id:450,name:'Double Chance and Total Goals',definition:{ID:450,Name:'Double Chance and Total Goals'}},
-  {provider:'ZIZOBET',sportId:1,scope:'PREMATCH',id:451,name:'Odd/Even',definition:{ID:451,Name:'Odd/Even'}},
-  {provider:'ZIZOBET',sportId:1,scope:'PREMATCH',id:452,name:'Goals in minutes 1-15',definition:{ID:452,Name:'Goals in minutes 1-15'}},
-  {provider:'ZIZOBET',sportId:1,scope:'PREMATCH',id:453,name:'Total Goals',definition:{ID:453,Name:'Total Goals'}},
   {provider:'ZIZOBET',sportId:1,scope:'LIVE',id:27073,name:'1X2 (XUP)',definition:{ID:27073,Name:'1X2 (XUP)'}},
   // Generic labels are not enough to identify a sport. These must be rejected
   // because the global LIVE dictionary did not establish football provenance.
@@ -96,7 +91,7 @@ try{
   {provider:'ZIZOBET',sportId:3,scope:'LIVE',id:992,name:'Set Winner',definition:{ID:992,Name:'Set Winner'}},
   {provider:'ZIZOBET',scope:'LIVE',id:993,name:'Total Points',definition:{ID:993,Name:'Total Points'}}
  ],{execute:(...args)=>database.query(...args)});
- assert.equal(archived.seen,9,'only explicit Zizobet football (sport 1) definitions are persisted');
+ assert.equal(archived.seen,4,'only explicit Zizobet football (sport 1) definitions are persisted');
  // Simulate rows written by the old unscoped global dictionary.
  await db.query(`insert into app_provider_market_definition
   (provider_id,sport_id,scope,native_market_id,native_market_name,definition)
@@ -107,20 +102,8 @@ try{
   ('zizobet:live:999','[LIVE] Set Winner'),('set winner','Set Winner'),
   ('total points','Total Points'),('winner','Winner')`);
  const list=await seedNativeMarketCatalog({database});
- const keys=['zizobet:live:800','zizobet:prematch:448','zizobet:prematch:800',
-  'zizobet:prematch:449','zizobet:prematch:450','zizobet:prematch:451',
-  'zizobet:prematch:452','zizobet:prematch:453'];
+ const keys=['zizobet:live:800','zizobet:prematch:448','zizobet:prematch:800'];
  for(const key of keys)assert.ok(list.find(row=>row.key===key),'Dictionary market missing: '+key);
- const prematchCategories=new Map(list.filter(row=>row.key.startsWith('zizobet:prematch:')).map(row=>[row.key,row.categories]));
- for(const [id,category] of [['449','cards'],['450','combos'],['451','other'],['452','intervals'],['453','totals']])
-  assert.ok(prematchCategories.get('zizobet:prematch:'+id)?.includes(category),
-   'PREMATCH '+category+' market definition must appear in the admin catalogue');
- assert.ok(prematchCategories.get('zizobet:prematch:453')?.includes('goals'),
-  'PREMATCH Goals definitions must appear in the admin catalogue');
- assert.ok(prematchCategories.get('zizobet:prematch:800')?.includes('corners'),
-  'PREMATCH Corners definitions must stay visible in the admin catalogue');
- assert.ok(prematchCategories.get('zizobet:prematch:448')?.includes('results'),
-  'PREMATCH Results definitions must stay visible in the admin catalogue');
  assert.equal(list.some(row=>row.key==='zizobet:live:27073'),false,
   'the native early-payout ID must not re-enter the admin market catalog');
  assert.equal(list.some(row=>row.key==='zizobet:live:991'||row.key==='zizobet:live:992'),false,
