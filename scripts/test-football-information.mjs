@@ -26,7 +26,7 @@ assert.deepEqual(marketInformationNeeds([{market_name:'Total Corners'},{market_n
 assert.deepEqual(marketInformationNeeds([{market_name:'Full Time Result'}]),[]);
 const map={aiscore_id:'j374oi0xz04sgqo',thesports01_id:'4578950',mapping_status:'ADMIN_SUPPLIED_UNVERIFIED'};
 assert.deepEqual(selectedInformationEndpoints(map,[]),[]);
-const endpoints=selectedInformationEndpoints(map,goal);
+const endpoints=selectedInformationEndpoints(map,['player']);
 assert.ok(endpoints.some(x=>x.url.includes('/match/s?match_id=j374oi0xz04sgqo')));
 assert.ok(endpoints.some(x=>x.url.includes('/match/mlive?')));
 assert.ok(endpoints.every(x=>!x.url.includes('/match/team_stats')));
