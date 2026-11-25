@@ -32,7 +32,18 @@ const hasPlayerParameter=market=>{
 };
 const PLAYER_WORDS=/\b(?:player|players|goalscorer|goal scorer|top scorer|scorer|assist|assists|goalkeeper|goal keeper|lojtar\w*|shenues\w*|asist\w*)\b|\{pl\}/i;
 const NAMED_PLAYER=/^[\p{L}][\p{L}'-]{1,35},\s*[\p{L}][\p{L}'-]{1,35}/u;
-const UNSUPPORTED_STATS=/\b(?:fouls?|faull\w*|shots?|cards?|karton\w*|carded|booked|bookings?|sent\s+off|tackles?|nderhyrje\w*|throw[ -]?ins?|rivenie\w*|saves?|pritje\w*)\b/i;
+const UNSUPPORTED_STATS=/\b(?:fouls?|faull\w*|shots?|tackles?|nderhyrje\w*|throw[ -]?ins?|rivenie\w*|saves?|pritje\w*)\b/i;
+const CARD_MARKET_WORDS=/\b(?:cards?|karton\w*|bookings?|sending off|sent off)\b/i;
+const ZIZOBET_MARKET_KEY=/^(?:zz\d+@[A-Za-z0-9_-]+|zizobet:(?:live|prematch):\d+)$/i;
+/** Card offers must carry a native Zizobet identity. Name-only catalogue families
+ * are allowed so the administrator can enable and order that category globally. */
+const nonZizobetCardQuote=market=>{
+ if(!titlesOf(market).some(title=>CARD_MARKET_WORDS.test(title)))return false;
+ const quoteKey=market?.market_key??market?.marketKey;
+ const key=quoteKey!=null&&String(quoteKey).trim()?String(quoteKey).trim():
+  (/^(?:zizobet:)|@/.test(String(market?.key??''))?String(market.key).trim():'');
+ return !!key&&!ZIZOBET_MARKET_KEY.test(key);
+};
 export function isPlayerOfferMarket(market){
  if(!market)return false;
  const builder=market?.builder_legs??market?.builderLegs??
@@ -45,7 +56,7 @@ export function isPlayerOfferMarket(market){
 export function isRetiredPlayerOfferMarket(market){
  const type=clean(market?.marketType??market?.market_type??market?.category??
   market?.column??market?.board_column??'');
- const unsupportedType=/^(?:cards?|karton\w*|fouls?|faull\w*|players?|lojtar\w*|player props?|tackles?|throw[ -]?ins?|saves?|handicap|handikap\w*)$/.test(type);
+ const unsupportedType=/^(?:fouls?|faull\w*|players?|lojtar\w*|player props?|tackles?|throw[ -]?ins?|saves?|handicap|handikap\w*)$/.test(type);
  return unsupportedType||isPlayerOfferMarket(market)||
   titlesOf(market).some(title=>UNSUPPORTED_STATS.test(title)||NAMED_PLAYER.test(title))||isHandicapOfferMarket(market);
 }
@@ -59,4 +70,4 @@ export const isEarlyPayoutOfferMarket=market=>{
 };
 export const isExcludedOfferMarket=market=>
  isHandicapOfferMarket(market)||isEarlyPayoutOfferMarket(market)||
- isRetiredPlayerOfferMarket(market);
+ nonZizobetCardQuote(market)||isRetiredPlayerOfferMarket(market);
