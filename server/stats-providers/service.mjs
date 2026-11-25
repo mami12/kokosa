@@ -416,12 +416,10 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    const observations=[],attempted=[],unavailable={};
    if(final&&result)observations.push({provider:'ZIZOBET',final:true,observedAt:new Date(now()).toISOString(),values:{...primaryArchive}});
    const state=await read('match:'+id),mapping={...(state?.identity===identity?state.mapping??{}:{}),...(old?.identity===identity?old.mapping??{}:{})};
-   // Avoid using daily-limited APIs for goal minutes already supplied by
-   // Zizobet. For LIVE matches, rotate only if the primary lacks other
-   // required statistics. FT independent audit remains unchanged.
-   // At FT request only MISSING shots/fouls; the primary archive is authoritative.
-   // their goals, corners or cards into the PRIMARY settlement ledger.
-   const statisticsProviders=finalReviewNeeded||!matchStatsReady(entry)?await providerOrder('statistics'):[];
+   // Final statistic providers run only when a pending market needs aggregate
+   // statistics. Event-only markets use the dedicated verified timeline recovery
+   // below, avoiding unrelated statistics calls and quota consumption.
+   const statisticsProviders=(final&&settlementFields.length>0)||!matchStatsReady(entry)?await providerOrder('statistics'):[];
    for(const provider of statisticsProviders){
     if(!final&&matchStatsReady(entry))break;
     if(specs[provider].env&&!env[specs[provider].env])continue;
@@ -650,7 +648,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
      if(verified){entry.scorers=verified.scorers;entry.goalIntervals=verified.goalIntervals;}
     }catch(error){health.lastError='GOAL_ACTOR_DISPLAY_UNAVAILABLE';}
    }
-   if(final&&finalReviewNeeded){
+   if(final&&settlementFields.length>0){
     try{
      const {readAiScoreFinalStatistics}=await import('./football-information.mjs');
      const aiScore=await readAiScoreFinalStatistics(Number(id),row,{runQuery,now});
