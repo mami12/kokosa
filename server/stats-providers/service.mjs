@@ -279,7 +279,9 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    const requiredForMatch=[...new Set([...requiredStats,...settlementFields])];
    const matchStatsReady=entry=>statsReady(entry,requiredForMatch);
    await init();const old=cached??await read('display:'+id);
-   if(old?.version===4&&old.identity===identity&&old.next>now()&&Number.isFinite(Number(old.at))&&now()-Number(old.at)<localTtl&&!urgent.has(id)&&(!final||old.finalReview)){displayCache.set(id,old);return;}
+   const requiredKey=[...requiredForMatch].sort().join('|');
+   const cachedKey=[...(old?.settlementFields??[])].sort().join('|');
+   if(old?.version===4&&old.identity===identity&&old.next>now()&&Number.isFinite(Number(old.at))&&now()-Number(old.at)<localTtl&&!urgent.has(id)&&(!final||old.finalReview&&cachedKey===requiredKey)){displayCache.set(id,old);return;}
    // Start each refresh with new facts. Keeping non-null values froze live totals forever.
    const entry={version:4,identity,values:{},goalIntervals:null,sources:{},at:now()};
    // Reuse Zizobet's persisted full-time team stats before any extra request.
@@ -512,7 +514,10 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
     await runQuery('insert into app_stat_review(match_id,payload)values($1,$2::jsonb)on conflict(match_id)do update set payload=excluded.payload,updated_at=now()',[Number(id),JSON.stringify(review)]);
     entry.finalReview=review;
    }
-   entry.next=now()+localTtl;entry.at=now();entry.mapping=mapping;
+   entry.settlementFields=requiredForMatch;
+   const finalRetryMs=Math.max(15000,Number(env.STATS_FINAL_RETRY_MS)||60000);
+   entry.next=now()+(final&&!matchStatsReady(entry)?Math.min(localTtl,finalRetryMs):localTtl);
+   entry.at=now();entry.mapping=mapping;
    await write('display:'+id,entry);displayCache.set(id,entry);if(displayCache.size>3000)displayCache.delete(displayCache.keys().next().value);
   })().finally(()=>{displayFlights.delete(id);const next=displayWaiters.shift();if(next)next();else displayActive--;});displayFlights.set(id,flight);return flight;
  }
