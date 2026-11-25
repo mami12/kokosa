@@ -197,7 +197,7 @@ try{
  {
   const primary=row(101,{stats:{home:{shotsOnTarget:5},away:{fouls:11}}});
   const h=await harness({rows:[primary],env:{BSD_API_KEY:'test-key'},stats:provider=>provider==='bsd'?totals:{...totals,home:{...totals.home,shotsOnTarget:5}}});await h.bet(101);
-  await h.service.tick();assert.equal(h.stats(h.service,primary).away.shotsOnTarget,2);assert.equal(h.stats(h.service,primary).home.shotsOnTarget,5);h.verify();
+  await h.service.tick();assert.equal(h.stats(h.service,primary).away.shotsOnTarget,undefined,'A conflicting provider pair cannot fill the missing side');assert.equal(h.stats(h.service,primary).home.shotsOnTarget,5);h.verify();
  }
  // Each HTTP request counts, including a failed one; hitting 100 stops that provider.
  {
