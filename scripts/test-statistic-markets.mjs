@@ -26,11 +26,11 @@ assert.equal(decoded.stats['10'].shotsOnTarget,2);assert.equal(decoded.stats['10
 const replayed=decodePushMessage({messageType:'match-info',data:{matchId:900,ts:now-300000,scoreBoard:{results:{10:{shotsOnTarget:'3'}}}}}).info;
 assert.equal(replayed.stats['10']._observedAt.shotsOnTarget,old,'delayed source packet neverbecomes fresh justbecause itarrivednow');
 const base={match_id:900,home:'Home',away:'Away',home_score:7,away_score:4,score_at:at,feed_status:'Finished',feed_status_at:at,raw:{homeTeam:{id:10},awayTeam:{id:20}}};
-const row={...base,stats:{10:normalizeTeamStatistics({shotsOnTarget:3,shots:10,fouls:8},{observedAt:at}),20:normalizeTeamStatistics({shotsOnTarget:5,shots:12,fouls:11},{observedAt:at})}};
+const row={...base,stats:{10:normalizeTeamStatistics({shotsOnTarget:3,shots:10,fouls:8,offsides:2},{observedAt:at}),20:normalizeTeamStatistics({shotsOnTarget:5,shots:12,fouls:11,offsides:1},{observedAt:at})}};
 assert.equal(teamStatisticsFromRow(row).home.shotsOnTarget,3);
 assert.equal(teamStatisticsFromRow({...row,raw:{competitors:[{id:10},{id:20}]}}).away.fouls,11);
 assert.equal(trackerTeamStatistics({}).home.shotsOnTarget,null,'unknown never displays aszero');
-assert.deepEqual(verifiedFinalStatistics(row),{shots:{home:10,away:12},shotsOnTarget:{home:3,away:5},fouls:{home:8,away:11}});
+assert.deepEqual(verifiedFinalStatistics(row),{shots:{home:10,away:12},shotsOnTarget:{home:3,away:5},fouls:{home:8,away:11},offsides:{home:2,away:1}});
 const stale={...base,stats:{home:normalizeTeamStatistics({shotsOnTarget:4},{observedAt:staleAt}),away:normalizeTeamStatistics({fouls:2},{observedAt:at})}};
 assert.deepEqual(verifiedFinalStatistics(stale),{fouls:{away:2}},'a final-phase flag does not refresh an oldstat');
 const recentBeforeFinal={...base,stats:{
@@ -213,7 +213,7 @@ try{
  const partial={...base,stats:{home:normalizeTeamStatistics({fouls:9},{observedAt:at})}};
  await db.query(FINISHED_RESULT_INSERT,finishedResultParameters(partial));
  stored=(await db.query('select * from app_match_result where match_id=900')).rows[0];
- assert.deepEqual(stored.statistics.shotsOnTarget,{home:3,away:5});assert.deepEqual(stored.statistics.fouls,{home:9,away:11});
+ assert.deepEqual(stored.statistics.shotsOnTarget,{home:3,away:5});assert.deepEqual(stored.statistics.fouls,{home:9,away:11});assert.deepEqual(stored.statistics.offsides,{home:2,away:1});
  const laterCards={...base,stats:{
   home:normalizeTeamStatistics({corners:6,yellow:2,red:1},{observedAt:at}),
   away:normalizeTeamStatistics({corners:4,yellow:1,red:0},{observedAt:at})
