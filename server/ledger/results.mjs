@@ -12,6 +12,7 @@ import {matchSnapshots} from './match-snapshots.mjs';
 import {eventMarketRequirement} from './event-market-policy.mjs';
 import {teamStatisticsFromRow,verifiedFinalStatistics} from '../match-statistics.mjs';
 import {isStatisticMarket,hasStatisticEvidence} from './statistic-markets.mjs';
+import {resolveSettlementStatistics} from './settlement-review.mjs';
 
 /**
  * Do not settle bets from a made-up 0-0 or a kickoff timer. A final score
@@ -233,7 +234,7 @@ export async function getResult(matchId,{execute=query,readEvidence=loadEventEvi
     if(onEvidenceError)onEvidenceError(error);
     else if(Date.now()-evidenceWarningAt>60000){evidenceWarningAt=Date.now();console.warn('[settle] optional event evidence unavailable; event selections remain pending');}
   }
-  return result;
+  return resolveSettlementStatistics(result);
 }
 
 /** manual result (admin "settle" button): stores the score the admin entered */
