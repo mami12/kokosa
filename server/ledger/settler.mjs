@@ -724,6 +724,7 @@ const periodScores=(line,result)=>{
  * inventing a win/loss or immediately refunding a valid winning proposition.
  */
 export function hasRequiredSettlementEvidence(line, result) {
+  if(String(result?.source??'').toUpperCase()==='FEED'&&settlementStatisticFields(line).length&&!result?._zizobetVerified)return false;
   // A native quote awaiting rule review must never be graded by a
   // coincidentally similar legacy market-name fallback.
   if(line?.accepted_contract?.settlementHold)
@@ -840,6 +841,7 @@ export function hasRequiredSettlementEvidence(line, result) {
  * VOID is allowed only for a proved settlement-rule push/cancellation.
  */
 export function gradeLine(line, result) {
+  if(String(result?.source??'').toUpperCase()==='FEED'&&settlementStatisticFields(line).length&&!result?._zizobetVerified)return null;
   if(line?.accepted_contract?.settlementHold)
     return gradeHeldNativeCombo(line,result);
   line=withFrozenPeriod(line);
