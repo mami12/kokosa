@@ -63,6 +63,13 @@ const legacyHandicapResult=(line,result)=>{
 };
 
 const round = (n) => Number(Number(n).toFixed(2));
+const needsSecondaryStatisticReview=(line,result)=>{
+ const source=String(result?.source??'').toUpperCase();
+ // Zizobet is the settlement authority. Secondary-feed disagreement or a
+ // missing secondary comparison must never veto its recorded final counters.
+ if(source==='ZIZOBET'||source==='ADMIN'||(source==='FEED'&&result?._zizobetVerified===true))return false;
+ return statisticsNeedReview(line,result);
+};
 /**
  * Never downgrade a correlated provider offer to one familiar constituent.
  * An unknown "A AND B" is PENDING unless its entire compound contract
@@ -800,7 +807,7 @@ export function hasRequiredSettlementEvidence(line, result) {
     return hasRequiredSettlementEvidence({...line,market_name:'Full Time Result',live_contract:null},result);
   if (!result||scoreValue(result.home_score)===null||scoreValue(result.away_score)===null)return false;
   // Conflicts block only selections whose settlement depends on that statistic.
-  if(statisticsNeedReview(line,result))return false;
+  if(needsSecondaryStatisticReview(line,result))return false;
   // Aggregate team-stat contracts use their own final statistic evidence;
   // do not route yellow/red cards through the legacy generic CARDS family.
   if(isStatisticMarket(line))return hasStatisticEvidence(line,result);
@@ -914,7 +921,7 @@ export function gradeLine(line, result) {
   line=withFrozenPeriod(line);
   const aggregateCornerStatus=gradeFinalAggregateCornerTotal(line,result);
   if(aggregateCornerStatus!==undefined)return aggregateCornerStatus;
-  if(statisticsNeedReview(line,result))return null;
+  if(needsSecondaryStatisticReview(line,result))return null;
   if(isWinningMethodMarket(line?.market_name))return gradeWinningMethod(line,result);
   const cornerResult=gradeFinalTeamCornerMarket(line,result);
   if(cornerResult!==undefined)return cornerResult;
@@ -1891,7 +1898,9 @@ export async function settleMatch(matchId) {
     // Simple full-time corner Over/Under quotes use the final aggregate
     // counters, never a recovered event-timeline contract.
     const aggregateCornerTotal=!!fullTimeAggregateCornerContract(settlementLine);
-    if(!aggregateCornerTotal&&settlementLine.live_contract&&
+    const aggregateStatistic=isStatisticMarket(settlementLine)||aggregateCornerTotal||
+      gradeFinalTeamCornerMarket(settlementLine,result)!==undefined;
+    if(!aggregateStatistic&&settlementLine.live_contract&&
        SUPPORTED_FACT_KINDS.has(settlementLine.live_contract.kind)){
       status=await gradeStoredEventContract(settlementLine,result,{execute:query});
     }
