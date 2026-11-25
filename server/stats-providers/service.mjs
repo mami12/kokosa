@@ -523,6 +523,16 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
      if(verified){entry.scorers=verified.scorers;entry.goalIntervals=verified.goalIntervals;}
     }catch(error){health.lastError='GOAL_ACTOR_DISPLAY_UNAVAILABLE';}
    }
+   if(final&&finalReviewNeeded){
+    try{
+     const {readAiScoreFinalStatistics}=await import('./football-information.mjs');
+     const aiScore=await readAiScoreFinalStatistics(Number(id),row,{runQuery,now});
+     if(aiScore)observations.push(aiScore);
+     else unavailable.aiscore='NO_CONFIRMED_FINAL_STAT_SNAPSHOT';
+    }catch(error){
+     unavailable.aiscore=/^STATS_[A-Z_0-9]+$/.test(String(error?.message))?error.message:'AISCORE_FINAL_STAT_UNAVAILABLE';
+    }
+   }
    if(final){const review=compareFinalStatistics(observations,{attempted,unavailable});
     await runQuery('insert into app_stat_review(match_id,payload)values($1,$2::jsonb)on conflict(match_id)do update set payload=excluded.payload,updated_at=now()',[Number(id),JSON.stringify(review)]);
     entry.finalReview=review;
