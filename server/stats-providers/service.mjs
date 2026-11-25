@@ -467,7 +467,6 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
          fixtureId: fm.match.id,
          observedAt: new Date(now()).toISOString()
        });
-      }
       } else if(finalReviewNeeded)unavailable.fotmob='STATS_NOT_FINAL';
      } else if(finalReviewNeeded)unavailable.fotmob=fotMobTransportStatus().lastError??'FOTMOB_DETAILS_UNAVAILABLE';
     } catch(error) {
