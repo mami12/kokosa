@@ -81,7 +81,7 @@ const primaryColorResult=resolveSettlementStatistics({
 });
 assert.deepEqual(primaryColorResult.statistics.cards,{home:3,away:1},
  'a complete Zizobet yellow+red pair supplies full-time total cards even without secondary review');
-assert.equal(statisticsNeedReview(totalCards,primaryColorResult),false);
+assert.equal(statisticsNeedReview({market_name:'Total Cards',line:'3.5'},primaryColorResult),false);
 const missingZizoReview=compareFinalStatistics([{
  provider:'fotmob',final:true,fixtureId:'fm-900',observedAt:at,
  values:{corners:{home:6,away:4},shotsOnTarget:{home:3,away:2},
