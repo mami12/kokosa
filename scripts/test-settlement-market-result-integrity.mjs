@@ -194,8 +194,8 @@ params=finishedResultParameters({...raw,stats:{
 assert.equal(params[7],3);
 assert.equal(params[8],1);
 params=finishedResultParameters({...raw,stats:{
- home:{yellow:1,red:0,corners:10,corners2H:6},
- away:{yellow:0,red:0,corners:3,corners2H:1}
+ home:{yellow:1,red:0,corners:10,corners2H:6,_observedAt:{yellow:raw.score_at,red:raw.score_at,corners:raw.score_at,corners2H:raw.score_at}},
+ away:{yellow:0,red:0,corners:3,corners2H:1,_observedAt:{yellow:raw.score_at,red:raw.score_at,corners:raw.score_at,corners2H:raw.score_at}}
 }});
 const cornerPeriods=JSON.parse(params[11]).cornerPeriods;
 assert.deepEqual(cornerPeriods,{
@@ -203,8 +203,8 @@ assert.deepEqual(cornerPeriods,{
  fullTime:{home:10,away:3},source:'ZIZOBET'
 },'Zizobet 2H corner counters plus FT counters must reconstruct both halves');
 params=finishedResultParameters({...raw,stats:{
- home:{yellow:1,red:0,corners:10,cornersHT:4},
- away:{yellow:0,red:0,corners:3,cornersHT:2}
+ home:{yellow:1,red:0,corners:10,cornersHT:4,_observedAt:{yellow:raw.score_at,red:raw.score_at,corners:raw.score_at,cornersHT:raw.score_at}},
+ away:{yellow:0,red:0,corners:3,cornersHT:2,_observedAt:{yellow:raw.score_at,red:raw.score_at,corners:raw.score_at,cornersHT:raw.score_at}}
 }});
 assert.deepEqual(JSON.parse(params[11]).cornerPeriods,{
  firstHalf:{home:4,away:2},secondHalf:{home:6,away:1},
