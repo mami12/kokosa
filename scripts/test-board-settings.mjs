@@ -26,6 +26,8 @@ assert.equal(competitionPriority(row(903,'international-clubs','Champions League
  'Champions League keeps top prematch priority even when Zizobet labels its category international-clubs');
 assert.equal(competitionPriority(row(909,'international-clubs','UEFA Champions League')).priority,1,
  'UEFA Champions League has top prematch priority under a generic Zizobet category');
+assert.equal(competitionPriority(row(914,'international-clubs','UEFA Europa League')).priority,2,
+ 'UEFA Europa League follows UEFA Champions League in prematch priority');
 assert.equal(competitionPriority(row(910,'international-clubs','GT Champions League')).protected,false,
  'GT Champions League must not inherit UEFA competition priority');
 assert.equal(competitionPriority(row(911,'international-clubs','GT Sports League')).protected,false,
