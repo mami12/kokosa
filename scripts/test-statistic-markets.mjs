@@ -157,7 +157,7 @@ const zizoFinalStats={
 const fullTimeMarkets=[
  {market_name:'Total Shots',line:'12.5',outcome_key:'over',outcome_name:'Over'},
  {market_name:'Total Shots on Target',line:'5.5',outcome_key:'over',outcome_name:'Over'},
- {market_name:'Total Fouls',line:'19.5',outcome_key:'over',outcome_name:'Under'},
+ {market_name:'Total Fouls',line:'19.5',outcome_key:'over',outcome_name:'Over'},
  {market_name:'Total Offsides',line:'3.5',outcome_key:'over',outcome_name:'Over'},
  {market_name:'Total Yellow Cards',line:'2.5',outcome_key:'over',outcome_name:'Over'},
  {market_name:'Total Red Cards',line:'0.5',outcome_key:'under',outcome_name:'Under'}
