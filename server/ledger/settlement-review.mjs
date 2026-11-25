@@ -53,7 +53,10 @@ export function resolveSettlementStatistics(result){
  const output={...result,statistics};
  for(const field of REVIEW_FIELDS){
   const primary=primaryPair(result,field);
-  if(primary){resolved[field]=[String(result.source??'ZIZOBET').toUpperCase()];continue;}
+  if(primary){
+   if(field==='cards'&&!pair(statistics.cards))statistics.cards=primary;
+   resolved[field]=[String(result.source??'ZIZOBET').toUpperCase()];continue;
+  }
   let candidate=pair(review.consensus?.[field]);
   let providers=Object.entries(review.sources??{}).length?[]:[];
   providers=(review.sources??[]).filter(source=>source.final===true&&same(pair(source.values?.[field]),candidate))
@@ -68,7 +71,7 @@ export function resolveSettlementStatistics(result){
   if(!candidate||review.conflicts?.[field])continue;
   if(!providers.length)continue;
   if(field==='corners'){output.corners_home=candidate.home;output.corners_away=candidate.away;}
-  else if(field==='cards'){output.cards_home=candidate.home;output.cards_away=candidate.away;}
+  else if(field==='cards'){output.cards_home=candidate.home;output.cards_away=candidate.away;statistics.cards=candidate;}
   else statistics[field]=candidate;
   resolved[field]=providers;
  }
