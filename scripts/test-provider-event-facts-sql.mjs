@@ -277,13 +277,12 @@ try{
  const phaseProbe=await run(`select phase,
   regexp_replace(lower(coalesce(phase,'')),'[^a-z0-9]','','g') as phase_key,
   nullif(trim(coalesce(phase,'')),'') is null as phase_is_blank,
-  lower(regexp_replace(coalesce(phase,''),'[^a-z0-9]','','g')) not in
-   ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf') as phase_is_unknown,
-  (minute>90 and not
-   (regexp_replace(lower(coalesce(phase,'')),'[^a-z0-9]','','g') in ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1',
-    '2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2',
-    'regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime','90','stoppage','stoppagetime','injurytime')
-    or regexp_replace(lower(coalesce(phase,'')),'[^a-z0-9]','','g') ~ '^45[0-9]{1,2}
+  lower(regexp_replace(coalesce(phase,''),'[^a-z0-9]','','g')) in
+   ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf') as is_explicit_extra_time,
+  (minute>90 and (nullif(trim(coalesce(phase,'')),'') is null or
+   lower(regexp_replace(coalesce(phase,''),'[^a-z0-9]','','g')) not in
+    ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf'))) as phase_ambiguous_probe
+  from app_match_event_fact where match_id=$1 and provider_event_id='goal-extra-time'`,[extraTimeMatch]);
  console.log('[extra-time-phase-probe]',JSON.stringify(phaseProbe.rows));
  const extraTimeDebug=async(sql,params)=>{
   const output=await run(sql,params);
