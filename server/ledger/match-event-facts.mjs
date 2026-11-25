@@ -567,8 +567,9 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
        when regexp_replace(lower(coalesce(f.phase,'')),'[^a-z0-9]','','g') in
         ('regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime',
          '90','stoppage','stoppagetime','injurytime') then case when f.minute<=45 then 1 else 2 end
-       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=45 then 1
-       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90 then 2
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<45 then 1
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute=45 then 1.5
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute>45 and f.minute<=90 then 2
        when regexp_replace(lower(coalesce(f.phase,'')),'[^a-z0-9]','','g') in
         ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf') then 3
        else 4
@@ -589,7 +590,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
     count(*) filter(where team='away')::int as away,
     (select count(*)::int from normal_ordered where team='home') as normal_home,
     (select count(*)::int from normal_ordered where team='away') as normal_away,
-    bool_or(minute>90 and not normal_time and (nullif(trim(coalesce(phase,'')),'') is null or regexp_replace(lower(coalesce(phase,'')),'[^a-z0-9]','','g') not in ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf'))) as phase_ambiguous,
+    bool_or((minute=45 and nullif(trim(coalesce(phase,'')),'') is null) or
+      (minute>90 and not normal_time and (nullif(trim(coalesce(phase,'')),'') is null or regexp_replace(lower(coalesce(phase,'')),'[^a-z0-9]','','g') not in ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf')))) as phase_ambiguous,
     count(*) filter(where card_color=$15::text)::int as color_total,
     count(*) filter(where team='home' and card_color=$15::text)::int as color_home,
     count(*) filter(where team='away' and card_color=$15::text)::int as color_away,
@@ -1006,6 +1008,7 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
   return c.noneOffered===true?(c.side==='none'?'WON':'LOST'):'VOID';
  }
  if(c.kind==='race'){
+  if(data.phase_ambiguous===true)return null;
   if(!Number.isInteger(c.target)||c.target<1||
      !['home','away','none'].includes(c.side))return null;
   const h=data.race_home_time==null?null:Number(data.race_home_time);
