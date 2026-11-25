@@ -1,6 +1,6 @@
 ﻿import { marketDiagnosticAll } from '../../utils/marketExpiry';
 import { useMemo, useState } from 'react';
-import { Trophy, Target, Flag, Clock, ListOrdered, Layers, Search } from 'lucide-react';
+import { Trophy, Target, Flag, Clock, ListOrdered, Layers, Search, CreditCard } from 'lucide-react';
 import { Match, Market } from '../../types';
 import OddsButton from './OddsButton';
 import MarketInfoButton from './MarketInfoButton';
@@ -36,6 +36,7 @@ const CATEGORIES: CategoryDef[] = [
   { key: 'goals', label: 'Goals', icon: Target },
   { key: 'mixed', label: 'Combos', icon: Layers },
   { key: 'corners', label: 'Corners', icon: Flag },
+  { key: 'cards', label: 'Cards', icon: CreditCard },
   { key: 'htft', label: 'Halves / Periods', icon: Clock },
   { key: 'other', label: 'Other', icon: ListOrdered },
 ];
