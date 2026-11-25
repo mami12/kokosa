@@ -19,8 +19,8 @@ export function competitionPriority(row){
  const label=normalizeCompetition(name);
  // Continental cup names are reliable identifiers even when Zizobet assigns
  // them to a generic category such as "international-clubs" instead of "europe".
- // Rank them before domestic leagues so the administrator's prematch cap is
- // applied only after the intended competition order has been established.
+ // Rank them before domestic leagues on the same local date, so the
+ // administrator's prematch cap respects both date groups and competition order.
  const nonEuropeanCompetition=/\b(?:afc|caf|concacaf|conmebol|ofc|asian|african|north american|south american)\b/.test(label)
   ||['asia','africa','south-america','north-america','central-america','oceania','concacaf','conmebol','afc','caf','ofc'].includes(country);
  if(!nonEuropeanCompetition&&/\b(?:champions league|europa league|conference league|nations league|european championship)\b/.test(label))return {priority:1,protected:true};
