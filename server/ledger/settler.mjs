@@ -1889,11 +1889,14 @@ export async function settleAll() {
   catch (error) { console.error('[settle] result capture failed:', error.message); }
   const ids = await unsettledMatchIds();
 
-  const results = [];
-  for (const id of ids) {
-    try { results.push(await settleMatch(id)); }
-    catch (e) { console.error('[settle] match', id, 'failed:', e.message); }
-  }
+  // Matches are independent work units. Bound concurrency to protect the local DB,
+  // while each match shares one final snapshot and writes all resolved lines in bulk.
+  const matchConcurrency=Math.max(1,Math.min(8,Number(process.env.SETTLEMENT_MATCH_CONCURRENCY)||4));
+  const settledBatch=await mapLimit(ids,matchConcurrency,async id=>{
+    try{return await settleMatch(id);}
+    catch(error){console.error('[settle] match',id,'failed:',error.message);return null;}
+  });
+  const results=settledBatch.filter(Boolean);
   let primaryFacts={examined:0,graded:0,closed:[]};
   try{primaryFacts=await settleVerifiedEventFacts();}
   catch(error){console.error('[settle] verified primary event facts failed:',error.message);}
