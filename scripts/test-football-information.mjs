@@ -144,7 +144,7 @@ const noMarket=await inspectFootballInformation(101,{
  },loadMatch:async()=>ledgerMatch,
  request:async()=>{throw Error('Must not hit the secondary API');}
 });
-assert.equal(noMarket.status,'NO_PRIMARY_BETTED_MARKETS');
+assert.equal(noMarket.status,'NO_SUPPLEMENTARY_NEEDS');
 let hit=0;
 const disabled=createFootballInformationCollector({env:{},runQuery:async()=>{throw Error('No DB request when disabled');}});
 assert.equal((await disabled.tick()).enabled,false);
