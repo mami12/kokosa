@@ -90,7 +90,8 @@ assert.deepEqual(aiFinal?.values.corners,{home:5,away:3});
 assert.deepEqual(aiFinal?.values.yellow,{home:2,away:1});
 assert.deepEqual(aiFinal?.values.red,{home:1,away:0});
 assert.deepEqual(aiFinal?.values.cards,{home:3,away:1});
-assert.deepEqual(aiFinal?.values.shotsOnTarget,{home:4,away:2});
+assert.equal(Object.hasOwn(aiFinal?.values??{},'shotsOnTarget'),false,
+ 'unsupported shots-on-target facts are not included in AiScore settlement evidence');
 assert.equal(parseAiScoreFinalStatistics({...verifiedAiPayload,data:{match:{...verifiedAiPayload.data.match,status:'LIVE'}}},'j374oi0xz04sgqo',ledgerMatch),null,
  'a live or not explicitly finished AiScore response is never final settlement evidence');
 assert.equal(parseAiScoreFinalStatistics(verifiedAiPayload,'wrong-id',ledgerMatch),null,
