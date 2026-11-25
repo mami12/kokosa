@@ -23,42 +23,51 @@ export function compareFinalStatistics(observations,{attempted=[],unavailable={}
 }
 export function settlementStatisticFields(line){
  if(Array.isArray(line.builder_legs))return [...new Set(line.builder_legs.flatMap(settlementStatisticFields))];
- const text=String(line.market_name??line.name??'').toLowerCase();
- if(/yellow/.test(text))return ['yellow'];
- if(/red/.test(text))return ['red'];
- if(/card|booking|karton/.test(text))return ['cards'];
- if(/corner|korner/.test(text))return ['corners'];
- if(/shot.*(?:target|goal)|goditj.*port/.test(text))return ['shotsOnTarget'];
- if(/shot|goditj/.test(text))return ['shots'];
- if(/foul|faull/.test(text))return ['fouls'];
+ const name=String(line.market_name??line.name??'').toLowerCase();
+ if(/yellow/.test(name))return ['yellow'];
+ if(/red/.test(name))return ['red'];
+ if(/card|booking|karton/.test(name))return ['cards'];
+ if(/corner|korner/.test(name))return ['corners'];
+ if(/shot.*(?:target|goal)|goditj.*port/.test(name))return ['shotsOnTarget'];
+ if(/shot|goditj/.test(name))return ['shots'];
+ if(/foul|faull/.test(name))return ['fouls'];
  return [];
 }
+const resultStatistics=result=>{
+ let value=result?.statistics;
+ if(typeof value==='string'){try{value=JSON.parse(value);}catch{value={};}}
+ return value??{};
+};
 const primaryPair=(result,field)=>{
- if(field==='corners')return pair({home:result?.corners_home,away:result?.corners_away});
- if(field==='cards')return pair({home:result?.cards_home,away:result?.cards_away});
- let stats=result?.statistics;if(typeof stats==='string'){try{stats=JSON.parse(stats);}catch{stats=null;}}
- return pair(stats?.[field]);
+ const stats=resultStatistics(result);
+ if(field==='corners')return pair({home:result?.corners_home??stats.corners?.home,away:result?.corners_away??stats.corners?.away});
+ if(field==='cards')return pair({home:result?.cards_home??stats.cards?.home,away:result?.cards_away??stats.cards?.away});
+ return pair(stats[field]);
+};
+const hasAnyPrimary=(result,field)=>{
+ const stats=resultStatistics(result);
+ if(field==='corners')return result?.corners_home!=null||result?.corners_away!=null||stats.corners?.home!=null||stats.corners?.away!=null;
+ if(field==='cards')return result?.cards_home!=null||result?.cards_away!=null||stats.cards?.home!=null||stats.cards?.away!=null;
+ return stats[field]?.home!=null||stats[field]?.away!=null;
 };
 /** Attach only missing secondary consensus facts to a copy of the primary result.
- * The original Zizobet result columns and source are never replaced.
+ * Never overwrite either side of a partial primary value or a conflicting field.
  */
 export function resolveSettlementStatistics(result){
  if(!result||typeof result!=='object')return result;
  const review=result.statistics_review;
  if(!review||typeof review!=='object')return result;
- let statistics=result.statistics;
- if(typeof statistics==='string'){try{statistics=JSON.parse(statistics);}catch{statistics={};}}
- statistics={...(statistics??{})};
- const resolved={...(result._settlementSources??{})};
+ const statistics={...resultStatistics(result)},resolved={...(result._settlementSources??{})};
  const output={...result,statistics};
  for(const field of REVIEW_FIELDS){
   const primary=primaryPair(result,field);
   if(primary){
-   if(field==='cards'&&!pair(statistics.cards))statistics.cards=primary;
+   if(field==='cards')statistics.cards=primary;
+   if(field==='corners')statistics.corners=primary;
    resolved[field]=[String(result.source??'ZIZOBET').toUpperCase()];continue;
   }
-  let candidate=pair(review.consensus?.[field]);
-  let providers=Object.entries(review.sources??{}).length?[]:[];
+  if(hasAnyPrimary(result,field))continue;
+  let candidate=pair(review.consensus?.[field]),providers=[];
   providers=(review.sources??[]).filter(source=>source.final===true&&same(pair(source.values?.[field]),candidate))
    .map(source=>({provider:source.provider,observedAt:source.observedAt??null,fixtureId:source.fixtureId??null}));
   if(!candidate&&field==='cards'){
@@ -68,9 +77,8 @@ export function resolveSettlementStatistics(result){
    const shared=yProviders.filter(provider=>rProviders.includes(provider));
    if(yellow&&red&&shared.length){candidate={home:yellow.home+red.home,away:yellow.away+red.away};providers=shared.map(provider=>({provider,observedAt:review.checkedAt??null,fixtureId:null}));}
   }
-  if(!candidate||review.conflicts?.[field])continue;
-  if(!providers.length)continue;
-  if(field==='corners'){output.corners_home=candidate.home;output.corners_away=candidate.away;}
+  if(!candidate||review.conflicts?.[field]||!providers.length)continue;
+  if(field==='corners'){output.corners_home=candidate.home;output.corners_away=candidate.away;statistics.corners=candidate;}
   else if(field==='cards'){output.cards_home=candidate.home;output.cards_away=candidate.away;statistics.cards=candidate;}
   else statistics[field]=candidate;
   resolved[field]=providers;
@@ -84,10 +92,9 @@ export function statisticsNeedReview(line,result){
  if(fields.some(field=>review?.conflicts?.[field]))return true;
  for(const field of fields){
   if(primaryPair(result,field))continue;
+  if(hasAnyPrimary(result,field))return true;
   if(result?.statistics_review_pending&&!review)return true;
-  if(review?.complete!==true||!pair(review?.consensus?.[field])){
-   if(review)return true;
-  }
+  if(review&&(!review.complete||!pair(review.consensus?.[field])))return true;
  }
  return false;
 }
