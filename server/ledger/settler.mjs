@@ -757,10 +757,10 @@ const periodScores=(line,result)=>{
 };
 
 /**
- * Plain full-time corner totals are settled from the final aggregate counters.
- * They do not depend on an event timeline, event confirmation, or secondary-feed
- * agreement. Interval, race, next-corner and other event-order contracts are
- * deliberately excluded by cornerTotalContract and the explicit period check.
+ * Plain aggregate corner totals are settled from the counters for their own
+ * completed period: HT, 2H, or FT. They do not depend on event-timeline
+ * confirmation. Interval, race, next-corner and other event-order contracts
+ * remain excluded by cornerTotalContract.
  */
 function fullTimeAggregateCornerContract(line={}){
  const period=scorePeriodOf(line);
@@ -1592,9 +1592,8 @@ export function settledOddsFor(line,result,status){
  return period&&period.home===period.away?1:null;
 }
 /**
- * First-half-only score contracts may settle on verified HT independently of
- * the full-time result. No corner/card/player-event or HT/FT proposition
- * may use the synthetic HT-only score context.
+ * First-half score and aggregate-stat contracts settle at the recorded HT
+ * transition. Event-order, player and HT/FT propositions keep their own rules.
  */
 export function firstHalfScoreOnly(line){
  if(!line||Array.isArray(line.builder_legs))return false;
@@ -1646,8 +1645,8 @@ export function gradeAtVerifiedHalfTime(line,half){
  const home=scoreValue(half.half_home_score),away=scoreValue(half.half_away_score);
  if(home===null||away===null)return null;
  line=withFrozenPeriod(line);
- // Deliberately synthetic, scoped ONLY to the vetted 1H subset above.
- // This result never enters app_match_result or a FT audit.
+ // Synthetic HT-only context for the vetted score and aggregate-stat subset.
+ // It never enters app_match_result or a full-time audit.
  const halfStatistics=typeof half.statistics==='string'?JSON.parse(half.statistics||'{}'):(half.statistics??{});
  const result={source:'ZIZOBET',home_team:half.home_team,away_team:half.away_team,
   home_score:home,away_score:away,half_home_score:home,half_away_score:away,
