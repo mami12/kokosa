@@ -48,6 +48,8 @@ import {gradeStoredEventContract,SUPPORTED_FACT_KINDS} from './match-event-facts
 import {recoverLegacyZizobetCornerContract} from './legacy-zizobet-corner-contract.mjs';
 import {backfillPendingTeamGoalContracts} from './live-contract-backfill.mjs';
 import {settleVerifiedLiveProposals} from './verified-live-settlement.mjs';
+import {nativeZizobetContractRow} from './native-zizobet-contract.mjs';
+import {isWinningMethodMarket,gradeWinningMethod} from './winning-method.mjs';
 
 const legacyHandicapResult=(line,result)=>{
  const saved=line?.live_contract?.kind==='score-handicap'?line.live_contract:null;
@@ -98,7 +100,7 @@ export function unverifiedCompositeLine(line={},result={}){
  */
 export function gradeHeldNativeCombo(line,result){
  const saved=line?.accepted_contract,reason=String(saved?.settlementHold??'');
- if(!['NATIVE_FINAL_RULE_UNMAPPED','NATIVE_HALF_COMBO_UNMAPPED',
+ if(!['NATIVE_PARAMETERS_UNMAPPED','NATIVE_FINAL_RULE_UNMAPPED','NATIVE_HALF_COMBO_UNMAPPED',
       'NATIVE_PERIOD_GOAL_UNMAPPED','NATIVE_CONTRACT_REVIEW',
       'NATIVE_LIVE_HANDICAP_UNMAPPED','NATIVE_HANDICAP_UNMAPPED'].includes(reason))return null;
  if(String(saved?.sourceProviderId??'').toUpperCase()!=='ZIZOBET')return null;
@@ -112,6 +114,27 @@ export function gradeHeldNativeCombo(line,result){
  const rawPeriod=Number(saved.providerPeriod??0);
  if(![0,1,2].includes(rawPeriod)||
     (line.period!=null&&Number(line.period)!==rawPeriod))return null;
+ if(reason==='NATIVE_PARAMETERS_UNMAPPED'){
+  if(!saved.nativeMarketName||!saved.providerMarketKey||saved.nativeMarketId==null)return null;
+  let decoded;
+  try{decoded=nativeZizobetContractRow({
+   provider_id:saved.sourceProviderId,market_key:saved.providerMarketKey,
+   native_market_id:saved.nativeMarketId,native_market_name:saved.nativeMarketName,
+   native_parameters:saved.nativeParameters,line:String(saved.line??''),
+   market_name:saved.providerMarketName
+  },{competitors:{
+   home:saved.homeTeamName??result?.home_team,
+   away:saved.awayTeamName??result?.away_team
+  }});}catch{return null;}
+  if(!decoded?.market_name)return null;
+  const repaired={...line,market_name:decoded.market_name,
+   outcome_name:saved.providerOutcomeName,outcome_key:saved.providerOutcomeKey,
+   line:String(saved.line??''),period:rawPeriod,
+   accepted_contract:{...saved,settlementHold:null}};
+  if(!hasRequiredSettlementEvidence(repaired,result))return null;
+  const status=gradeLine(repaired,result);
+  return ['WON','LOST','VOID'].includes(status)?status:null;
+ }
  const frozen={
   market_name:saved.providerMarketName,
   outcome_name:saved.providerOutcomeName,
@@ -514,6 +537,7 @@ export function classify(marketName = '') {
   if (isResultBttsMarket(marketName)) return 'RESULT_BTTS';
   if (/^which team to score$/i.test(String(marketName).trim())) return 'WHICH_TEAM_TO_SCORE';
   if (isWinningMarginMarket({market_name:marketName})) return 'WINNING_MARGIN';
+  if (isWinningMethodMarket(marketName)) return 'WINNING_METHOD';
   if (isMultiscoresMarket(marketName)) return 'MULTISCORES';
   if (isMatchbetFirstGoalMarket(marketName)) return 'MATCHBET_FIRST_GOAL';
   if (isQualificationMarket(marketName)) return 'TO_QUALIFY';
@@ -756,6 +780,7 @@ export function hasRequiredSettlementEvidence(line, result) {
   if(isMultiscoresMarket(String(line.market_name??'')))return gradeMultiscores(line,result)!==null;
   if(isMatchbetFirstGoalMarket(String(line.market_name??'')))return gradeMatchbetFirstGoal(line,result)!==null;
   if(isQualificationMarket(String(line.market_name??'')))return gradeQualification(line,result)!==null;
+  if(isWinningMethodMarket(line.market_name))return gradeWinningMethod(line,result)!==null;
   if(isPeriodGoalTotal(line))return gradePeriodGoalTotal(parsePeriodGoalTotal(line,result),result)!==null;
   if(isScoringPropMarket(line))return gradeScoringPropMarket(line,result)!==null;
   if(isHalfExactMarketFamily(line))return false; // FT counts are not 1H/2H corner/card facts
@@ -846,6 +871,7 @@ export function gradeLine(line, result) {
     return gradeHeldNativeCombo(line,result);
   line=withFrozenPeriod(line);
   if(statisticsNeedReview(line,result))return null;
+  if(isWinningMethodMarket(line?.market_name))return gradeWinningMethod(line,result);
   const cornerResult=gradeFinalTeamCornerMarket(line,result);
   if(cornerResult!==undefined)return cornerResult;
   const namedResult=gradeNamedFinalTeamMarket(line,result);
