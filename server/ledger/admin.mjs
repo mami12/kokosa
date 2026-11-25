@@ -12,7 +12,7 @@ import {assertAccountPassword} from './account-password-policy.mjs';
 import * as ledger from './store.mjs';
 import * as bets from './bets.mjs';
 import * as overrides from './overrides.mjs';
-import { settleMatch, settleAll } from './settler.mjs';
+import { settleMatch, settleAll, manualSettleLine } from './settler.mjs';
 import { recentResults, storeResult, pendingSettlementReview } from './results.mjs';
 import { query } from '../db.mjs';
 import { getMatches as getMatchRows, getMatchById as getMatchRow, boostMatch } from '../matches.mjs';
@@ -736,6 +736,19 @@ adminRouter.get(
     res.json({ pending: await pendingSettlementReview(req.query.limit) });
   }),
 );
+
+/** Decide one unresolved selection without changing unrelated lines.
+ * This is an API-only addition; the existing admin UI is left untouched.
+ */
+adminRouter.patch('/admin/settlement/lines/:id', ...admin, guard(async (req,res) => {
+  const id=String(req.params.id??'');
+  if(!uuidPattern.test(id))throw badRequest('ID e përzgjedhjes nuk është i vlefshëm.');
+  const status=String(req.body?.status??'').toUpperCase();
+  if(!['WON','LOST','PENDING'].includes(status))
+    throw badRequest('Statusi duhet të jetë WON, LOST ose PENDING.');
+  const result=await manualSettleLine(id,status,{actorId:req.user.id,reason:req.body?.reason});
+  res.json({ok:true,...result});
+}));
 
 /** stored results plus a settlement pass (safe: idempotent) */
 const runSettlementHandler = guard(async (_req, res) => {
