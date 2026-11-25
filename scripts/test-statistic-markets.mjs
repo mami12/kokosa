@@ -98,12 +98,13 @@ const totalCorners={market_name:'Total Corners',line:'9.5',outcome_key:'over',ou
 const totalCards={market_name:'Total Cards',line:'3.5',outcome_key:'over',outcome_name:'Over'};
 const totalYellow={market_name:'Total Yellow Cards',line:'2.5',outcome_key:'over',outcome_name:'Over'};
 const totalRed={market_name:'Total Red Cards',line:'0.5',outcome_key:'over',outcome_name:'Over'};
-assert.equal(isStatisticMarket(totalCorners),true);
+assert.equal(isStatisticMarket(totalCorners),false,'corner totals retain the established cornerTotalContract parser');
 assert.equal(isStatisticMarket(totalCards),true);
 assert.equal(statisticMarketContract(totalCards).stat,'cards');
 assert.equal(statisticMarketContract(totalYellow).stat,'yellow');
 assert.equal(statisticMarketContract(totalRed).stat,'red');
-assert.equal(gradeStatisticLine(totalCorners,fallbackResult),'WON');
+assert.equal(hasRequiredSettlementEvidence(totalCorners,fallbackResult),true);
+assert.equal(gradeLine(totalCorners,fallbackResult),'WON', 'the existing total-corner parser uses the resolved final Zizobet/FotMob counters');
 assert.equal(gradeStatisticLine(totalCards,fallbackResult),'WON');
 assert.equal(gradeStatisticLine(totalYellow,fallbackResult),'WON');
 assert.equal(gradeStatisticLine(totalRed,fallbackResult),'WON');
