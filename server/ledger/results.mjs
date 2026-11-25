@@ -213,6 +213,10 @@ export async function getResult(matchId,{execute=query,readEvidence=loadEventEvi
     const snapshot=current?.raw?.provider?current:
       (await matchSnapshots.load([Number(matchId)]))[0]??null;
     if(String(snapshot?.raw?.provider??'').toUpperCase()!=='ZIZOBET')return null;
+    // FEED is a legacy DB label. Once its live snapshot proves Zizobet identity,
+    // expose the canonical source to the settlement engine and audit trail.
+    result.source='ZIZOBET';
+    result._zizobetVerified=true;
   }else if(source!=='ZIZOBET'&&source!=='ADMIN')return null;
   const review=(await execute('select payload from app_stat_review where match_id=$1',[Number(matchId)])).rows[0]?.payload;
   result.statistics_review=review??null;
