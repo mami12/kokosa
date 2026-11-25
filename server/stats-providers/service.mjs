@@ -65,7 +65,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
  const displayCache=new Map(),displayFlights=new Map();let displayActive=0;const displayWaiters=[];
  const displayTtl=refreshMs;
  const health={lastRunAt:null,lastError:null,providers:{}};
- const enabled=()=>env.STATS_PROVIDERS_ENABLED==='true';
+ const enabled=()=>env.STATS_PROVIDERS_ENABLED!=='false';
  const betWatchIds=async()=>new Set([...(getWatchIds?await getWatchIds():(await runQuery("select distinct l.match_id from app_ticket_line l join app_ticket t on t.id=l.ticket_id where l.status='PENDING' and t.status='PENDING' order by l.match_id")).rows.map(row=>row.match_id))].map(String));
  // Only pending tickets and explicitly opened match details may spend
  // supplementary API requests. Observing a Zizobet live header is not user
@@ -283,7 +283,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
       "select distinct l.live_contract->>'event' as kind,coalesce(l.live_contract->>'cardColor','') as card_color,l.market_name "+
       "from app_ticket_line l join app_ticket t on t.id=l.ticket_id "+
       "where l.match_id=$1 and l.status='PENDING' and t.status='PENDING' "+
-      "and l.live_contract->>'event' in ('corner','card')",[Number(id)])).rows;
+      "and l.live_contract->>'event' in ('goal','corner','card')",[Number(id)])).rows;
     }catch(error){
      // Older test/import schemas may not yet contain frozen native contracts.
      // They simply have no native event-timeline fallback candidates.
@@ -297,6 +297,8 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    const statReview=typeof statReviewRow?.payload==='string'?(()=>{try{return JSON.parse(statReviewRow.payload);}catch{return {};}})():statReviewRow?.payload??{};
    const validCount=value=>value!=null&&value!==''&&Number.isSafeInteger(Number(value))&&Number(value)>=0;
    const pairForEvent=kind=>{
+    if(kind==='goal')return {home:validCount(result?.home_score)?Number(result.home_score):null,
+    away:validCount(result?.away_score)?Number(result.away_score):null};
     const field=kind==='corner'?'corners':'cards';
     let home=kind==='corner'?result?.corners_home:result?.cards_home;
     let away=kind==='corner'?result?.corners_away:result?.cards_away;
@@ -484,7 +486,14 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
        const rawTimeline=details?.content?.matchFacts?.events?.events;
        if(final&&parsed.finished&&result&&Number(parsed.homeScore)===Number(result.home_score)&&
           Number(parsed.awayScore)===Number(result.away_score)&&Array.isArray(rawTimeline)){
-        for(const kind of finalTimelineNeeds){
+        if(finalTimelineNeeds.includes('goal')&&parsed.goalTimelineAvailable&&typeof persistGoalFacts==='function'){
+        try{
+         const saved=await persistGoalFacts(Number(id),{source:'fotmob',final:true,complete:true,
+          goalsAvailable:true,homeScore:parsed.homeScore,awayScore:parsed.awayScore,events:parsed.goalEvents});
+         if(saved?.stored===true||saved?.reason==='ALREADY_VERIFIED')persistedHistoricalKinds.add('goal');
+        }catch(error){console.warn('[historical goal fallback]',id,'fotmob',String(error?.message??error));}
+       }
+       for(const kind of finalTimelineNeeds.filter(kind=>kind!=='goal')){
          const events=kind==='corner'?parsed.cornerEvents:parsed.cardEvents;
          // Never infer a provider's final total from the same event list we are
          // trying to validate. FotMob must supply explicit FT team counters too.
@@ -573,6 +582,16 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
      if(backup&&Number(backup.homeScore)===Number(result.home_score)&&
         Number(backup.awayScore)===Number(result.away_score)){
       for(const kind of stillMissingTimelineKinds){
+       if(kind==='goal'){
+        if(typeof persistGoalFacts!=='function')continue;
+        try{
+         const saved=await persistGoalFacts(Number(id),{source:backup.source,final:true,complete:true,
+          goalsAvailable:backup.evidence?.goalsAvailable===true,homeScore:backup.homeScore,
+          awayScore:backup.awayScore,events:backup.evidence?.events??[]});
+         if(saved?.stored===true||saved?.reason==='ALREADY_VERIFIED')persistedHistoricalKinds.add('goal');
+        }catch(error){console.warn('[historical goal recovery]',id,backup.source,String(error?.message??error));}
+        continue;
+       }
        const prefix=kind==='corner'?'corner':'card';
        const events=kind==='corner'?backup.cornerEvents:backup.cardEvents;
        const homeCount=kind==='corner'?backup.cornersHome:backup.cardsHome;
