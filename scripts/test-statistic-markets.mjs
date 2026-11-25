@@ -144,6 +144,36 @@ assert.equal(gradeLine(totalCards,fallbackResult),'WON');
 assert.equal(gradeLine(totalYellow,fallbackResult),'WON');
 assert.equal(gradeLine(totalRed,fallbackResult),'WON',
  'yellow and red totals must bypass the legacy generic CARDS-family gate');
+const zizoFinalStats={
+ source:'ZIZOBET',home_score:2,away_score:1,
+ statistics:{shots:{home:8,away:5},shotsOnTarget:{home:4,away:2},
+  fouls:{home:9,away:11},offsides:{home:3,away:1},
+  yellow:{home:2,away:1},red:{home:0,away:0},cards:{home:2,away:1}},
+ statistics_review:{conflicts:{
+  shotsOnTarget:{ZIZOBET:{home:4,away:2},fotmob:{home:3,away:2}},
+  fouls:{ZIZOBET:{home:9,away:11},fotmob:{home:8,away:11}}
+ }}
+};
+const fullTimeMarkets=[
+ {market_name:'Total Shots',line:'12.5',outcome_key:'over',outcome_name:'Over'},
+ {market_name:'Total Shots on Target',line:'5.5',outcome_key:'over',outcome_name:'Over'},
+ {market_name:'Total Fouls',line:'19.5',outcome_key:'over',outcome_name:'Under'},
+ {market_name:'Total Offsides',line:'3.5',outcome_key:'over',outcome_name:'Over'},
+ {market_name:'Total Yellow Cards',line:'2.5',outcome_key:'over',outcome_name:'Over'},
+ {market_name:'Total Red Cards',line:'0.5',outcome_key:'under',outcome_name:'Under'}
+];
+for(const baseLine of fullTimeMarkets){
+ for(const placement of ['PREMATCH','LIVE']){
+  const line={...baseLine,accepted_contract:{placement}};
+  assert.equal(hasRequiredSettlementEvidence(line,zizoFinalStats),true,
+   placement+' '+line.market_name+' uses the recorded primary final statistic');
+  assert.ok(['WON','LOST','VOID'].includes(gradeLine(line,zizoFinalStats)),
+   placement+' '+line.market_name+' must not stay pending because secondary feeds disagree');
+ }
+}
+assert.equal(statisticMarketContract({market_name:'Total Offsides',line:'3.5'}).stat,'offsides');
+assert.equal(gradeLine(fullTimeMarkets[3],zizoFinalStats),'WON');
+
 assert.deepEqual(settlementStatisticFields(totalCards),['cards']);
 assert.deepEqual(settlementStatisticFields({market_name:'Next Corner'}),[],
  'event sequence markets do not inherit aggregate corner-stat conflicts');
