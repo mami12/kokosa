@@ -532,6 +532,349 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    where match_id=$1 and provider=$16::text and kind=$2
  ), raw_events as (
    select f.*,
+     case
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1') and f.minute>45 then 45
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^45[0-9]{1,2}     (lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+       ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1',
+        '2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2',
+        'regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime',
+        '90','stoppage','stoppagetime','injurytime')
+       or lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^45[0-9]{1,2}$'
+       or lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^90[0-9]{1,2}$'
+       or (nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90)) as normal_time,
+     case
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1') then 1
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2') then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^45[0-9]{1,2}$' then 1
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^90[0-9]{1,2}$' then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime',
+         '90','stoppage','stoppagetime','injurytime') then case when f.minute<=45 then 1 else 2 end
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=45 then 1
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90 then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf') then 3
+       else 4
+     end as phase_order
+   from app_match_event_fact f
+   where f.match_id=$1 and f.provider=$16::text and f.kind=$2 and f.active
+ ), ordered as (
+   select raw_events.*,
+     row_number() over(order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as ordinal,
+     row_number() over(partition by team order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as team_ordinal,
+     count(*) over(partition by phase_order,coalesce(seconds,minute*60)) as same_time
+   from raw_events
+ ), normal_ordered as (
+   select * from ordered where normal_time
+ ), aggregate as (
+   select count(*)::int as total,
+    count(*) filter(where team='home')::int as home,
+    count(*) filter(where team='away')::int as away,
+    (select count(*)::int from normal_ordered where team='home') as normal_home,
+    (select count(*)::int from normal_ordered where team='away') as normal_away,
+    bool_or(minute>90 and not normal_time and lower(regexp_replace(coalesce(phase,''),'[^a-z0-9]','','g')) not in ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf')) as phase_ambiguous,
+    count(*) filter(where card_color=$15::text)::int as color_total,
+    count(*) filter(where team='home' and card_color=$15::text)::int as color_home,
+    count(*) filter(where team='away' and card_color=$15::text)::int as color_away,
+    -- Fixed 10-20 minute markets use inclusive provider minutes.
+    -- Rolling windows and clock-formatted score intervals instead use seconds.
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or contract_minute >= $3)
+         and ($4::numeric is null or contract_minute <= $4)))
+      and ($5::text is null or team=$5)
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as window_count,
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or contract_minute >= $3)
+         and ($4::numeric is null or contract_minute <= $4)))
+      and ($5::text is null or team=$5)
+      and card_color=$15::text
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as color_window_count,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and contract_minute>=$3::numeric and contract_minute<=$4::numeric))
+      and team='home' and ($17::boolean=false or team_ordinal>$18::int)
+      and ($20::boolean=false or normal_time))::int as window_home,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and contract_minute>=$3::numeric and contract_minute<=$4::numeric))
+      and team='away' and ($17::boolean=false or team_ordinal>$19::int)
+      and ($20::boolean=false or normal_time))::int as window_away,
+    bool_or($10::boolean=true and seconds is null
+      and (minute=floor($11::numeric/60) or minute=floor($12::numeric/60))) as rolling_boundary_uncertain,
+    count(*) filter(where (own_goal=false or (own_goal is null and aiscore_verified=true))
+     and (($6::text is not null and (
+       (player_id is not null and player_id=$6) or
+       (aiscore_verified=true and aiscore_player_id is not null and aiscore_player_id=$6)))
+      or ($6::text is null and (
+       (player_name is not null and lower(player_name)=lower($7)) or
+       (aiscore_verified=true and aiscore_player_name is not null
+         and lower(aiscore_player_name)=lower($7)) or
+       (own_goal=false and fotmob_verified=true and fotmob_player_name is not null
+         and lower(fotmob_player_name)=lower($7)) or
+       (own_goal=false and supplemental_verified=true and supplemental_player_name is not null
+         and lower(supplemental_player_name)=lower($7))))))::int as player_goals,
+    bool_or(same_time>1) as ambiguous_order,
+    bool_or(seconds is null) as minute_only
+   from ordered
+ )
+ select a.*,c.through_minute,c.count_home,c.count_away,c.complete,c.observed_at,c.confirmed_at,c.card_colors_verified,
+  -- Each valid writer has its own timestamp. Do NOT use greatest() here:
+  -- the watched gap cursor may be updated after the archive proof but
+  -- before the next settlement pass, and must not hide valid evidence.
+  (select last_seen_at from app_live_event_cursor where match_id=$1) as second_poll_at,
+  (select evidence_observed_at from app_zizobet_match_history where match_id=$1) as archive_poll_at,
+  exists(select 1 from app_live_event_recovery g
+    where g.match_id=$1 and g.status='AWAITING_BACKUP_API' and $9::uuid=any(g.line_ids)
+      and $16::text='zizobet') as open_recovery_gap,
+   (select team from ordered where ordinal=(select max(ordinal) from ordered)) as last_team,
+   (select same_time from ordered where ordinal=(select max(ordinal) from ordered)) as last_same_time,
+   (select team from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_team,
+   (select same_time from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_same_time,
+   (select bool_or(same_time>1) from normal_ordered) as normal_ambiguous_order,
+   (select team from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_team,
+   (select contract_minute from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_minute,
+   (select same_time from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_same_time,
+   (select contract_minute from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_minute,
+   (select same_time from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_same_time,
+   (select team from ordered where contract_minute>=$3::numeric and contract_minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_team,
+   (select contract_minute from ordered where contract_minute>=$3::numeric and contract_minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_minute,
+   (select same_time from ordered where contract_minute>=$3::numeric and contract_minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_same_time,
+   (select max((home_count-$18::int)-(away_count-$19::int)) from (
+     select ordinal,team,team_ordinal,
+       count(*) filter(where team='home') over(order by ordinal) as home_count,
+       count(*) filter(where team='away') over(order by ordinal) as away_count
+     from normal_ordered
+   ) lead where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)) as max_home_lead_since_entry,
+   (select max((away_count-$19::int)-(home_count-$18::int)) from (
+     select ordinal,team,team_ordinal,
+       count(*) filter(where team='home') over(order by ordinal) as home_count,
+       count(*) filter(where team='away') over(order by ordinal) as away_count
+     from normal_ordered
+   ) lead where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)) as max_away_lead_since_entry,
+   (select bool_or(same_time>1 and ((team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))) from normal_ordered) as ambiguous_order_since_entry,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='home') as race_home,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='away') as race_away,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+       from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='home'
+   )) as race_home_time,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+       from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='away'
+   )) as race_away_time
+ from aggregate a left join covered c on true`,
+ [line.match_id,c.event,
+  c.kind==='interval-result'?c.fromSeconds/60:c.from??null,
+  c.kind==='interval-result'?(c.toExclusiveSeconds-1)/60:c.to??null,
+  c.side??null,c.playerId??null,c.playerName??null,c.target??1,line.id,
+  c.kind==='window'&&c.startExclusive===true,
+  c.kind==='interval-result'?c.fromSeconds:c.kind==='window'?c.from*60:null,
+  c.kind==='interval-result'?c.toExclusiveSeconds:c.kind==='window'?c.to*60:null,
+  c.kind==='interval-result',c.kind==='interval-leader',c.cardColor??null,provider,
+  c.entryBaseline!=null,c.entryBaseline?.home??0,c.entryBaseline?.away??0,normalTimeOnly]);
+  and f.minute>45 then 45
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2') and f.minute>90 then 90
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^90[0-9]{1,2}     (lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+       ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1',
+        '2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2',
+        'regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime',
+        '90','stoppage','stoppagetime','injurytime')
+       or lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^45[0-9]{1,2}$'
+       or lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^90[0-9]{1,2}$'
+       or (nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90)) as normal_time,
+     case
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1') then 1
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2') then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^45[0-9]{1,2}$' then 1
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) ~ '^90[0-9]{1,2}$' then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime',
+         '90','stoppage','stoppagetime','injurytime') then case when f.minute<=45 then 1 else 2 end
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=45 then 1
+       when nullif(trim(coalesce(f.phase,'')),'') is null and f.minute<=90 then 2
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('et','extratime','aet','overtime','extratimefirsthalf','extratimesecondhalf') then 3
+       else 4
+     end as phase_order
+   from app_match_event_fact f
+   where f.match_id=$1 and f.provider=$16::text and f.kind=$2 and f.active
+ ), ordered as (
+   select raw_events.*,
+     row_number() over(order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as ordinal,
+     row_number() over(partition by team order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as team_ordinal,
+     count(*) over(partition by phase_order,coalesce(seconds,minute*60)) as same_time
+   from raw_events
+ ), normal_ordered as (
+   select * from ordered where normal_time
+ ), aggregate as (
+   select count(*)::int as total,
+    count(*) filter(where team='home')::int as home,
+    count(*) filter(where team='away')::int as away,
+    (select count(*)::int from normal_ordered where team='home') as normal_home,
+    (select count(*)::int from normal_ordered where team='away') as normal_away,
+    bool_or(minute>90 and nullif(trim(coalesce(phase,'')),'') is null) as phase_ambiguous,
+    count(*) filter(where card_color=$15::text)::int as color_total,
+    count(*) filter(where team='home' and card_color=$15::text)::int as color_home,
+    count(*) filter(where team='away' and card_color=$15::text)::int as color_away,
+    -- Fixed 10-20 minute markets use inclusive provider minutes.
+    -- Rolling windows and clock-formatted score intervals instead use seconds.
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or contract_minute >= $3)
+         and ($4::numeric is null or contract_minute <= $4)))
+      and ($5::text is null or team=$5)
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as window_count,
+    count(*) filter(where (
+        ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
+         and coalesce(seconds,minute*60)<=$12::numeric)
+        or ($10::boolean=false and ($3::numeric is null or contract_minute >= $3)
+         and ($4::numeric is null or contract_minute <= $4)))
+      and ($5::text is null or team=$5)
+      and card_color=$15::text
+      and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
+       or (team='away' and team_ordinal>$19::int))
+      and ($20::boolean=false or normal_time))::int as color_window_count,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and contract_minute>=$3::numeric and contract_minute<=$4::numeric))
+      and team='home' and ($17::boolean=false or team_ordinal>$18::int)
+      and ($20::boolean=false or normal_time))::int as window_home,
+    count(*) filter(where (
+      ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
+       and coalesce(seconds,minute*60)<$12::numeric)
+      or ($14::boolean=true and contract_minute>=$3::numeric and contract_minute<=$4::numeric))
+      and team='away' and ($17::boolean=false or team_ordinal>$19::int)
+      and ($20::boolean=false or normal_time))::int as window_away,
+    bool_or($10::boolean=true and seconds is null
+      and (minute=floor($11::numeric/60) or minute=floor($12::numeric/60))) as rolling_boundary_uncertain,
+    count(*) filter(where (own_goal=false or (own_goal is null and aiscore_verified=true))
+     and (($6::text is not null and (
+       (player_id is not null and player_id=$6) or
+       (aiscore_verified=true and aiscore_player_id is not null and aiscore_player_id=$6)))
+      or ($6::text is null and (
+       (player_name is not null and lower(player_name)=lower($7)) or
+       (aiscore_verified=true and aiscore_player_name is not null
+         and lower(aiscore_player_name)=lower($7)) or
+       (own_goal=false and fotmob_verified=true and fotmob_player_name is not null
+         and lower(fotmob_player_name)=lower($7)) or
+       (own_goal=false and supplemental_verified=true and supplemental_player_name is not null
+         and lower(supplemental_player_name)=lower($7))))))::int as player_goals,
+    bool_or(same_time>1) as ambiguous_order,
+    bool_or(seconds is null) as minute_only
+   from ordered
+ )
+ select a.*,c.through_minute,c.count_home,c.count_away,c.complete,c.observed_at,c.confirmed_at,c.card_colors_verified,
+  -- Each valid writer has its own timestamp. Do NOT use greatest() here:
+  -- the watched gap cursor may be updated after the archive proof but
+  -- before the next settlement pass, and must not hide valid evidence.
+  (select last_seen_at from app_live_event_cursor where match_id=$1) as second_poll_at,
+  (select evidence_observed_at from app_zizobet_match_history where match_id=$1) as archive_poll_at,
+  exists(select 1 from app_live_event_recovery g
+    where g.match_id=$1 and g.status='AWAITING_BACKUP_API' and $9::uuid=any(g.line_ids)
+      and $16::text='zizobet') as open_recovery_gap,
+   (select team from ordered where ordinal=(select max(ordinal) from ordered)) as last_team,
+   (select same_time from ordered where ordinal=(select max(ordinal) from ordered)) as last_same_time,
+   (select team from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_team,
+   (select same_time from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_same_time,
+   (select bool_or(same_time>1) from normal_ordered) as normal_ambiguous_order,
+   (select team from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_team,
+   (select contract_minute from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_minute,
+   (select same_time from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_same_time,
+   (select contract_minute from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_minute,
+   (select same_time from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_same_time,
+   (select team from ordered where contract_minute>=$3::numeric and contract_minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_team,
+   (select contract_minute from ordered where contract_minute>=$3::numeric and contract_minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_minute,
+   (select same_time from ordered where contract_minute>=$3::numeric and contract_minute<=$4::numeric
+     and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
+     and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_same_time,
+   (select max((home_count-$18::int)-(away_count-$19::int)) from (
+     select ordinal,team,team_ordinal,
+       count(*) filter(where team='home') over(order by ordinal) as home_count,
+       count(*) filter(where team='away') over(order by ordinal) as away_count
+     from normal_ordered
+   ) lead where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)) as max_home_lead_since_entry,
+   (select max((away_count-$19::int)-(home_count-$18::int)) from (
+     select ordinal,team,team_ordinal,
+       count(*) filter(where team='home') over(order by ordinal) as home_count,
+       count(*) filter(where team='away') over(order by ordinal) as away_count
+     from normal_ordered
+   ) lead where (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int)) as max_away_lead_since_entry,
+   (select bool_or(same_time>1 and ((team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))) from normal_ordered) as ambiguous_order_since_entry,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='home') as race_home,
+   (select min(ordinal) from (
+     select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+     from ordered where ($20::boolean=false or normal_time)
+   ) race where team_number=$8 and team='away') as race_away,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+       from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='home'
+   )) as race_home_time,
+   (select coalesce(seconds,minute*60) from ordered where ordinal=(
+     select min(ordinal) from (
+       select ordinal,team,count(*) over(partition by team order by ordinal) as team_number
+       from ordered where ($20::boolean=false or normal_time)
+     ) race where team_number=$8 and team='away'
+   )) as race_away_time
+ from aggregate a left join covered c on true`,
+ [line.match_id,c.event,
+  c.kind==='interval-result'?c.fromSeconds/60:c.from??null,
+  c.kind==='interval-result'?(c.toExclusiveSeconds-1)/60:c.to??null,
+  c.side??null,c.playerId??null,c.playerName??null,c.target??1,line.id,
+  c.kind==='window'&&c.startExclusive===true,
+  c.kind==='interval-result'?c.fromSeconds:c.kind==='window'?c.from*60:null,
+  c.kind==='interval-result'?c.toExclusiveSeconds:c.kind==='window'?c.to*60:null,
+  c.kind==='interval-result',c.kind==='interval-leader',c.cardColor??null,provider,
+  c.entryBaseline!=null,c.entryBaseline?.home??0,c.entryBaseline?.away??0,normalTimeOnly]);
+  and f.minute>90 then 90
+       when lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
+        ('regular','regulartime','ft','fulltime','normal','normaltime','regulation','regulationtime',
+         '90','stoppage','stoppagetime','injurytime') and f.minute>90 then 90
+       else f.minute end as contract_minute,
      (lower(regexp_replace(coalesce(f.phase,''),'[^a-z0-9]','','g')) in
        ('1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1',
         '2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2',
@@ -581,8 +924,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
     count(*) filter(where (
         ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
          and coalesce(seconds,minute*60)<=$12::numeric)
-        or ($10::boolean=false and ($3::numeric is null or minute >= $3)
-         and ($4::numeric is null or minute <= $4)))
+        or ($10::boolean=false and ($3::numeric is null or contract_minute >= $3)
+         and ($4::numeric is null or contract_minute <= $4)))
       and ($5::text is null or team=$5)
       and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
        or (team='away' and team_ordinal>$19::int))
@@ -590,8 +933,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
     count(*) filter(where (
         ($10::boolean=true and coalesce(seconds,minute*60)>$11::numeric
          and coalesce(seconds,minute*60)<=$12::numeric)
-        or ($10::boolean=false and ($3::numeric is null or minute >= $3)
-         and ($4::numeric is null or minute <= $4)))
+        or ($10::boolean=false and ($3::numeric is null or contract_minute >= $3)
+         and ($4::numeric is null or contract_minute <= $4)))
       and ($5::text is null or team=$5)
       and card_color=$15::text
       and ($17::boolean=false or (team='home' and team_ordinal>$18::int)
@@ -600,13 +943,13 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
     count(*) filter(where (
       ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
        and coalesce(seconds,minute*60)<$12::numeric)
-      or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
+      or ($14::boolean=true and contract_minute>=$3::numeric and contract_minute<=$4::numeric))
       and team='home' and ($17::boolean=false or team_ordinal>$18::int)
       and ($20::boolean=false or normal_time))::int as window_home,
     count(*) filter(where (
       ($13::boolean=true and coalesce(seconds,minute*60)>=$11::numeric
        and coalesce(seconds,minute*60)<$12::numeric)
-      or ($14::boolean=true and minute>=$3::numeric and minute<=$4::numeric))
+      or ($14::boolean=true and contract_minute>=$3::numeric and contract_minute<=$4::numeric))
       and team='away' and ($17::boolean=false or team_ordinal>$19::int)
       and ($20::boolean=false or normal_time))::int as window_away,
     bool_or($10::boolean=true and seconds is null
@@ -642,17 +985,17 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    (select same_time from normal_ordered where ordinal=(select max(ordinal) from normal_ordered)) as normal_last_same_time,
    (select bool_or(same_time>1) from normal_ordered) as normal_ambiguous_order,
    (select team from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_team,
-   (select minute from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_minute,
+   (select contract_minute from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_minute,
    (select same_time from ordered where ordinal=$8 and ($20::boolean=false or normal_time)) as nth_same_time,
-   (select minute from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_minute,
+   (select contract_minute from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_minute,
    (select same_time from ordered where team=$5::text and team_ordinal=$8 and ($20::boolean=false or normal_time)) as team_nth_same_time,
-   (select team from ordered where minute>=$3::numeric and minute<=$4::numeric
+   (select team from ordered where contract_minute>=$3::numeric and contract_minute<=$4::numeric
      and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
      and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_team,
-   (select minute from ordered where minute>=$3::numeric and minute<=$4::numeric
+   (select contract_minute from ordered where contract_minute>=$3::numeric and contract_minute<=$4::numeric
      and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
      and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_minute,
-   (select same_time from ordered where minute>=$3::numeric and minute<=$4::numeric
+   (select same_time from ordered where contract_minute>=$3::numeric and contract_minute<=$4::numeric
      and ($17::boolean=false or (team='home' and team_ordinal>$18::int) or (team='away' and team_ordinal>$19::int))
      and ($20::boolean=false or normal_time) order by ordinal limit 1) as window_first_same_time,
    (select max((home_count-$18::int)-(away_count-$19::int)) from (
