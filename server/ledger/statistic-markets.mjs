@@ -17,8 +17,8 @@ export function statisticMarketContract(line){
   /\bshots? (?:on target|on goal)\b|goditj\w* ne porte/.test(name)?'shotsOnTarget'
   :/\bfouls?\b|faulle?/.test(name)?'fouls':/\bshots?\b|goditj/.test(name)?'shots':null;
  const unsupported=!stat||Number(line?.period??0)!==0||/\b(?:players?|scorer|first|1st|second|2nd|half|halves|ht|1h|2h|quarter|period|minute|minutes|next|last|race|handicap|asian|overtime|extra|both|each|off target|blocked|odd|even|exact|range)\b|[+&/]|lojtari|pjesa|minut/.test(name);
- const home=/\b(?:team 1|1 team|home(?: team)?)\b|skuadra 1|ekipi 1/.test(name);
- const away=/\b(?:team 2|2 team|away(?: team)?)\b|skuadra 2|ekipi 2/.test(name);
+ const home=/\b(?:team 1|1 team|home\s*team|home)\b|skuadra 1|ekipi 1/.test(name);
+ const away=/\b(?:team 2|2 team|away\s*team|away)\b|skuadra 2|ekipi 2/.test(name);
  const result=/\b1x2\b/.test(name);
  const unclearResult=!result&&/\b(?:result|winner|most)\b/.test(name);
  const lineValue=number(line?.line??line?.specifier);
@@ -28,7 +28,7 @@ export function statisticMarketContract(line){
  let remainder=comparison
   .replace(/\bshots? on (?:target|goal)\b|\bshots?\b|\bfouls?(?: committed)?\b|goditj\w* ne porte|goditj\w*|faulle?/g,' ')
   .replace(/\b(?:yellow|red)?\s*cards?\b|\bbookings?\b|karton\w*|\bcorners?\b/g,' ')
-  .replace(/\b(?:home(?: team)?|away(?: team)?|team [12]|[12] team)\b|skuadra [12]|ekipi [12]/g,' ')
+  .replace(/\b(?:home\s*team|home|away\s*team|away|team [12]|[12] team)\b|skuadra [12]|ekipi [12]/g,' ')
   .replace(/\b(?:full time|regular time|match|total|totals|over|under|number of|result|winner|most|1x2|totali|totalit|ndeshjes|ndeshja|lart|poshte|mbi|nen)\b/g,' ');
  if((home||away))remainder=remainder.replace(/\bby\b/g,' ');
  if(lineValue!==null){const literal=text(line.line??line.specifier).replace(/[.*+?^\$\{\}()|[\]\\]/g,'\\$&');remainder=remainder.replace(new RegExp('\\b'+literal+'\\b','g'),' ');}
@@ -38,7 +38,8 @@ export function statisticMarketContract(line){
 function pair(result,stat){
  let stats=result?.statistics;
  if(typeof stats==='string'){try{stats=JSON.parse(stats);}catch{stats=null;}}
- const values=stats?.[stat];return {home:statisticNumber(values?.home),away:statisticNumber(values?.away)};
+ const values=stats?.[stat]??(stat==='corners'?{home:result?.corners_home,away:result?.corners_away}:stat==='cards'?{home:result?.cards_home,away:result?.cards_away}:null);
+ return {home:statisticNumber(values?.home),away:statisticNumber(values?.away)};
 }
 export function hasStatisticEvidence(line,result){
  const contract=statisticMarketContract(line);if(!contract?.supported||!result)return false;
