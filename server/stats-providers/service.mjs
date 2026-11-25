@@ -650,10 +650,24 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    }
    if(final&&settlementFields.length>0){
     try{
-     const {readAiScoreFinalStatistics}=await import('./football-information.mjs');
-     const aiScore=await readAiScoreFinalStatistics(Number(id),row,{runQuery,now});
-     if(aiScore)observations.push(aiScore);
-     else unavailable.aiscore='NO_CONFIRMED_FINAL_STAT_SNAPSHOT';
+     const mappingResult=await runQuery(
+      'select aiscore_id,mapping_status from app_football_information_map where match_id=$1',[Number(id)]
+     ).catch(error=>{
+      // A fresh install may not have the optional AiScore mapping table yet.
+      if(String(error?.code??'')==='42P01')return {rows:[]};
+      throw error;
+     });
+     const mapping=mappingResult.rows?.[0];
+     // AiScore is eligible only after the exact fixture mapping was confirmed.
+     // An absent/unverified mapping is not a failed provider attempt and must
+     // not keep an otherwise settled ticket in an endless retry loop.
+     if(mapping?.mapping_status==='CONFIRMED'&&mapping.aiscore_id){
+      attempted.push('aiscore');
+      const {readAiScoreFinalStatistics}=await import('./football-information.mjs');
+      const aiScore=await readAiScoreFinalStatistics(Number(id),row,{runQuery,now});
+      if(aiScore)observations.push(aiScore);
+      else unavailable.aiscore='NO_CONFIRMED_FINAL_STAT_SNAPSHOT';
+     }
     }catch(error){
      unavailable.aiscore=/^STATS_[A-Z_0-9]+$/.test(String(error?.message))?error.message:'AISCORE_FINAL_STAT_UNAVAILABLE';
     }
