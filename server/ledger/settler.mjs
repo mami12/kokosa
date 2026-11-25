@@ -758,7 +758,7 @@ const periodScores=(line,result)=>{
 function fullTimeAggregateCornerContract(line={}){
  const period=scorePeriodOf(line);
  if(period===null)return null;
- const marketName=String(line?.market_name??line?.marketName??'').replace(/^(?:(?:first|1st|second|2nd)\\s*half|1h|2h)\\s*[-: ]*/i,'');
+ const marketName=String(line?.market_name??line?.marketName??'').replace(/^(?:(?:first|1st|second|2nd)\s*half|1h|2h)\s*[-: ]*/i,'');
  const contract=cornerTotalContract({...line,market_name:marketName},{
   home_team:line?.home_team,away_team:line?.away_team
  });
