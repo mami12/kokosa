@@ -3,7 +3,7 @@ import {primaryGoalDisplay,matchedSupplementalScorers,displayOnlyFotMobScorers} 
 import {enrichFotMobScorerNames} from './fotmob-scorer-enrichment.mjs';
 import {enrichPrimaryActors} from './primary-actor-enrichment.mjs';
 import {SUPPLEMENTAL_INCIDENT_SQL,fotMobIncidents,backupIncidents,rawProviderIncidents,storeSupplementalIncidents} from './supplemental-incidents.mjs';
-import {teamStatisticsFromRow} from '../match-statistics.mjs';
+import {teamStatisticsFromRow,verifiedFinalStatistics} from '../match-statistics.mjs';
 import {compareFinalStatistics,settlementStatisticFields} from '../ledger/settlement-review.mjs';
 import {eventContract,eventSelectionSupported} from '../ledger/event-contract.mjs';
 import {supportedContract} from '../ledger/event-evidence.mjs';
@@ -284,11 +284,12 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    const entry={version:4,identity,values:{},goalIntervals:null,sources:{},at:now()};
    // Reuse Zizobet's persisted full-time team stats before any extra request.
    let archivedStats=result?.statistics??{};if(typeof archivedStats==='string'){try{archivedStats=JSON.parse(archivedStats);}catch{archivedStats={};}}
-   const primaryArchive={...archivedStats,
-    corners:{home:result?.corners_home,away:result?.corners_away},
+   const finalRowStats=verifiedFinalStatistics(row);
+   const primaryArchive={...finalRowStats,...archivedStats,
+    corners:{home:result?.corners_home??finalRowStats.corners?.home,away:result?.corners_away??finalRowStats.corners?.away},
     cards:{home:result?.cards_home,away:result?.cards_away},
-    yellow:{home:archivedStats.yellow?.home,away:archivedStats.yellow?.away},
-    red:{home:archivedStats.red?.home,away:archivedStats.red?.away}};
+    yellow:{home:archivedStats.yellow?.home??finalRowStats.yellow?.home,away:archivedStats.yellow?.away??finalRowStats.yellow?.away},
+    red:{home:archivedStats.red?.home??finalRowStats.red?.home,away:archivedStats.red?.away??finalRowStats.red?.away}};
    if(primaryArchive.cards.home==null&&primaryArchive.cards.away==null&&
       ['home','away'].every(side=>primaryArchive.yellow[side]!=null&&primaryArchive.red[side]!=null))
     primaryArchive.cards={home:Number(primaryArchive.yellow.home)+Number(primaryArchive.red.home),away:Number(primaryArchive.yellow.away)+Number(primaryArchive.red.away)};
