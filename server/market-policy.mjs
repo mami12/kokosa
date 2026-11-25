@@ -40,7 +40,12 @@ const ZIZOBET_MARKET_KEY=/^(?:zz\d+@[A-Za-z0-9_-]+|zizobet:(?:live|prematch):\d+
 const nativeZizobetCardQuote=market=>{
  if(!titlesOf(market).some(title=>CARD_MARKET_WORDS.test(title)))return false;
  const raw=market?.market_key??market?.marketKey??market?.extId??market?.key;
- return raw!=null&&ZIZOBET_MARKET_KEY.test(String(raw).trim());
+ if(raw!=null&&ZIZOBET_MARKET_KEY.test(String(raw).trim()))return true;
+ // During initial quote filtering oddsOf has the native Zizobet market ID
+ // before it has built the serialized market key. Require the explicit
+ // provider identity so a secondary bookmaker's card quote cannot pass.
+ return market?.providerId==='ZIZOBET'&&/^\d+$/.test(String(market?.nativeMarketId??''))&&
+  Number(market.nativeMarketId)>0;
 };
 const genericCardCatalogFamily=market=>{
  if(market?.market_key!=null||market?.marketKey!=null||market?.extId!=null)return false;
