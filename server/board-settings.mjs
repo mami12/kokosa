@@ -17,7 +17,11 @@ export function competitionPriority(row){
  const decision=competitionDecision({name},{slug:country});
  if(!decision.allowed)return {priority:100,protected:false};
  const label=normalizeCompetition(name);
- if((['europe','uefa'].includes(country)||/\buefa\b/.test(label))&&/\b(?:european championship|champions league|europa league|conference league|nations league)\b/.test(label))return {priority:1,protected:true};
+ // Continental cup names are reliable identifiers even when Zizobet assigns
+ // them to a generic category such as "international-clubs" instead of "europe".
+ // Rank them before domestic leagues so the administrator's prematch cap is
+ // applied only after the intended competition order has been established.
+ if(/\b(?:champions league|europa league|conference league|nations league|european championship)\b/.test(label))return {priority:1,protected:true};
  if(decision.tier&&countries.includes(country))return {priority:10+countries.indexOf(country)+(decision.tier-1)*10,protected:true};
  if(decision.tier===1&&isEuropeanFootballCountry(country))return {priority:40,protected:true};
  return {priority:100,protected:false};

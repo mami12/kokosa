@@ -188,10 +188,6 @@ export default function SportsbookPage() {
 
           <div data-sportsbook-scroll className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-primary pb-0 md:pb-16 xl:pb-0 xl:border-x xl:border-[#462d5e] xl:bg-[#170c24]">
             {liveAlerts.length>0&&<section aria-label={lang==='en'?'Live event alerts':'Njoftime për ngjarje live'} aria-live="polite" className="space-y-2 border-b border-amber-500/25 bg-amber-500/5 px-3 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <strong className="text-xs font-black text-amber-200">{lang==='en'?'LIVE UPDATES · PROVISIONAL':'PËRDITËSIME LIVE · PROVIZORE'}</strong>
-                <span className="text-[10px] text-text-secondary">{lang==='en'?'Official chronology may arrive later':'Kronologjia zyrtare mund të vijë më vonë'}</span>
-              </div>
               {liveAlerts.slice(-5).reverse().map(alert=>{
                 const labels:Record<string,string>={goal:lang==='en'?'Goal':'Gol',corner:lang==='en'?'Corner':'Korner','yellow-card':lang==='en'?'Yellow card':'Karton i verdhë','red-card':lang==='en'?'Red card':'Karton i kuq',foul:lang==='en'?'Foul':'Faull','shot-on-target':lang==='en'?'Shot on target':'Goditje në portë',offside:lang==='en'?'Offside':'Pozicion jashtë loje',shot:lang==='en'?'Shot':'Goditje'};
                 const team=alert.team==='home'?(alert.homeTeam||(lang==='en'?'Home team':'Vendasit')):(alert.awayTeam||(lang==='en'?'Away team':'Miqtë'));
