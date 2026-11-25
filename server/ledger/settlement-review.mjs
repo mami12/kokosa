@@ -32,6 +32,7 @@ export function settlementStatisticFields(line){
  if(/card|booking|karton/.test(name))return ['cards'];
  if(/corner|korner/.test(name))return ['corners'];
  if(/shot.*(?:target|goal)|goditj.*port/.test(name))return ['shotsOnTarget'];
+  if(/offsides?|offside/.test(name))return ['offsides'];
  if(/shot|goditj/.test(name))return ['shots'];
  if(/foul|faull/.test(name))return ['fouls'];
  return [];
