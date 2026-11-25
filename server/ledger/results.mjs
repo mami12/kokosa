@@ -83,6 +83,10 @@ export const FINISHED_RESULT_INSERT = `
       'shots',coalesce(app_match_result.statistics->'shots','{}'::jsonb)||coalesce(excluded.statistics->'shots','{}'::jsonb),
       'shotsOnTarget',coalesce(app_match_result.statistics->'shotsOnTarget','{}'::jsonb)||coalesce(excluded.statistics->'shotsOnTarget','{}'::jsonb),
       'fouls',coalesce(app_match_result.statistics->'fouls','{}'::jsonb)||coalesce(excluded.statistics->'fouls','{}'::jsonb),
+      'corners',coalesce(app_match_result.statistics->'corners','{}'::jsonb)||coalesce(excluded.statistics->'corners','{}'::jsonb),
+      'yellow',coalesce(app_match_result.statistics->'yellow','{}'::jsonb)||coalesce(excluded.statistics->'yellow','{}'::jsonb),
+      'red',coalesce(app_match_result.statistics->'red','{}'::jsonb)||coalesce(excluded.statistics->'red','{}'::jsonb),
+      'cards',coalesce(app_match_result.statistics->'cards','{}'::jsonb)||coalesce(excluded.statistics->'cards','{}'::jsonb),
       'cornerPeriods',coalesce(excluded.statistics->'cornerPeriods',app_match_result.statistics->'cornerPeriods')),
     source = 'ZIZOBET'
   -- A verified admin correction or already-settled result must not be
@@ -99,6 +103,8 @@ export function finishedResultParameters(row) {
     const yellow=statNum(statistics.yellow?.[side]),red=statNum(statistics.red?.[side]);
     return yellow===null||red===null?null:yellow+red;
   };
+  if(statistics.yellow&&statistics.red&&['home','away'].every(side=>statistics.yellow[side]!=null&&statistics.red[side]!=null))
+    statistics.cards={home:Number(statistics.yellow.home)+Number(statistics.red.home),away:Number(statistics.yellow.away)+Number(statistics.red.away)};
   const half=verifiedFirstHalf(row.periods_score);
   const cornerHalfHT={home:statNum(homeTeam?.cornersHT),away:statNum(awayTeam?.cornersHT)};
   const cornerHalf2H={home:statNum(homeTeam?.corners2H),away:statNum(awayTeam?.corners2H)};
