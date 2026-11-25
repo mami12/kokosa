@@ -310,10 +310,9 @@ export function buildMarkets(oddsRows,{includeRemoved=false}={}) {
     visible = visible.filter((m) => !m.hidden);
   }
 
-  // Different native IDs can still publish the exact same visible offer.
-  // Keep one quote for an identical presentation contract so users do not see
-  // the same market card repeatedly. Do not merge outcomes across IDs: every
-  // displayed outcome must retain the market key that resolves its own quote.
+  // Market identity is the provider market key, not its English display title.
+  // Two native IDs may intentionally expose the same title/outcomes while
+  // representing distinct offers. Never collapse those identities here.
   const visibleOffers = new Map();
   const normVisible = value => String(value ?? '').trim().toLowerCase()
     .replace(/\s*:\s*/g, ':').replace(/\s+/g, ' ');
@@ -329,6 +328,7 @@ export function buildMarkets(oddsRows,{includeRemoved=false}={}) {
       continue;
     }
     const signature = JSON.stringify([
+      String(market.key ?? ''),
       normVisible(market.name),
       normVisible(market.nativeMarketName ?? market.name),
       market.column,
