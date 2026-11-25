@@ -288,8 +288,13 @@ try{
   ) as normal_time
   from app_match_event_fact where match_id=$1 and provider_event_id='goal-extra-time'`,[extraTimeMatch]);
  console.log('[extra-time-phase-probe]',JSON.stringify(phaseProbe.rows));
+ const extraTimeDebug=async(sql,params)=>{
+  const output=await run(sql,params);
+  if(sql.includes('with covered'))console.log('[extra-time-grade-debug]',JSON.stringify(output.rows));
+  return output;
+ };
  assert.equal(await gradeStoredEventContract({...lateLine,id:'00000000-0000-4000-8000-000000000013',
-  match_id:extraTimeMatch},{...lateResult,home_score:1},{execute:run}),'LOST',
+  match_id:extraTimeMatch},{...lateResult,home_score:1},{execute:extraTimeDebug}),'LOST',
   'Extra Time at 92 is excluded from the 76-90 interval');
 
  const unknownPhaseMatch=lateMatch+3;
