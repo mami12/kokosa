@@ -24,9 +24,11 @@ export function compareFinalStatistics(observations,{attempted=[],unavailable={}
 export function settlementStatisticFields(line){
  if(Array.isArray(line.builder_legs))return [...new Set(line.builder_legs.flatMap(settlementStatisticFields))];
  const name=String(line.market_name??line.name??'').toLowerCase();
- // Player props and event windows use player/event evidence, not aggregate FT totals.
+ // Player props and event windows use event evidence. First/second-half
+ // aggregate totals remain statistic contracts with their own period counters.
  if(/\b(?:player|players|scorer|assist|to be booked|to receive a card)\b/.test(name)||
-    /\b(?:next|first|last|race|interval|window|minute|minutes|between|within|before|after|sequence|nth)\b/.test(name))return [];
+    /\b(?:next|last|race|interval|window|minute|minutes|between|within|before|after|sequence|nth)\b/.test(name)||
+    (/\bfirst\b/.test(name)&&!(/\bfirst\s*half\b/.test(name))))return [];
  if(/yellow/.test(name))return ['yellow'];
  if(/red/.test(name))return ['red'];
  if(/card|booking|karton/.test(name))return ['cards'];
