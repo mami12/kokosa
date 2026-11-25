@@ -183,12 +183,14 @@ assert.equal(grade('Exact Corners','4 or more'),'WON');
 // A missing red count is unknown, NOT zero, for either team.
 const raw={match_id:99,home:'Home',away:'Away',home_score:2,away_score:1,
  score_at:'2026-11-11T20:00:00Z',stats:{
-  home:{yellow:3,corners:5},away:{yellow:1,red:0,corners:4}}};
+  home:{yellow:3,corners:5,_observedAt:{yellow:'2026-11-11T20:00:00Z',corners:'2026-11-11T20:00:00Z'}},
+  away:{yellow:1,red:0,corners:4,_observedAt:{yellow:'2026-11-11T20:00:00Z',red:'2026-11-11T20:00:00Z',corners:'2026-11-11T20:00:00Z'}}}};
 let params=finishedResultParameters(raw);
 assert.equal(params[7],null,'Home yellow+red cannot be computed from yellow alone');
 assert.equal(params[8],1);
-params=finishedResultParameters({...raw,stats:{home:{yellow:3,red:0,corners:5},
- away:{yellow:1,red:0,corners:4}}});
+params=finishedResultParameters({...raw,stats:{
+ home:{yellow:3,red:0,corners:5,_observedAt:{yellow:raw.score_at,red:raw.score_at,corners:raw.score_at}},
+ away:{yellow:1,red:0,corners:4,_observedAt:{yellow:raw.score_at,red:raw.score_at,corners:raw.score_at}}}});
 assert.equal(params[7],3);
 assert.equal(params[8],1);
 params=finishedResultParameters({...raw,stats:{
