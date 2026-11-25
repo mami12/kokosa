@@ -742,6 +742,45 @@ const periodScores=(line,result)=>{
  return period===1?{home:hh,away:ha}:{home:home-hh,away:away-ha};
 };
 
+/**
+ * Plain full-time corner totals are settled from the final aggregate counters.
+ * They do not depend on an event timeline, event confirmation, or secondary-feed
+ * agreement. Interval, race, next-corner and other event-order contracts are
+ * deliberately excluded by cornerTotalContract and the explicit period check.
+ */
+function fullTimeAggregateCornerContract(line={}){
+ const period=Number(line?.period??line?.accepted_contract?.providerPeriod??0);
+ if(period!==0)return null;
+ const contract=cornerTotalContract(line,{
+  home_team:line?.home_team,away_team:line?.away_team
+ });
+ if(!contract)return null;
+ const key=String(line?.outcome_key??'').trim().toLowerCase();
+ const name=String(line?.outcome_name??'').trim().toLowerCase();
+ const over=key==='over'||/^over(?:\\s|$)/.test(name);
+ const under=key==='under'||/^under(?:\\s|$)/.test(name);
+ if(over===under)return null;
+ return {...contract,over};
+}
+function gradeFinalAggregateCornerTotal(line,result){
+ const contract=fullTimeAggregateCornerContract(line);
+ if(!contract)return undefined;
+ const source=String(result?.source??'').toUpperCase();
+ if(!['ZIZOBET','ADMIN'].includes(source)&&
+    !(source==='FEED'&&result?._zizobetVerified===true))return null;
+ let statistics=result?.statistics;
+ if(typeof statistics==='string'){try{statistics=JSON.parse(statistics);}catch{statistics={};}}
+ const home=scoreValue(result?.corners_home??statistics?.corners?.home);
+ const away=scoreValue(result?.corners_away??statistics?.corners?.away);
+ const count=contract.scope==='home'?home:contract.scope==='away'?away:
+  home===null||away===null?null:home+away;
+ const threshold=num(line?.line)??num(contract.line);
+ if(count===null||threshold===null||!Number.isFinite(threshold)||
+    threshold<0||!Number.isInteger(threshold*2))return null;
+ if(Number.isInteger(threshold)&&count===threshold)return 'VOID';
+ return contract.over?(count>threshold?'WON':'LOST'):(count<threshold?'WON':'LOST');
+}
+
 
 /** A known final score is not enough to grade first-half/corner/card props.
  * Keep those lines pending for more authoritative feed evidence instead of
@@ -754,6 +793,9 @@ export function hasRequiredSettlementEvidence(line, result) {
   if(line?.accepted_contract?.settlementHold)
     return gradeHeldNativeCombo(line,result)!==null;
   line=withFrozenPeriod(line);
+  const aggregateCornerStatus=gradeFinalAggregateCornerTotal(line,result);
+  if(aggregateCornerStatus!==undefined)
+    return ['WON','LOST','VOID'].includes(aggregateCornerStatus);
   if(/^full[\s.-]*time[\s:.-]*(?:1up|2up|3up)$/i.test(String(line.market_name??'').trim()))
     return hasRequiredSettlementEvidence({...line,market_name:'Full Time Result',live_contract:null},result);
   if (!result||scoreValue(result.home_score)===null||scoreValue(result.away_score)===null)return false;
@@ -870,6 +912,8 @@ export function gradeLine(line, result) {
   if(line?.accepted_contract?.settlementHold)
     return gradeHeldNativeCombo(line,result);
   line=withFrozenPeriod(line);
+  const aggregateCornerStatus=gradeFinalAggregateCornerTotal(line,result);
+  if(aggregateCornerStatus!==undefined)return aggregateCornerStatus;
   if(statisticsNeedReview(line,result))return null;
   if(isWinningMethodMarket(line?.market_name))return gradeWinningMethod(line,result);
   const cornerResult=gradeFinalTeamCornerMarket(line,result);
@@ -1844,7 +1888,11 @@ export async function settleMatch(matchId) {
       {...line,live_contract:recoveredCornerContract}:line;
     // A frozen event contract is graded against PostgreSQL provider facts,
     // never parsed from a translated/displayed name at settlement time.
-    if(settlementLine.live_contract&&SUPPORTED_FACT_KINDS.has(settlementLine.live_contract.kind)){
+    // Simple full-time corner Over/Under quotes use the final aggregate
+    // counters, never a recovered event-timeline contract.
+    const aggregateCornerTotal=!!fullTimeAggregateCornerContract(settlementLine);
+    if(!aggregateCornerTotal&&settlementLine.live_contract&&
+       SUPPORTED_FACT_KINDS.has(settlementLine.live_contract.kind)){
       status=await gradeStoredEventContract(settlementLine,result,{execute:query});
     }
     if(!['WON','LOST','VOID'].includes(status)&&hasRequiredSettlementEvidence(settlementLine,result)){
