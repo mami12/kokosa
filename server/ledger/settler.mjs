@@ -1603,7 +1603,7 @@ export function firstHalfScoreOnly(line){
  const period=scorePeriodOf(line);
  if(period!==1)return false;
  const statContract=statisticMarketContract(line);
- const halfMarketName=name.replace(/^(?:(?:first|1st|second|2nd)\\s*half|1h|2h)\\s*[-: ]*/i,'');
+ const halfMarketName=name.replace(/^(?:(?:first|1st|second|2nd)\s*half|1h|2h)\s*[-: ]*/i,'');
  const halfTeamCorner=parseTeamCountMarket({...line,market_name:halfMarketName,period:0});
  const aggregateHalfStatistic=(isStatisticMarket(line)&&statContract?.supported)||
   fullTimeAggregateCornerContract(line)?.period===1||halfTeamCorner?.event==='corner';
