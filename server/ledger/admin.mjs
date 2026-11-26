@@ -638,6 +638,65 @@ adminRouter.post('/manager/users/:id/deposit', ...manager, moveBalance(1, 'DEPOS
 adminRouter.post('/manager/users/:id/withdraw', ...manager, moveBalance(-1, 'WITHDRAWAL', true));
 
 /* ------------------------------------------------ settlement check tickets */
+adminRouter.get('/admin/settlement-check/matches', ...admin, guard(async (_req, res) => {
+  const now = new Date();
+  const rows = (await getMatchRows({ catalog: true })).filter(row => {
+    const service = String(row.service ?? '').toUpperCase();
+    return ['LIVE', 'PREMATCH'].includes(service) &&
+      isSettlementCheckFixture(row, now) &&
+      !isSyntheticFootballMatch(row) && !overrides.isMatchHidden(row) &&
+      !/^(?:ended|finished|cancelled|closed|uncovered)$/i.test(String(row.status ?? '')) &&
+      !/^(?:ft|finished|ended|full.?time)$/i.test(String(row.feed_status ?? ''));
+  });
+  const matches = rows.map(row => {
+    const match = toClientMatch(serializeMatch(row, [], now.getTime()));
+    const live = match.status === 'LIVE' || String(row.service ?? '').toUpperCase() === 'LIVE' || row.live === true;
+    if (!['LIVE', 'PREMATCH'].includes(match.status) || match.isSuspended || match.isHidden) return null;
+    return {
+      id: String(match.id),
+      name: `${match.homeTeam?.name ?? match.homeTeam ?? ''} vs ${match.awayTeam?.name ?? match.awayTeam ?? ''}`.trim(),
+      status: live ? 'LIVE' : 'PREMATCH',
+      startTime: match.startTime ?? row.startAt ?? row.start_at ?? null,
+      league: match.tournament?.name ?? row.tournament?.name ?? '',
+    };
+  }).filter(Boolean);
+  res.set('Cache-Control', 'no-store').json({ date: tiraneDateKey(now), matches });
+}));
+adminRouter.post('/admin/settlement-check/place-all', ...admin, guard(async (req, res) => {
+  const { playerId, matchIds, runId } = req.body ?? {};
+  const normalizedRunId = String(runId ?? '').toLowerCase();
+  if (!uuidPattern.test(normalizedRunId)) throw badRequest('Identifikuesi i kontrollit nuk është i vlefshëm. Rifresko dhe provo përsëri.');
+  const player = await ledger.getUserById(playerId);
+  if (!player || player.role !== 'PLAYER' || player.status !== 'ACTIVE') throw badRequest('Zgjidh një llogari lojtari aktive.');
+  const matches = await settlementCheckSelections(matchIds);
+  const allPlaced = [];
+  const results = [];
+  for (const match of matches) {
+    if (!match.selections.length) throw badRequest(`Nuk ka kuota aktive të lejueshme për ${match.name}.`);
+    const selections = match.selections.map(selection => ({
+      ...selection,
+      clientRequestId: checkRequestId(normalizedRunId, `${match.id}:${selection.outcomeId}`),
+    }));
+    const placed = [];
+    for (let offset = 0; offset < selections.length; offset += 250) {
+      const batch = selections.slice(offset, offset + 250);
+      const result = await bets.placeSettlementTestTickets({
+        user: player, selections: batch, family: `all-markets:${match.id}`, runId: normalizedRunId,
+      });
+      placed.push(...result.placed);
+    }
+    allPlaced.push(...placed);
+    results.push({
+      id: String(match.id), name: match.name, status: match.status,
+      marketCount: match.marketCount, quoteCount: match.selections.length, ticketCount: placed.length,
+    });
+  }
+  res.json({
+    test: true, player: player.username, date: tiraneDateKey(new Date()),
+    matchCount: results.length, ticketCount: allPlaced.length, stakePerTicket: 100,
+    matches: results, placed: allPlaced,
+  });
+}));
 adminRouter.get('/admin/settlement-check/catalog', ...admin, guard(async (req, res) => {
   const category = String(req.query.category ?? '').trim() || null;
   if (category && !settlementCheckCategories.some(item => item.id === category)) {
