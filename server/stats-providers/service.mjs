@@ -806,7 +806,9 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    "select distinct l.match_id from app_ticket_line l join app_ticket t on t.id=l.ticket_id "+
    "join app_match_result r on r.match_id=l.match_id "+
    "where l.status='PENDING' and t.status='PENDING' "+
-   "and r.source in ('ZIZOBET','ADMIN') and r.home_score is not null and r.away_score is not null "+
+   "and (r.source in ('ZIZOBET','ADMIN') or (r.source='FEED' and exists "+
+   "(select 1 from app_match_snapshot s where s.match_id=r.match_id and upper(coalesce(s.snapshot->'raw'->>'provider',''))='ZIZOBET'))) "+
+   "and r.home_score is not null and r.away_score is not null "+
    "and l.match_id>$1 order by l.match_id limit $2",[cursor,batchSize])).rows;
   // Round-robin by the last processed fixture. If the tail is exhausted,
   // wrap to the oldest pending IDs; the whole queue is never loaded at once.
