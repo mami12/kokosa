@@ -10,6 +10,7 @@ export const LIVE_PREVIEW_ROWS_SQL=
  'where match_id=l.match_id order by observed_at desc,id desc limit 1) f on true '+
  "where l.status='PENDING' and t.status='PENDING' and l.live_contract is not null "+
  'and not exists(select 1 from app_settlement_override o where o.line_id=l.id) '+
+ 'and ($2::bigint is null or l.match_id=$2) '+
  'order by l.match_id,l.id limit $1';
 /** Preview only: no financial writes happen in this function.
  * A separate verified writer may promote ONLY first/next/race counter proofs
