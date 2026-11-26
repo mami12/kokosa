@@ -51,10 +51,6 @@ export default function SettlementCheckTickets(){
   }catch(e:any){setError(e.response?.data?.message||tr('Biletat e testimit nuk u krijuan.','Test tickets could not be created.'));}
   finally{setBusy(false);}
  };
- const changeMatch=(slot:'first'|'second',value:string)=>{
-  if(slot==='first')setFirst(value);else setSecond(value);
-  setPreview(null);setResult(null);
- };
  return <section className="mx-auto max-w-5xl space-y-5 px-3 py-5 sm:px-6" data-testid="settlement-check-tickets">
   <div className="rounded-2xl border border-tertiary bg-secondary p-4 sm:p-6">
    <div className="flex gap-3"><Ticket className="shrink-0 text-accent-green" size={22}/><div>
