@@ -18,7 +18,6 @@ const categoryLabels:Record<string,[string,string]>={
  intervals:['Intervale','Intervals'],results:['Rezultate','Results'],
  combos:['Kombinime','Combos'],other:['Të tjera','Other']
 };
-const money=(value:number)=>\`\${Number(value||0).toLocaleString('sq-AL',{minimumFractionDigits:2,maximumFractionDigits:2})} Lek\`;
 const dateLabel=(value?:string|null)=>{
  if(!value)return '—';
  const date=new Date(value);
@@ -57,7 +56,6 @@ export default function SettlementCheckTickets(){
    const response=await apiClient.get('/admin/settlement-check/catalog',{params:{category}});
    setCategories(Array.isArray(response.data?.categories)?response.data.categories:[]);
    setGroups(Array.isArray(response.data?.groups)?response.data.groups:[]);
-   setDetail(null);setResult(null);
   }catch(e:any){setError(e.response?.data?.message??tr('Marketet aktive nuk u ngarkuan.','Active markets could not be loaded.'));}
   finally{setLoading(false);}
  },[category,lang]);
@@ -91,8 +89,8 @@ export default function SettlementCheckTickets(){
    });
    setResult(response.data);
    setNotice(tr(
-    \`\${response.data.ticketCount} bileta testimi u krijuan për \${response.data.match.name}. Nuk u prek bilanci i lojtarit.\`,
-    \`\${response.data.ticketCount} test tickets were created for \${response.data.match.name}. The player's balance was not changed.\`
+    `${response.data.ticketCount} bileta testimi u krijuan për ${response.data.match.name}. Nuk u prek bilanci i lojtarit.`,
+    `${response.data.ticketCount} test tickets were created for ${response.data.match.name}. The player's balance was not changed.`
    ));
    await loadTickets();
    await loadCatalog();
@@ -126,7 +124,7 @@ export default function SettlementCheckTickets(){
    </label>
    <div className="mt-5 flex flex-wrap gap-2" role="tablist" aria-label={tr('Kategoritë','Categories')}>
     {categories.map(item=><button key={item.id} type="button" role="tab" aria-selected={category===item.id}
-     onClick={()=>setCategory(item.id)} className={\`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors \${category===item.id?'border-accent-green bg-accent-green text-primary':'border-tertiary bg-primary text-text-secondary hover:text-white'}\`}>
+     onClick={()=>{setDetail(null);setResult(null);setCategory(item.id);}} className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${category===item.id?'border-accent-green bg-accent-green text-primary':'border-tertiary bg-primary text-text-secondary hover:text-white'}`}>
      {categoryLabels[item.id]?.[lang==='en'?1:0]??item.name}
     </button>)}
    </div>
@@ -134,7 +132,7 @@ export default function SettlementCheckTickets(){
     groups.length===0?<p className="py-8 text-center text-sm text-text-secondary">{tr('Nuk ka markete me kuota aktive në këtë kategori për ndeshjet e sotme.','No markets in this category have active quotes on today’s fixtures.')}</p>:
     <div className="mt-4 grid gap-3 md:grid-cols-2">
      {groups.map(group=><button key={group.key} type="button" onClick={()=>void openMarket(group.key)}
-      className={\`rounded-xl border p-4 text-left transition-colors \${detail?.key===group.key?'border-accent-green bg-accent-green/10':'border-tertiary bg-primary hover:border-slate-500'}\`}>
+      className={`rounded-xl border p-4 text-left transition-colors ${detail?.key===group.key?'border-accent-green bg-accent-green/10':'border-tertiary bg-primary hover:border-slate-500'}`}>
       <div className="flex items-start justify-between gap-3"><strong className="text-sm text-white">{group.name}</strong><span className="shrink-0 rounded-md bg-secondary px-2 py-1 text-xs font-bold text-accent-green">{group.activeOptions} {tr('opsione','options')}</span></div>
       <p className="mt-2 text-xs text-text-secondary">{group.match.name}</p>
       <p className="mt-1 text-[11px] text-text-secondary">{group.match.status} · {group.matchesAvailable} {tr('ndeshje me këtë market','fixtures with this market')}</p>
@@ -163,7 +161,7 @@ export default function SettlementCheckTickets(){
     <button type="button" disabled={!playerId||busy||activeOptionCount===0} onClick={()=>void place()}
      className="flex min-h-11 items-center gap-2 rounded-xl bg-accent-green px-5 py-3 text-sm font-bold text-primary disabled:opacity-40">
      {busy?<RefreshCw size={16} className="animate-spin"/>:<Play size={16}/>}
-     {tr(\`Vendos \${activeOptionCount} teste\`,\`Place \${activeOptionCount} tests\`)}
+     {tr(`Vendos ${activeOptionCount} teste`,`Place ${activeOptionCount} tests`)}
     </button>
    </div>
    {!playerId&&<p className="mt-2 text-xs text-amber-200">{tr('Zgjidh fillimisht llogarinë e lojtarit.','Choose a player account first.')}</p>}
