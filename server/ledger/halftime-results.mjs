@@ -74,7 +74,7 @@ export async function persistHalfTimeCandidate(candidate,{execute=query}={}){
  'signature=excluded.signature,source=excluded.source,',
  // A changed HT result starts a fresh confirmation window. The time boundary
  // remains the first observation of the CURRENT, unchanged score signature.
- 'first_seen_at=case when app_match_half_result.source='ZIZOBET' and app_match_half_result.signature=excluded.signature then app_match_half_result.first_seen_at else excluded.observed_at end,',
+ "first_seen_at=case when app_match_half_result.source='ZIZOBET' and app_match_half_result.signature=excluded.signature then app_match_half_result.first_seen_at else excluded.observed_at end,",
  "confirmed_at=case when app_match_half_result.source='ZIZOBET' and app_match_half_result.signature=excluded.signature and excluded.observed_at-app_match_half_result.first_seen_at>=interval '5 seconds' then coalesce(app_match_half_result.confirmed_at,now()) else null end,",
  "statistics=case when app_match_half_result.source='ZIZOBET' and app_match_half_result.signature=excluded.signature then coalesce(app_match_half_result.statistics,'{}'::jsonb)||excluded.statistics else excluded.statistics end,",
  'observed_at=excluded.observed_at',
