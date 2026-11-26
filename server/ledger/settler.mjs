@@ -1979,10 +1979,10 @@ export async function settleMatch(matchId) {
  */
 export async function settleVerifiedEventFacts({
   runQuery=query, grade=gradeStoredEventContract, update=updatePendingLine,
-  recalc=recalcTicket, limit=120
+  recalc=recalcTicket, limit=120,matchId=null
 }={}){
  const cap=Math.max(1,Math.min(300,Number(limit)||120));
- const rows=await nextPrimaryEventLines(runQuery,`select l.* from app_ticket_line l
+ const selectSql=`select l.* from app_ticket_line l
    join app_ticket t on t.id=l.ticket_id
    where l.status='PENDING' and t.status='PENDING'
      and l.live_contract is not null
@@ -1996,7 +1996,11 @@ export async function settleVerifiedEventFacts({
              and exists(select 1 from app_match_result mr where mr.match_id=l.match_id
                and mr.source in ('ZIZOBET','ADMIN','RECOVERY')
                and mr.home_score is not null and mr.away_score is not null))
-         ))`,cap);
+         ))`;
+ const scopedMatchId=matchId==null?null:Number(matchId);
+ const rows=scopedMatchId==null
+  ?await nextPrimaryEventLines(runQuery,selectSql,cap)
+  :(await runQuery(selectSql+` and l.match_id=$3::bigint order by l.id limit $2`,[null,cap,scopedMatchId])).rows;
  if(!rows.length)return {examined:0,graded:0,closed:[]};
  const ids=[...new Set(rows.map(l=>l.match_id))];
  const finals=(await runQuery("select match_id,home_score,away_score,corners_home,corners_away,cards_home,cards_away,source from app_match_result where source in ('ZIZOBET','ADMIN','RECOVERY') and home_score is not null and away_score is not null and match_id=any($1::bigint[])",[ids])).rows;
@@ -2024,7 +2028,7 @@ export async function settleVerifiedEventFacts({
  * full-time result. Every other live market remains on the existing final
  * result path; missing evidence means PENDING rather than a guessed answer.
  */
-export async function settleClosedCornerWindows({runQuery=query,loadEvidence=loadEventEvidence,update=updatePendingLine,recalc=recalcTicket}={}){
+export async function settleClosedCornerWindows({runQuery=query,loadEvidence=loadEventEvidence,update=updatePendingLine,recalc=recalcTicket,matchId=null}={}){
  const {rows}=await runQuery(`select l.* from app_ticket_line l
    join app_ticket t on t.id=l.ticket_id
    where l.status='PENDING' and t.status='PENDING'
@@ -2033,8 +2037,9 @@ export async function settleClosedCornerWindows({runQuery=query,loadEvidence=loa
      and l.live_contract is null
      and coalesce(l.accepted_contract->>'settlementHold','')=''
      and not exists(select 1 from app_settlement_override o where o.line_id=l.id)
-   order by l.match_id,l.id`);
- const cache=new Map(),proposals=[];
+     and ($1::bigint is null or l.match_id=$1)
+   order by l.match_id,l.id`,[matchId==null?null:Number(matchId)]);
+  const cache=new Map(),proposals=[];
  for(const line of rows){
   if(isPlayerOfferMarket(line))continue;
   const id=String(line.match_id);
@@ -2049,6 +2054,33 @@ export async function settleClosedCornerWindows({runQuery=query,loadEvidence=loa
  const graded=changed.length,tickets=[...new Set(changed.map(row=>row.ticket_id))];
  const closed=(await mapLimit(tickets,4,recalc)).filter(Boolean);
  return {graded,closed};
+}
+
+/** Run irreversible live-settlement checks immediately after a watched
+ * Zizobet frame is durably stored. Scope every query to that fixture.
+ */
+export async function settleLiveMatchMilestones(matchId){
+ const id=Number(matchId);
+ if(!Number.isSafeInteger(id)||id<=0)
+  return {matchId:null,events:0,windows:0,previews:0,graded:0,closed:0};
+ let events={examined:0,graded:0,closed:[]};
+ let windows={graded:0,closed:[]};
+ let previews={examined:0,proposed:0,held:0};
+ let live={enabled:false,examined:0,graded:0,closed:[]};
+ try{events=await settleVerifiedEventFacts({matchId:id});}
+ catch(error){console.error('[settle] immediate event facts failed for',id,error.message);}
+ try{windows=await settleClosedCornerWindows({matchId:id});}
+ catch(error){console.error('[settle] immediate corner windows failed for',id,error.message);}
+ try{previews=await createLiveSettlementPreviews({matchId:id});}
+ catch(error){console.error('[settle] immediate live preview failed for',id,error.message);}
+ try{live=await settleVerifiedLiveProposals({
+  matchId:id,updateLine:updatePendingLine,closeTicket:recalcTicket,
+  enabled:process.env.LIVE_VERIFIED_AUTO_SETTLEMENT_ENABLED!=='false'
+ });}
+ catch(error){console.error('[settle] immediate verified live settlement failed for',id,error.message);}
+ return {matchId:String(id),events:events.graded,windows:windows.graded,
+  previews:previews.proposed,graded:events.graded+windows.graded+live.graded,
+  closed:events.closed.length+windows.closed.length+live.closed.length};
 }
 
 /** Line grading commits before ticket payment. A crash or transient database
