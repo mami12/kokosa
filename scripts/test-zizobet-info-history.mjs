@@ -125,6 +125,23 @@ assert.ok(lateHistory.verifiedKinds.includes('corner'),
 assert.equal(lateHistory.events.at(-2).minute,91);
 assert.equal(lateHistory.events.at(-1).minute,94);
 
+// The sporting archive must retain the complete native provider timeline,
+// including informational event types that are not financial settlement facts.
+const rawChronology=[
+ {id:'early-corner',type:'corner_kick',team:1,gt:'5'},
+ {id:'early-shot',type:'shot_on_target',team:2,gt:'12'},
+ {id:'late-goal',type:'score_change',team:1,gt:'90+3'}
+];
+const rawChronologyHistory=projectZizobetHistory(8100,{
+ Match:{...lateMatch,MatchStatusID:40,Score:'1:0',CornersTeam1:1,CornersTeam2:0},
+ TimeLines:rawChronology
+});
+assert.deepEqual(rawChronologyHistory.details.timeline,rawChronology,
+ 'Raw Zizobet chronology preserves every provider event, not only supported settlement kinds');
+assert.equal(rawChronologyHistory.events.length,2,
+ 'The financial incident projection remains restricted to supported goal/corner/card/foul facts');
+assert.equal(rawChronologyHistory.details.timelineTruncated,undefined);
+
 // A header can mark FT via MatchStatusID while the detailed endpoint omits
 // EventStatus. That detail must be archived rather than silently discarded.
 assert.equal(isFinalZizobetMatch({MatchStatusID:40}),true,
