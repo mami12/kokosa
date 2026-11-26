@@ -16,6 +16,14 @@ assert.deepEqual(liveContract(resolved),{
 });
 assert.equal(home.market_name,'Përkthim që nuk përdoret për shlyerje','never mutate stored quote');
 
+const oneMinuteGeneric=nativeZizobetContractRow(offer(9250,
+ '1 minute - total from {from} to {to} (0.5)',
+ {p1:16,p2:16},'0.5','Over'));
+assert.equal(oneMinuteGeneric.market_name,'Total 0.5 goals in minutes 16-16 (1-minute interval)');
+assert.deepEqual(liveContract(oneMinuteGeneric),{
+ version:1,kind:'window-total',event:'goal',from:16,to:16,
+ choice:'over',threshold:0.5
+},'generic one-minute total resolves to the exact quoted goals interval and remains settleable');
 const intervalTotal=nativeZizobetContractRow(offer(9015,
  '10 minutes - Total corners from first value - second value:00 min',
  {p1:21,p2:30},'0.5'));
