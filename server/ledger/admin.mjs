@@ -21,6 +21,7 @@ import { toClientMatch, toClientMatches } from './view.mjs';
 import { marketCategories, marketFamily, MARKET_CATEGORY_IDS } from '../market-catalog.mjs';
 import {isSyntheticFootballMatch} from '../football-competitions.mjs';
 import {isSettlementCheckFixture,tiraneDateKey} from '../fixture-dates.mjs';
+import {statsProviders} from '../stats-providers/index.mjs';
 import {isDecidedLiveMarket, isDecidedLiveOutcome, isDecidedLiveNumberedGoalWindow, isZizobetNativeOffer} from './decided-markets.mjs';
 import {isExcludedOfferMarket, isRetiredPlayerOfferMarket, isHandicapOfferMarket} from '../market-policy.mjs';
 import {isCurrentSettlementCheckQuote} from './settlement-check.mjs';
@@ -831,6 +832,7 @@ const matchDetail = guard(async (req, res) => {
   boostMatch(row.match_id);
   await req.app.locals.loadMatchDetailFully?.(row.match_id);
   row = await getMatchRow(matchId) ?? row;
+  await statsProviders.warm(row);
   const [serialized] = await withOdds([row],Date.now(),{displayStats:true});
   const id = String(row.match_id);
   const relevantOverrides = (await overrides.list()).filter((entry) =>
