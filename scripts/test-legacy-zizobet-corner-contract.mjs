@@ -59,6 +59,8 @@ assert.deepEqual(
 
 const heldNextCorner=legacy('Who takes the [corner!] corner','1',0,'');
 heldNextCorner.accepted_contract.settlementHold='NATIVE_PARAMETERS_UNMAPPED';
+heldNextCorner.market_key='zz901@eyJwMyI6Mn0';
+heldNextCorner.accepted_contract.providerMarketKey='zz901@eyJwMyI6Mn0';
 heldNextCorner.accepted_contract.nativeParameters={p3:2};
 const recoveredNextCorner=recoverLegacyZizobetCornerContract(heldNextCorner);
 assert.deepEqual(recoveredNextCorner,{version:1,kind:'sequence',event:'corner',target:2,side:'home',noneOffered:false},
