@@ -46,7 +46,7 @@ export function normalizeLiveFrame(data){
    {home:yellows.home+reds.home,away:yellows.away+reds.away};
  const events=Array.isArray(data?.TimeLines)?
   normalizeEvents(data,'zizobet').events.filter(e=>['goal','corner','card','foul','offside'].includes(e.type))
-    .map(e=>({id:String(e.id),type:e.type,team:e.team,minute:e.minute,seconds:e.seconds??null,
+    .map(e=>({id:String(e.id),sequence:e.sequence??null,type:e.type,team:e.team,minute:e.minute,seconds:e.seconds??null,
       player:e.player??null,playerId:e.playerId??null,minuteLabel:e.minuteLabel??null,ownGoal:e.ownGoal??null,
       cardColor:e.cardColor??null,phase:e.phase??null})):null;
  // Keep the exact native actor/time/event payload for later replay and
