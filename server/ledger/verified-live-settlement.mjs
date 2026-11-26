@@ -68,7 +68,7 @@ export function verifiedSecondLiveDecision(row,{now=Date.now}={}){
  const baselineDriven=timed||['sequence','race'].includes(contract.kind);
  const supported=['sequence','race','window','window-total','nth-time','interval-result',
   'over','under','exact','range','atLeast','team-total-goals'];
- if(!supported.includes(contract.kind)||!['goal','corner','card'].includes(contract.event))return null;
+ if(!supported.includes(contract.kind)||!(timed?['goal','corner','card','foul']:['goal','corner','card']).includes(contract.event))return null;
  if(baselineDriven){
   const base=timed?contract.entryBaseline:contract.baseline;
   if(!base||!['home','away'].every(side=>Number.isSafeInteger(base[side])&&base[side]>=0))return null;
