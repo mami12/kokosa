@@ -35,7 +35,9 @@ export default function PitchTracker({matchId,homeTeam,awayTeam,eventsOnly=false
   const pushed=(matchEvents??[]).filter(event=>event.matchId===String(matchId));
   // Zizobet remains the primary source. The fixture-matched FotMob archive
   // supplements missing incidents and corroborates corrected event times.
-  const official=retainEventPlayerNames(pushed.length?pushed:archived,archived);
+  // Union socket updates with the full archived primary timeline. A partial
+  // socket payload must never hide earlier incidents from the archive.
+  const official=retainEventPlayerNames([...pushed,...archived],archived);
   const unique=(items:MatchEvent[])=>{
     const seen=new Set<string>();
     return items.filter(event=>{
