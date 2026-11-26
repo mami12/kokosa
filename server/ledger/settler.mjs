@@ -2000,7 +2000,7 @@ export async function settleVerifiedEventFacts({
  const scopedMatchId=matchId==null?null:Number(matchId);
  const rows=scopedMatchId==null
   ?await nextPrimaryEventLines(runQuery,selectSql,cap)
-  :(await runQuery(selectSql+` and l.match_id=$3::bigint order by l.id limit $2`,[null,cap,scopedMatchId])).rows;
+  :(await runQuery(selectSql+` and l.match_id=$1::bigint order by l.id limit $2`,[scopedMatchId,cap])).rows;
  if(!rows.length)return {examined:0,graded:0,closed:[]};
  const ids=[...new Set(rows.map(l=>l.match_id))];
  const finals=(await runQuery("select match_id,home_score,away_score,corners_home,corners_away,cards_home,cards_away,source from app_match_result where source in ('ZIZOBET','ADMIN','RECOVERY') and home_score is not null and away_score is not null and match_id=any($1::bigint[])",[ids])).rows;
