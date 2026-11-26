@@ -46,3 +46,9 @@ jobs:
       - run: npm ci --prefix web
       - run: npm run build:web
       - run: npm run test:markets
+      - name: Optional real FotMob fixture verification
+        continue-on-error: true
+        env:
+          FOTMOB_LIVE_VERIFY: "true"
+          FOTMOB_LIVE_VERIFY_DAYS: "7"
+        run: node scripts/test-fotmob-fixture-mapping.mjs
