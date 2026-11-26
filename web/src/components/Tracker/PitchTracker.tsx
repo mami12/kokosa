@@ -48,7 +48,63 @@ export default function PitchTracker({matchId,homeTeam,awayTeam,eventsOnly=false
   const mainEvents=unique(official);
   const supplementary=unique((snapshot?.supplementalEvents??[])
     .filter(event=>event.matchId===String(matchId)&&Number.isFinite(event.minute)));
-  if((eventsOnly||!rows.length)&&!mainEvents.length&&!supplementary.length)return null;
+
+  // Reconcile the secondary timeline into one readable chronology. Matching is
+  // one-to-one so two corners/cards in the same minute are never collapsed.
+  // FotMob may correct the minute or fill a missing actor, but it cannot erase
+  // a primary incident or overwrite a conflicting scorer identity.
+  const eventKind=(event:MatchEvent)=>{
+    const type=String(event.type??'').toLowerCase(),text=String(event.text??'').toLowerCase();
+    if(type==='goal'||type==='score_change')return 'goal';
+    if(type==='corner'||type==='corner_kick')return 'corner';
+    if(type==='yellow_card'||type==='red_card'||type==='card'||/yellow card|red card/.test(text))return 'card';
+    if(type==='foul')return 'foul';
+    if(type==='shot'||/shot on target|\bshot\b/.test(text))return 'shot';
+    return type;
+  };
+  const normName=(value:string)=>String(value??'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const reconciled=[...mainEvents];
+  const matchedPrimary=new Set<number>();
+  const cardColour=(event:MatchEvent)=>{
+    const text=String(event.text??'').toLowerCase(),type=String(event.type??'').toLowerCase();
+    return /red/.test(type+' '+text)?'red':/yellow/.test(type+' '+text)?'yellow':null;
+  };
+  for(const extra of supplementary){
+    const kind=eventKind(extra);
+    const candidates=reconciled.map((event,index)=>({event,index,kind:eventKind(event)}))
+      .filter(item=>{
+        if(matchedPrimary.has(item.index)||item.kind!==kind||item.event.team!==extra.team)return false;
+        const delta=Math.abs(Number(item.event.minute)-Number(extra.minute));
+        if(kind==='goal'){
+          if(item.event.player&&extra.player&&normName(item.event.player)!==normName(extra.player))return false;
+          return delta<=2;
+        }
+        if(kind==='card'){
+          const a=cardColour(item.event),b=cardColour(extra);
+          return delta<=2&&(!a||!b||a===b);
+        }
+        return ['corner','foul'].includes(kind)&&delta<=1;
+      })
+      .sort((a,b)=>Math.abs(a.event.minute-extra.minute)-Math.abs(b.event.minute-extra.minute));
+    const match=candidates[0];
+    if(!match){
+      reconciled.push({...extra,source:extra.source??'supplemental'});
+      continue;
+    }
+    matchedPrimary.add(match.index);
+    const current=match.event;
+    reconciled[match.index]={
+      ...current,
+      // Prefer the independently corroborated minute, including stoppage time.
+      minute:extra.minute,
+      minuteLabel:extra.minuteLabel??String(extra.minute),
+      player:current.player??extra.player,
+      text:current.text||extra.text,
+      source:extra.source?'Zizobet + '+extra.source:'Zizobet'
+    };
+  }
+  const chronology=unique(reconciled);
+  if((eventsOnly||!rows.length)&&!chronology.length)return null;
 
   const eventLabel=(event:MatchEvent)=>{
     const type=String(event.type??'').toLowerCase();
@@ -77,7 +133,7 @@ export default function PitchTracker({matchId,homeTeam,awayTeam,eventsOnly=false
     if(type==='shot')return <Target size={15} className="text-slate-300"/>;
     return <Activity size={15} className="text-slate-400"/>;
   };
-  const eventRows=(items:MatchEvent[],supplemental:boolean)=>items.map(event=>{
+  const eventRows=(items:MatchEvent[])=>items.map(event=>{
     const team=event.team==='home'?homeTeam:awayTeam;
     return <article key={(supplemental?'extra:':'main:')+eventIdentity(event)}
       className="grid grid-cols-[2.8rem_1.25rem_minmax(0,1fr)] items-start gap-2 border-b border-slate-700/50 px-3 py-2.5 last:border-b-0 sm:px-4">
@@ -91,7 +147,7 @@ export default function PitchTracker({matchId,homeTeam,awayTeam,eventsOnly=false
           {event.player?.trim()&&<span className="break-words text-xs font-medium text-white">{event.player.trim()}</span>}
         </div>
         <p className="mt-0.5 break-words text-[11px] text-slate-400">
-          {team}{supplemental&&event.source?' · '+event.source:''}
+          {team}{event.source?' · '+event.source:''}
         </p>
       </div>
     </article>;
@@ -119,20 +175,12 @@ export default function PitchTracker({matchId,homeTeam,awayTeam,eventsOnly=false
           </div>)}
         </div>
       </div>}
-      {mainEvents.length>0&&<div className="border-t border-slate-700/70">
+      {chronology.length>0&&<div className="border-t border-slate-700/70">
         <div className="bg-[#192332] px-3 py-2 text-xs font-semibold text-slate-300 sm:px-4">
-          {english?'Match events':'Ngjarjet e ndeshjes'}
+          {english?'Match events':'Kronologjia e ndeshjes'}
         </div>
         <div className="zshop-tracker-events" role="region" tabIndex={0} aria-label={english?'Main match event history':'Historiku i ngjarjeve'}>
-          {eventRows(mainEvents,false)}
-        </div>
-      </div>}
-      {supplementary.length>0&&<div className="border-t border-slate-700/70">
-        <div className="bg-[#192332] px-3 py-2 text-xs font-semibold text-slate-300 sm:px-4">
-          {english?'Supplemental verified incidents':'Ngjarje të verifikuara nga API shtesë'}
-        </div>
-        <div className="zshop-tracker-events" role="region" tabIndex={0} aria-label={english?'Supplemental provider event history':'Historiku nga API-të shtesë'}>
-          {eventRows(supplementary,true)}
+          {eventRows(chronology)}
         </div>
       </div>}
     </>}
