@@ -546,7 +546,8 @@ export async function ledgerStats(managerId = null, {runQuery = query} = {}) {
             coalesce(sum(t.stake) filter (where t.status = 'PENDING'), 0) as pending_stake
        from app_ticket t
        left join app_ticket_batch b on b.ticket_ids @> ARRAY[t.id] and t.user_id=b.user_id
-      where ($1::uuid is null or t.user_id in (select id from app_user where manager_id = $1::uuid))`,
+      where t.is_settlement_test is not true
+        and ($1::uuid is null or t.user_id in (select id from app_user where manager_id = $1::uuid))`,
     [managerId],
   );
   const u = res.rows[0] ?? {};
