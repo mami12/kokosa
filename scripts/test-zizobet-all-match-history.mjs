@@ -134,7 +134,8 @@ try{
  // Other matches have no ticket at all, yet they are archived independently.
  clock+=60000;
  await save(id+1,game('0:0','12:00',[]),{...fixture,home:'Other'});
- assert.equal((await pg.query('select count(*)::int as n from app_zizobet_match_history')).rows[0].n,2);
+ assert.equal((await pg.query('select count(*)::int as n from app_zizobet_match_history')).rows[0].n,3,
+  'Original, duplicate-corner regression and independent fixture are archived separately');
 }finally{await pg.close();}
 
 // A fixture without a visitor or pending ticket still enters the detail poll.
