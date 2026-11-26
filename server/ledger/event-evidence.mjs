@@ -185,7 +185,7 @@ function gradeSingleEventLine(line,result){
  const contract=eventContract(line),name=contract.name??'',label=String(line.outcome_name??''),key=String(line.outcome_key??'').toLowerCase();
  if(!supportedContract(line))return null;
  if(/extra time|overtime|shootout|early payout|scoring type|scoring method|shots?|fouls?/i.test(name))return null;
- const regular=ev.events.filter(e=>!e.shootout&&isRegularTimeEvent(e)).sort((a,b)=>a.minute-b.minute||(a.injury??0)-(b.injury??0)||(a.seconds??0)-(b.seconds??0));
+ const regular=ev.events.filter(e=>!e.shootout&&isRegularTimeEvent(e)).sort((a,b)=>a.minute-b.minute||(a.injury??0)-(b.injury??0)||(a.seconds??0)-(b.seconds??0)||(a.sequence??Number.MAX_SAFE_INTEGER)-(b.sequence??Number.MAX_SAFE_INTEGER));
  let all=regular.filter(e=>e.type==='goal');
  // Stable provider IDs identify one physical event, even if a source repeats it.
  const eventIds=all.filter(e=>e.id!=null&&String(e.id)!=='').map(e=>String(e.id));
@@ -193,11 +193,11 @@ function gradeSingleEventLine(line,result){
  if(!completeByTeam(all,result.home_score,result.away_score))return null;
  if(/corners?/i.test(name)){all=regular.filter(e=>e.type==='corner');if(!completeByTeam(all,result.corners_home,result.corners_away))return null;}
  if(/cards?/i.test(name)){if(/yellow|red/i.test(name))return null;all=regular.filter(e=>e.type==='card');if(!completeByTeam(all,result.cards_home,result.cards_away))return null;}
- if(/first.*scorer|last.*scorer|^(?:first goal|last goal|who scores goal)/i.test(name)&&all.some((e,i)=>i&&e.minute===all[i-1].minute&&(e.injury??0)===(all[i-1].injury??0)&&(!Number.isFinite(e.seconds)||!Number.isFinite(all[i-1].seconds)||e.seconds===all[i-1].seconds)))return null;
+ if(/first.*scorer|last.*scorer|^(?:first goal|last goal|who scores goal)/i.test(name)&&all.some((e,i)=>i&&e.minute===all[i-1].minute&&(e.injury??0)===(all[i-1].injury??0)&&(!Number.isFinite(e.seconds)||!Number.isFinite(all[i-1].seconds)||e.seconds===all[i-1].seconds)&&(!Number.isSafeInteger(e.sequence)||!Number.isSafeInteger(all[i-1].sequence))))return null;
  let selected=all;
  if(contract.timing){
   const timed=all.filter(e=>eventInWindow(e,contract)),goal=timed[contract.timing-1];
-  if(timed.some((e,i)=>i&&e.minute===timed[i-1].minute&&(e.injury??0)===(timed[i-1].injury??0)&&(!Number.isFinite(e.seconds)||!Number.isFinite(timed[i-1].seconds)||e.seconds===timed[i-1].seconds)))return null;
+  if(timed.some((e,i)=>i&&e.minute===timed[i-1].minute&&(e.injury??0)===(timed[i-1].injury??0)&&(!Number.isFinite(e.seconds)||!Number.isFinite(timed[i-1].seconds)||e.seconds===timed[i-1].seconds)&&(!Number.isSafeInteger(e.sequence)||!Number.isSafeInteger(timed[i-1].sequence))))return null;
   if(/^(?:no goal|none|no more goals)$/i.test(label)||key==='none')return goal?'LOST':'WON';
   const cleanLabel=label.replace(/\s*(?:st|nd|rd|th)?\s*(?:match|mins?\.?|minutes?\.?)?$/i,'').trim();
   const interval=cleanLabel.match(/^(\d+)\s*[-–]\s*(\d+)(?:\s*(?:minutes?|min))?$/i)??key.match(/^(\d+)-(\d+)$/);
