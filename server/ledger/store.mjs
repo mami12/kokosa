@@ -291,7 +291,7 @@ export async function managerFinancials(managerId = null, {runQuery = query} = {
                   coalesce(sum(t.stake) filter (where t.status in ('WON','LOST')),0) as settled_stake,
                   coalesce(sum(t.stake) filter (where t.status = 'LOST'), 0) as lost_stake
              from app_ticket t left join app_ticket_batch b on b.ticket_ids @> ARRAY[t.id] and t.user_id=b.user_id
-             where t.user_id = u.id
+             where t.user_id = u.id and t.is_settlement_test is not true
          ) t on true
          left join lateral (
            select coalesce(sum(-x.amount), 0) as commission,
