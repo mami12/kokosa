@@ -1473,7 +1473,7 @@ export async function listLogicalTickets({userId = null, managerId = null, statu
         and (coalesce(
           nullif(date_line.accepted_contract->>'kickoffAt','')::timestamptz,
           nullif(date_snapshot.snapshot->>'start_at','')::timestamptz
-        ) at time zone 'Europe/Tirane')::date=${params.length}::date
+        ) at time zone 'Europe/Tirane')::date=$${params.length}::date
     )`);
   }
   // The player's active/history views must not silently truncate a large test run.
