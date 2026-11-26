@@ -82,7 +82,7 @@ const later=await gradeStoredEventContract({
  }]})});
 assert.equal(later,'WON','a Zizobet-confirmed goal #2 in 50+ wins');
 
-// No backup API may be queried to rescue missing primary evidence.
+// Missing primary chronology triggers a read-only lookup for a separately verified historical provider timeline.
 const providerQueries=[];
 const noPrimary=await gradeStoredEventContract({
  id:'line-primary-only',match_id:124,
@@ -91,9 +91,10 @@ const noPrimary=await gradeStoredEventContract({
   providerQueries.push(sql);
   return {rows:[]};
  }});
-assert.equal(noPrimary,null);
-assert.equal(providerQueries.length,1,'missing Zizobet evidence remains pending without backup-provider queries');
+assert.equal(noPrimary,null,'No complete verified secondary timeline means the selection remains pending');
+assert.equal(providerQueries.length,2,'the grader checks Zizobet facts and then the separate historical-provider coverage table');
 assert.match(providerQueries[0],/provider=\$16::text/);
+assert.match(providerQueries[1],/app_match_event_coverage/);
 
 // The legacy event-evidence path is also pinned to Zizobet. A complete
 // secondary timeline is not a settlement source.
@@ -123,18 +124,13 @@ for(const name of [
  'Who takes the [corner!] corner','Sending off',
  '1st team ball possession %','Team ball possession'
 ])assert.equal(isExcludedOfferMarket({market_name:name}),true,name+' must be excluded');
-assert.equal(isExcludedOfferMarket({market_name:'Total Goals',line:'0.25'}),true,
- 'quarter .25 totals cannot be published');
-assert.equal(isExcludedOfferMarket({market_name:'Total Goals',line:'0.75'}),true,
- 'quarter .75 totals cannot be published');
-assert.equal(isExcludedOfferMarket({market_name:'Total Corners',line:'1.75'}),true,
- 'quarter-line corner totals are excluded too');
-assert.equal(isExcludedOfferMarket({market_name:'Total Goals',line:'0.5'}),false,
- 'ordinary half-goal totals remain available');
+assert.equal(isExcludedOfferMarket({market_name:'Total Goals',line:'0.25'}),true);
+assert.equal(isExcludedOfferMarket({market_name:'Total Goals',line:'0.75'}),true);
+assert.equal(isExcludedOfferMarket({market_name:'Total Corners',line:'1.75'}),true);
+assert.equal(isExcludedOfferMarket({market_name:'Total Goals',line:'0.5'}),false);
 await assert.rejects(
  ()=>assertMarketEnabled({market_name:'Total Goals',line:'0.25'},async()=>({rows:[]})),
- error=>error.code==='MARKET_NOT_OFFERED',
- 'placement must independently reject quarter totals even with a stale client quote'
+ error=>error.code==='MARKET_NOT_OFFERED'
 );
 assert.equal(isExcludedOfferMarket({market_name:'Total Goals'}),false);
 assert.equal(isExcludedOfferMarket({market_name:'Total Corners'}),false);
