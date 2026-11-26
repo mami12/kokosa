@@ -7,6 +7,7 @@ import {persistHistoricalGoalFacts} from '../server/ledger/historical-event-fact
 import {persistHistoricalTimedEvents} from '../server/ledger/historical-timed-events.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
 import {gradeStatisticLine} from '../server/ledger/statistic-markets.mjs';
+import {gradeLine} from '../server/ledger/settler.mjs';
 
 // One complete, provider-shaped FotMob match is taken through parsing,
 // fixture-final counter reconciliation, durable evidence storage and grading.
@@ -104,14 +105,17 @@ try{
  assert.equal(await grade('card','window',{from:84,to:86,choice:true,cardColor:'yellow'}),'LOST');
 
  // Ordinary aggregate totals use explicit final counters, never event-list guesses.
- const result={statistics:{
-  corners:{home:parsed.cornersHome,away:parsed.cornersAway},
-  cards:{home:parsed.cardsHome,away:parsed.cardsAway},
-  yellow:parsed.yellowCards,red:parsed.redCards,
-  shots:parsed.statistics.shots,shotsOnTarget:parsed.statistics.shotsOnTarget,
-  fouls:parsed.statistics.fouls,possession:parsed.statistics.possession
- }};
- assert.equal(gradeStatisticLine({market_name:'Total Corners',line:'2.5',outcome_name:'Over'},result),'WON');
+ const result={source:'ZIZOBET',home_score:1,away_score:0,
+  corners_home:parsed.cornersHome,corners_away:parsed.cornersAway,
+  cards_home:parsed.cardsHome,cards_away:parsed.cardsAway,
+  statistics:{
+   corners:{home:parsed.cornersHome,away:parsed.cornersAway},
+   cards:{home:parsed.cardsHome,away:parsed.cardsAway},
+   yellow:parsed.yellowCards,red:parsed.redCards,
+   shots:parsed.statistics.shots,shotsOnTarget:parsed.statistics.shotsOnTarget,
+   fouls:parsed.statistics.fouls,possession:parsed.statistics.possession
+  }};
+ assert.equal(gradeLine({market_name:'Total Corners',line:'2.5',outcome_name:'Over',outcome_key:'over'},result),'WON');
  assert.equal(gradeStatisticLine({market_name:'Total Cards',line:'1.5',outcome_name:'Over'},result),'WON');
  assert.equal(gradeStatisticLine({market_name:'Total Yellow Cards',line:'1.5',outcome_name:'Under'},result),'WON');
  assert.equal(gradeStatisticLine({market_name:'Total Red Cards',line:'0.5',outcome_name:'Over'},result),'WON');
