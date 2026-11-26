@@ -12,7 +12,7 @@ const json=(value,status=200,headers={})=>new Response(JSON.stringify(value),{st
 const row=(id=101,extra={})=>({match_id:id,home:'Home '+id,away:'Away '+id,start_at:'2026-11-04T17:00:00Z',service:'LIVE',stats:{},raw:{homeTeam:{id:'h'+id},awayTeam:{id:'a'+id}},...extra});
 let cases=0;
 async function harness({env={},rows=[row()],stats=()=>totals,override=()=>null,events=()=>[],persistFacts=false}={}){
- await database.exec(`truncate app_ticket,app_ticket_line,app_match_result,app_stats_cache,app_stats_usage,app_stat_review`);
+ await database.exec(`truncate app_ticket,app_ticket_line,app_match_result,app_match_snapshot,app_stats_cache,app_stats_usage,app_stat_review`);
  let at=start;const calls=[],unexpected=[],matches=new Map(rows.map(r=>[Number(r.match_id),r])),saved=[],persistedGoals=[],persistedTimed=[];
  const config={STATS_REALTIME_ENABLED:'false',WORLDCUP26_LEAGUES:'eng.1',...env};
  const loadedFinal=[];
@@ -72,6 +72,7 @@ try{
  await database.exec(`create table app_ticket(id text primary key,status text);
   create table app_ticket_line(ticket_id text,match_id bigint,status text,market_name text,live_contract jsonb);
   create table app_match_result(match_id bigint primary key,home_score int,away_score int,source text not null default 'ZIZOBET');
+  create table app_match_snapshot(match_id bigint primary key,snapshot jsonb not null);
   create table app_match_event_coverage(match_id bigint,provider text,kind text,count_home int,count_away int,complete boolean,confirmed_at timestamptz,card_colors_verified boolean,through_minute int,observed_at timestamptz);
   create table app_stats_cache(cache_key text primary key,payload jsonb not null,updated_at timestamptz not null default now());
   create table app_stats_usage(provider text,period text,calls int,primary key(provider,period));
@@ -309,16 +310,24 @@ try{
  // Final-statistics settlement recovery loads only a bounded rotating batch.
  // The durable cursor survives a service restart and wraps without starving IDs.
  {
-  const rows=Array.from({length:8},(_,i)=>row(401+i,{feed_status:'FT'}));
+  const rows=Array.from({length:10},(_,i)=>row(401+i,{feed_status:'FT'}));
   const h=await harness({rows,env:{STATS_PROVIDERS_ENABLED:'true',
    STATS_FINAL_BATCH_SIZE:'3',WORLDCUP26_DAY_LIMIT:'0',BSD_DAY_LIMIT:'0',
    SPORTAPI_DAY_LIMIT:'0',GOALAPI_DAY_LIMIT:'0',APIFOOTBALL_DAY_LIMIT:'0'}});
   for(const r of rows){
    await h.bet(r.match_id,'final-'+r.match_id);
+   const source=r.match_id>=409?'FEED':'ZIZOBET';
    await database.query(
-    'insert into app_match_result(match_id,home_score,away_score,source) values($1,0,0,\'ZIZOBET\')',
-    [r.match_id]
+    'insert into app_match_result(match_id,home_score,away_score,source) values($1,0,0,$2)',
+    [r.match_id,source]
    );
+   if(r.match_id>=409){
+    const provider=r.match_id===409?'ZIZOBET':'YBETS';
+    await database.query(
+     'insert into app_match_snapshot(match_id,snapshot) values($1,$2::jsonb)',
+     [r.match_id,JSON.stringify({raw:{provider}})]
+    );
+   }
   }
   let result=await h.service.warmFinalPending();
   assert.equal(result.examined,3,'The final recovery pass is bounded by STATS_FINAL_BATCH_SIZE');
@@ -331,13 +340,16 @@ try{
    'The persisted cursor resumes after a service restart');
   h.loadedFinal.length=0;
   result=await restarted.warmFinalPending();
-  assert.equal(result.examined,2);
-  assert.deepEqual(h.loadedFinal,[407,408]);
+  assert.equal(result.examined,3);
+  assert.deepEqual(h.loadedFinal,[407,408,409],
+   'A legacy FEED result is recovered only when its saved snapshot proves Zizobet origin');
   h.loadedFinal.length=0;
   result=await restarted.warmFinalPending();
   assert.equal(result.examined,3);
   assert.deepEqual(h.loadedFinal,[401,402,403],
    'When the cursor reaches the end it wraps to pending fixtures at the start');
+  assert.ok(!h.loadedFinal.includes(410),
+   'A legacy FEED result from YBETS is never treated as Zizobet recovery evidence');
   h.verify();
  }
  console.log(`PASS ${cases} provider scenarios: on-demand watched matches, ten-minute fallback, rotation/restart, verified statistics, HTTP quotas and final evidence`);
