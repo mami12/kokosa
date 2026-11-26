@@ -226,6 +226,39 @@ assert.equal(verifiedSecondLiveDecision(timedProof(
  timeWindow,frameFor('goal',1,0),frameFor('goal',0,1)),{now}),null,
  'A provider team correction between independent polls must not pay');
 
+ // First-half totals use the same live milestone rule before HT.
+ const halfCornerOver={version:1,kind:'half-total',event:'corner',half:1,
+  choice:'over',threshold:2.5};
+ const halfCornerFrame=totalsFrame('corner',2,1,42);
+ assert.equal(primaryLiveDecision(halfCornerOver,halfCornerFrame),'WON',
+  'First-half corners Over 2.5 is irreversible at three corners');
+ assert.equal(verifiedSecondLiveDecision(timedProof(halfCornerOver,
+  halfCornerFrame,totalsFrame('corner',3,1,43)) ,{now}),'WON',
+  'First-half Over settles before HT even if another corner arrives during confirmation');
+ assert.equal(primaryLiveDecision({...halfCornerOver,half:2},
+  totalsFrame('corner',2,1,70)),null,
+  'Second-half corner totals never use the match-wide 1H+2H count');
+
+ const firstHalfGoals={version:1,kind:'period-goal-total',event:'goal',half:1,
+  selection:'over',target:0.5};
+ const firstHalfGoalFrame=totalsFrame('goal',1,0,23);
+ assert.equal(primaryLiveDecision(firstHalfGoals,firstHalfGoalFrame),'WON',
+  'First-half goals Over 0.5 wins on the first goal');
+ assert.equal(verifiedSecondLiveDecision(timedProof(firstHalfGoals,
+  firstHalfGoalFrame,totalsFrame('goal',2,0,47)) ,{now}),'WON',
+  'A proved first-half goal total remains settled when the second poll is in 2H');
+
+ const halfYellow={version:1,kind:'half-total',event:'card',half:1,
+  cardColor:'yellow',choice:'over',threshold:1.5};
+ const halfYellowFrame={source:'zizobet',clock:38,teams:{
+  card:{home:2,away:0},yellowCard:{home:2,away:0},redCard:{home:0,away:0}},
+  counts:{card:2},cardColorsVerified:true,events:[],coverage:{},ended:false};
+ assert.equal(verifiedSecondLiveDecision(timedProof(halfYellow,
+  halfYellowFrame,halfYellowFrame),{now}),'WON',
+  'First-half yellow totals settle early only with reconciled card colours');
+ assert.equal(primaryLiveDecision(halfYellow,
+  {...halfYellowFrame,cardColorsVerified:false}),null,
+  'Unverified yellow/red counts cannot settle early');
  // Full-match totals now settle at the first irreversible milestone.
  // Over wins and Under loses only after the count passes the quoted line.
  const totalsFrame=(event,home,away,clock=64,extra={})=>({
