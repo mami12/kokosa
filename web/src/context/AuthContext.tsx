@@ -91,8 +91,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const login = useCallback(async (u: string, p: string) => {
     const version = invalidateSession();
     try {
-      const res = await apiClient.post('/auth/login', { username: u, password: p });
-      if (!mounted.current || session.current !== version) return;
+      let res;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        if (!mounted.current || session.current !== version) return;
+        try {
+          // Login only reads the account and issues a token, so retrying a
+          // transient gateway/database failure cannot duplicate a transaction.
+          res = await apiClient.post('/auth/login', { username: u, password: p }, { timeout: 10000 });
+          break;
+        } catch (error: any) {
+          const status = Number(error?.response?.status);
+          const retryable = !error?.response || [408, 425, 429, 500, 502, 503, 504].includes(status);
+          if (!retryable || attempt === 2 || error?.code === 'ERR_CANCELED') throw error;
+          await new Promise(resolve => window.setTimeout(resolve, attempt === 0 ? 350 : 700));
+        }
+      }
+      if (!res || !mounted.current || session.current !== version) return;
       localStorage.setItem('token', res.data.token);
       // The login endpoint returns a freshly loaded public user. This remains
       // useful if the following balance refresh has a temporary network error.
