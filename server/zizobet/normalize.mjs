@@ -167,7 +167,7 @@ export function resolveMarketTitle(raw,q,{intervalWidth,competitors}={}){
   if(!pair(q.p3))return null;
   return 'Correct score rest of match (from '+q.p3+')';
  }
- const values=Object.fromEntries(Object.entries({...q,from:q.p1,to:q.p2,total:q.h,handicap:q.h,player:q.pl,score:q.p3,'goal!':q.p3,'!scorenr':q.p3,
+ const values=Object.fromEntries(Object.entries({...q,from:q.p1,to:q.p2,total:q.h,handicap:q.h,player:q.pl,score:q.p3,'goal!':q.p3,'corner!':q.p3,'!scorenr':q.p3,
   competitor1:competitors?.competitor1??competitors?.home,
   competitor2:competitors?.competitor2??competitors?.away
  }).map(([k,v])=>[k.toLowerCase(),v]));
