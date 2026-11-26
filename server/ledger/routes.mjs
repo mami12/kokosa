@@ -11,6 +11,7 @@ import {isSyntheticFootballMatch} from '../football-competitions.mjs';
  * contract (auth, sports tree, matches) from our live in-memory board.
  */
 import express from 'express';
+import { tiraneDateKey } from '../fixture-dates.mjs';
 import { authenticate, requireAuth, requireAdmin } from './auth.mjs';
 import * as ledger from './store.mjs';
 import * as bets from './bets.mjs';
@@ -276,18 +277,37 @@ ledgerRouter.post(
   }),
 );
 
+const playerTicketMatchDate = (req, res) => {
+  const raw = String(req.query.date ?? tiraneDateKey()).trim();
+  const parsed = new Date(`${raw}T00:00:00.000Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw) || !Number.isFinite(parsed.getTime()) ||
+      parsed.toISOString().slice(0, 10) !== raw) {
+    res.status(400).json({ message: 'Data e filtrit nuk është e vlefshme.' });
+    return null;
+  }
+  return raw;
+};
+
 ledgerRouter.get(
   '/bets/active',
   requireLedger,
   requireAuth,
-  guard(async (req, res) => res.json(await bets.listActive(req.user.id))),
+  guard(async (req, res) => {
+    const matchDate = playerTicketMatchDate(req, res);
+    if (!matchDate) return;
+    return res.json(await bets.listActive(req.user.id, { matchDate }));
+  }),
 );
 
 ledgerRouter.get(
   '/bets/history',
   requireLedger,
   requireAuth,
-  guard(async (req, res) => res.json(await bets.listHistory(req.user.id))),
+  guard(async (req, res) => {
+    const matchDate = playerTicketMatchDate(req, res);
+    if (!matchDate) return;
+    return res.json(await bets.listHistory(req.user.id, { matchDate }));
+  }),
 );
 
 /** the betslip's "find ticket" box: booking code or a ticket id fragment */
