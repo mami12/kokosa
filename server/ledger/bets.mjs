@@ -969,6 +969,7 @@ export async function placeSettlementTestTickets({ user, selections = [], family
   const placed = [];
   try {
     await client.query('begin');
+    await revalidateSelections(picks, lines, resolve, { executor: client.query.bind(client) });
     for (let index = 0; index < lines.length; index++) {
       const line = lines[index];
       const selection = picks[index];
