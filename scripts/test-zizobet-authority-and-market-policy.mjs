@@ -131,7 +131,7 @@ assert.equal(isExcludedOfferMarket({market_name:'Total Corners',line:'1.75'}),tr
 assert.equal(isExcludedOfferMarket({market_name:'Total Goals',line:'0.5'}),false,
  'ordinary half-goal totals remain available');
 await assert.rejects(
- ()=>assertMarketEnabled({market_name:'Total Goals',line:'0.25'}),
+ ()=>assertMarketEnabled({market_name:'Total Goals',line:'0.25'},async()=>({rows:[]})),
  error=>error.code==='MARKET_NOT_OFFERED',
  'placement must independently reject quarter totals even with a stale client quote'
 );
