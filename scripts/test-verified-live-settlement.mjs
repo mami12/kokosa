@@ -236,7 +236,7 @@ assert.equal(verifiedSecondLiveDecision(timedProof(
   halfTotalCornerStartFrame,halfCornerFrame(3,1,43)) ,{now}),'WON',
   'First-half Over settles before HT even if another corner arrives during confirmation');
  assert.equal(primaryLiveDecision({...halfCornerOver,half:2},
-  totalsFrame('corner',2,1,70)),null,
+  halfCornerFrame(2,1,70)),null,
   'Second-half corner totals never use the match-wide 1H+2H count');
 
  const firstHalfGoals={version:1,kind:'period-goal-total',event:'goal',half:1,
