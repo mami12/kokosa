@@ -5,6 +5,7 @@ import {eventMarketRequirement} from './event-market-policy.mjs';
 import {parseTeamGoalMarket} from './live-contract-rules.mjs';
 import {classifyZizobetCardEvents} from '../zizobet/card-events.mjs';
 import {isRegularTimeEvent} from './event-contract.mjs';
+import {zizobetEventIdentities} from '../zizobet/event-identity.mjs';
 export const needsEvents=m=>!!eventMarketRequirement(m)||/header|headed|own goal|scoring method|method of.*goal/i.test(m.market_name??m.name??'');
 /** One bounded snapshot per fixture, only while a matching ticket needs it.
  * Only Zizobet event evidence is eligible for financial settlement. */
@@ -113,22 +114,14 @@ export function normalizeEvents(data,source){
   if(/(?:\(\s*og\s*\)|\bown goal\b|\bautogol\b)/i.test(String(e.pl??'')))return true;
   return null;
  };
- const stableZizoId=e=>{
-  if(e.id!=null&&String(e.id).trim())return String(e.id);
-  // Timeline indices change when the provider reorders/corrects old events.
-  // A content-derived identity is stable across polls; indistinguishable
-  // duplicate events fail reconciliation rather than fabricating order.
-  return 'anonymous:'+createHash('sha256').update(JSON.stringify([
-   e.type??null,e.team??null,e.gt??e.minute??e.time??null,e.clk??null,
-   e.pl??null,e.playerId??e.player_id??null,e.cardColor??e.card_color??e.color??null
-  ])).digest('hex').slice(0,32);
- };
- const zizoCardEvents=source==='zizobet'?classifyZizobetCardEvents(data.TimeLines??[],data.Match??{}):null;
- if(source==='zizobet')events=(data.TimeLines??[]).map((e,index)=>{
+ const zizoRows=source==='zizobet'?(data.TimeLines??[]):[];
+ const zizoIdentities=zizobetEventIdentities(zizoRows);
+ const zizoCardEvents=source==='zizobet'?classifyZizobetCardEvents(zizoRows,data.Match??{}):null;
+ if(source==='zizobet')events=zizoRows.map((e,index)=>{
   const type=String(e.type??'').toLowerCase();
   const eventTime=zizobetEventTime(e.gt??e.minute??e.time,e.clk),minute=eventTime.minute;
   const card=zizoCardEvents?.cardIndices.has(index)===true;
-  return {disabled:!active(e)||cornerNotTaken(e),id:stableZizoId(e),
+  return {disabled:!active(e)||cornerNotTaken(e),id:zizoIdentities[index].id,sequence:zizoIdentities[index].sequence,
    type:type==='score_change'?'goal':(type==='corner_kick'||type==='corner')?'corner':card?'card':/foul/.test(type)?'foul':/offside/.test(type)?'offside':e.type,
    cardColor:card?zizoCardEvents.colors.get(index)??null:null,
    ownGoal:type==='score_change'?explicitOwnGoal(e):null,
@@ -144,7 +137,14 @@ export function normalizeEvents(data,source){
    phase:e.phase??e.period??e.periodName??e.period_name??e.half??eventTime.phase,
    updatedAt:e.updated_uts??null};
  });
- const unique=new Map();for(const event of events){const key=String(event.id),old=unique.get(key);if(!old||Number(event.updatedAt??0)>=Number(old.updatedAt??0)||!Number.isFinite(Number(old.updatedAt)))unique.set(key,event);}
+ const unique=new Map();
+ for(const event of events){
+  const key=String(event.id),old=unique.get(key);
+  // Zizobet occurrence IDs are unique within the snapshot, including repeated
+  // provider IDs. Other feeds retain their existing correction/deduplication.
+  if(source==='zizobet'||!old||Number(event.updatedAt??0)>=Number(old.updatedAt??0)||!Number.isFinite(Number(old.updatedAt)))
+   unique.set(key,event);
+ }
  const retained=[...unique.values()].filter(e=>!e.disabled);
  // For closed corner windows, prove the timeline covers every corner observed
  // by this same provider at its own clock. Missing counters, invalid teams
