@@ -798,13 +798,22 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
  // provider quotas, final-score reconciliation and event writers as normal refresh.
  async function warmFinalPending(){
   if(!enabled())return {examined:0,warmed:0};
-  const ids=(await runQuery(
+  await init();
+  const batchSize=Math.min(16,Math.max(1,Number(env.STATS_FINAL_BATCH_SIZE)||6));
+  const cursorState=await read('settlement-final-pending-cursor');
+  const after=Number(cursorState?.matchId??0);
+  const fetchBatch=async cursor=>(await runQuery(
    "select distinct l.match_id from app_ticket_line l join app_ticket t on t.id=l.ticket_id "+
    "join app_match_result r on r.match_id=l.match_id "+
    "where l.status='PENDING' and t.status='PENDING' "+
    "and r.source in ('ZIZOBET','ADMIN') and r.home_score is not null and r.away_score is not null "+
-   "order by l.match_id"
-  )).rows.map(row=>String(row.match_id));
+   "and l.match_id>$1 order by l.match_id limit $2",[cursor,batchSize])).rows;
+  // Round-robin by the last processed fixture. If the tail is exhausted,
+  // wrap to the oldest pending IDs; the whole queue is never loaded at once.
+  let selected=await fetchBatch(Number.isSafeInteger(after)&&after>0?after:0);
+  if(!selected.length&&after>0)selected=await fetchBatch(0);
+  const ids=selected.map(row=>String(row.match_id));
+  if(!ids.length)return {examined:0,warmed:0};
   let next=0,warmed=0;
   const workers=Array.from({length:Math.min(2,ids.length)},async()=>{
    while(next<ids.length){
@@ -822,7 +831,10 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    }
   });
   await Promise.all(workers);
-  return {examined:ids.length,warmed};
+  await write('settlement-final-pending-cursor',{
+   matchId:Number(ids.at(-1)),updatedAt:new Date(now()).toISOString()
+  });
+  return {examined:ids.length,warmed,batchLimit:batchSize};
  }
  let cursor=0,priorityCursor=0;
  async function tick(){
