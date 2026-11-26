@@ -23,7 +23,7 @@ for(const [market,outcome,home,away,expected] of [
  ['Home team wins or total under 2.5','No',1,0,'LOST'],
  ['Awayteam wins or total over 2.5','Yes',0,3,'WON'],
  ['Draw or total goals under 2.5','Yes',1,1,'WON'],
- ['Draw or total goals over 2.5','No',1,1,'WON'],
+ ['Draw or total goals over 2.5','No',2,0,'WON'],
  ['Awayteam wins or total under 2.5','Yes',0,1,'WON']
 ]){
  const selection=parseOrTotalSelection({market_name:market,outcome_name:outcome,line:'2.5'});
