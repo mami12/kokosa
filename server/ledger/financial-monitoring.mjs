@@ -93,7 +93,7 @@ export async function manualSettlement(input,actor,{database=pool}={}){
    const quote=Number(ticket.original_potential_payout??ticket.potential_payout);
    const paid=next==='WON'?(lines.some(l=>l.status==='VOID')?systemColumnPayout(Number(ticket.stake),lines.filter(l=>l.status==='WON').map(l=>l.odds_at_placement)):quote):next==='VOID'?Number(ticket.stake):0;
    const previousPaid=['WON','VOID'].includes(ticket.status)?Number(ticket.potential_payout):0,delta=cents(paid)-cents(previousPaid);
-   if(delta&&ticket.user_id){
+   if(delta&&ticket.user_id&&!ticket.is_settlement_test){
     const user=(await client.query('select balance from app_user where id=$1 for update',[ticket.user_id])).rows[0];
     if(!user||cents(user.balance)+delta<0)throw fail(409,'Bilanci nuk mbulon kthimin e pagesës së mëparshme. Kontrollo llogarinë para korrigjimit.');
     const after=money(cents(user.balance)+delta);
