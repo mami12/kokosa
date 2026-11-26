@@ -1465,8 +1465,15 @@ export async function listLogicalTickets({userId = null, managerId = null, statu
     conditions.push(`exists (
       select 1 from app_ticket_line date_line
       where (date_line.ticket_id=t.id or (b.ticket_ids is not null and date_line.ticket_id=any(b.ticket_ids)))
-        and nullif(date_line.accepted_contract->>'kickoffAt','') is not null
-        and (nullif(date_line.accepted_contract->>'kickoffAt','')::timestamptz at time zone 'Europe/Tirane')::date=$${params.length}::date
+        and coalesce(
+          nullif(date_line.accepted_contract->>'kickoffAt','')::timestamptz,
+          nullif(date_snapshot.snapshot->>'start_at','')::timestamptz
+        ) is not null
+        and (coalesce(
+          nullif(date_line.accepted_contract->>'kickoffAt','')::timestamptz,
+          nullif(date_snapshot.snapshot->>'start_at','')::timestamptz
+        ) at time zone 'Europe/Tirane')::date=${params.length}::date
+      left join app_match_snapshot date_snapshot on date_snapshot.match_id=date_line.match_id
     )`);
   }
   // The player's active/history views must not silently truncate a large test run.
