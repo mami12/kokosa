@@ -19,6 +19,7 @@ import { getResult, captureFinishedMatches, unsettledMatchIds } from './results.
 import {captureHalfTimeResults} from './halftime-results.mjs';
 import { chargeManagerCommission, refundManagerCommission } from './manager-finance.mjs';
 import { isResultBttsMarket, parseResultBttsOutcome, gradeResultBtts } from './result-btts.mjs';
+import {isOrTotalMarket,parseOrTotalSelection,gradeOrTotalSelection} from './or-total-combinations.mjs';
 import { isResultTotalMarket, isTotalBttsMarket, isFirstHalfResultBtts, parseResultTotal, parseTotalBtts, gradeMixedTotal,
   isWinnerTotalMarket, isTeamNotToLoseTotalMarket, isBttsTotalAndMarket,
   parseWinnerTotal, parseTeamNotToLoseTotal, parseBttsTotal,
@@ -548,7 +549,7 @@ export function classify(marketName = '') {
   if (isMultiscoresMarket(marketName)) return 'MULTISCORES';
   if (isMatchbetFirstGoalMarket(marketName)) return 'MATCHBET_FIRST_GOAL';
   if (isQualificationMarket(marketName)) return 'TO_QUALIFY';
-  if (/\b(?:win|wins|draw)\s+or\s+(?:both\s+teams?\s+(?:to\s+)?score|total\s+goals?\s+(?:over|under))\b/i.test(marketName)) return 'CHANCE_MIX';
+  if (isOrTotalMarket(marketName) || /\b(?:win|wins|draw)\s+or\s+(?:both\s+teams?\s+(?:to\s+)?score|total\s+goals?\s+(?:over|under))\b/i.test(marketName)) return 'CHANCE_MIX';
   const s = String(marketName).toLowerCase();
   if (isHtFtMarket(marketName)) return 'HT_FT';
   // Bare 3way is a normal 1X2 market. Full Time 1UP/2UP/3UP are
@@ -563,7 +564,7 @@ export function classify(marketName = '') {
   if (/^(?:home|away)\s+team\s+no\s+bet\s*$/i.test(s.trim())) return 'DNB';
   if (/clean sheet/i.test(s)) return 'CLEAN_SHEET';
   if (/total goals?\s*\(?(?:exact|bands)\)?|exact goals|multigoals|number of goals|exact corners|corners?\s*\(?(?:exact|bands)\)?/i.test(s)) return 'BANDS_EXACT';
-  if (/corner.*(?:result|winner|1x2)|(?:result|winner|1x2).*corner|^(?:most|more)\s+corners?$/i.test(s.trim())) return 'CORNER_1X2';
+  if (/corner.*(?:result|winner|1x2)|(?:result|winner|1x2).*corner|^(?:most|more)\s+corners?$/i.test(s.trim()) || /^(?:corner\s*bet|cornerbet)$/i.test(s.trim())) return 'CORNER_1X2';
   if (/corner/.test(s)) return 'CORNERS';
   if (/\bcards?\b|booking|yellow|red/.test(s)) return 'CARDS';
   if (/both teams to score|\bbtts\b|goal[\s/]*no\s*goal|gol[\s/]*pa\s*gol/i.test(s)) return 'BTTS';
@@ -886,6 +887,7 @@ export function hasRequiredSettlementEvidence(line, result) {
     if (!Number.isSafeInteger(h)||h<0||!Number.isSafeInteger(a)||a<0) return false;
   }
   const family = goalTotalContract(line,result)?'TOTAL':classify(marketName);
+  if(isOrTotalMarket(marketName))return parseOrTotalSelection(line)!==null;
   if(family==='DNB'&&!plainDnb(marketName))return false;
 
   if (family === 'REST_OF_MATCH') {
@@ -1260,6 +1262,8 @@ export function gradeLine(line, result) {
     }
 
     case 'CHANCE_MIX': {
+      if(isOrTotalMarket(line.market_name))
+        return gradeOrTotalSelection(parseOrTotalSelection(line),home,away);
       const isDrawBtts = /\bdraw\s+or\s+both\s+teams?\s+(?:to\s+)?score\b/i.test(line.market_name);
       if (isDrawBtts) {
         const won = (home === away) || (home > 0 && away > 0);
@@ -1914,18 +1918,21 @@ export async function settleMatch(matchId) {
       unresolved.push({line,result});
       continue;
     }
+    // Recover old native corner contracts from the immutable accepted quote
+    // before the generic hold guard. Only known parser-migration holds qualify.
+    const recoveredCornerContract=!line.live_contract?
+      recoverLegacyZizobetCornerContract(line):null;
     if(line?.accepted_contract?.settlementHold&&
-       gradeHeldNativeCombo(line,result)===null){
+       gradeHeldNativeCombo(line,result)===null&&!recoveredCornerContract){
       unresolved.push({line,result});
       continue;
     }
     let status=null;
-    // Old Zizobet corner tickets may predate a native parser. Rebuild only
-    // from the immutable accepted ZIZOBET quote; never from AAMS or display text.
-    const recoveredCornerContract=!line.live_contract?
-      recoverLegacyZizobetCornerContract(line):null;
+    const accepted=recoveredCornerContract&&typeof line.accepted_contract==='string'
+      ?JSON.parse(line.accepted_contract):line.accepted_contract;
     const settlementLine=recoveredCornerContract?
-      {...line,live_contract:recoveredCornerContract}:line;
+      {...line,live_contract:recoveredCornerContract,
+       accepted_contract:{...accepted,settlementHold:null}}:line;
     // A frozen event contract is graded against PostgreSQL provider facts,
     // never parsed from a translated/displayed name at settlement time.
     // Simple full-time corner Over/Under quotes use the final aggregate
