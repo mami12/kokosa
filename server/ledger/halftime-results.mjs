@@ -65,18 +65,18 @@ export function extractConfirmedHalfTimeCandidate(row){
 export async function persistHalfTimeCandidate(candidate,{execute=query}={}){
  if(!candidate||candidate.source!=='ZIZOBET')return {stored:false,confirmed:false};
  const statement=[
- 'insert into app_match_half_result (match_id,home_team,away_team,half_home_score,half_away_score,signature,observed_at,source,confirmed_at,statistics)',
- "values ($1,$2,$3,$4,$5,$6,$7::timestamptz,'ZIZOBET',now(),$8::jsonb)",
+ 'insert into app_match_half_result (match_id,home_team,away_team,half_home_score,half_away_score,signature,observed_at,source,first_seen_at,confirmed_at,statistics)',
+ "values ($1,$2,$3,$4,$5,$6,$7::timestamptz,'ZIZOBET',$7::timestamptz,null,$8::jsonb)",
  'on conflict(match_id) do update set',
  'home_team=excluded.home_team, away_team=excluded.away_team,',
  'half_home_score=excluded.half_home_score,half_away_score=excluded.half_away_score,',
- 'signature=excluded.signature,source=excluded.source,',
  'correction_count=app_match_half_result.correction_count+case when app_match_half_result.signature<>excluded.signature then 1 else 0 end,',
- // The first observed HT transition remains the boundary for wager eligibility.
- // A later correction changes the result, not the time at which HT began.
- 'first_seen_at=app_match_half_result.first_seen_at,',
- 'confirmed_at=now(),',
- "statistics=coalesce(app_match_half_result.statistics,'{}'::jsonb)||excluded.statistics,",
+ 'signature=excluded.signature,source=excluded.source,',
+ // A changed HT result starts a fresh confirmation window. The time boundary
+ // remains the first observation of the CURRENT, unchanged score signature.
+ 'first_seen_at=case when app_match_half_result.signature=excluded.signature then app_match_half_result.first_seen_at else excluded.observed_at end,',
+ "confirmed_at=case when app_match_half_result.signature=excluded.signature and excluded.observed_at-app_match_half_result.first_seen_at>=interval '5 seconds' then coalesce(app_match_half_result.confirmed_at,now()) else null end,",
+ "statistics=case when app_match_half_result.signature=excluded.signature then coalesce(app_match_half_result.statistics,'{}'::jsonb)||excluded.statistics else excluded.statistics end,",
  'observed_at=excluded.observed_at',
  'where excluded.observed_at>app_match_half_result.observed_at',
  'returning confirmed_at,correction_count'
