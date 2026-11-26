@@ -226,6 +226,7 @@ assert.equal(verifiedSecondLiveDecision(timedProof(
  timeWindow,frameFor('goal',1,0),frameFor('goal',0,1)),{now}),null,
  'A provider team correction between independent polls must not pay');
 
+
  // Full-match totals now settle at the first irreversible milestone.
  // Over wins and Under loses only after the count passes the quoted line.
  const totalsFrame=(event,home,away,clock=64,extra={})=>({
