@@ -198,6 +198,7 @@ async function settlementCheckSelections(matchIds, refresh) {
 const settlementCheckCategories = [
   { id: 'goals', name: 'Golat' },
   { id: 'corners', name: 'Kornerat' },
+  { id: 'cards', name: 'Kartonat' },
   { id: 'totals', name: 'Totale' },
   { id: 'intervals', name: 'Intervale' },
   { id: 'results', name: 'Rezultate' },
