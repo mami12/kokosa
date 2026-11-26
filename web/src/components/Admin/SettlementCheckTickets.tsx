@@ -17,7 +17,8 @@ export default function SettlementCheckTickets(){
  const [playerId,setPlayerId]=useState('');
  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false);
  const [preview,setPreview]=useState<Preview|null>(null),[result,setResult]=useState<Result|null>(null),[error,setError]=useState('');
- const selectedMatches=matches.slice(0,4);\n const ready=Boolean(playerId&&selectedMatches.length===4);
+ const selectedMatches=matches.slice(0,4);
+ const ready=Boolean(playerId&&selectedMatches.length===4);
  const load=async()=>{
   setLoading(true);setError('');
   try{
