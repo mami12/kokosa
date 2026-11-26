@@ -57,6 +57,13 @@ assert.deepEqual(
   threshold:recoverLegacyZizobetCornerContract(away)?.threshold},
  {kind:'under',event:'corner',side:'away',threshold:5.5});
 
+const heldNextCorner=legacy('Who takes the [corner!] corner','1',0,'');
+heldNextCorner.accepted_contract.settlementHold='NATIVE_PARAMETERS_UNMAPPED';
+heldNextCorner.accepted_contract.nativeParameters={p3:2};
+const recoveredNextCorner=recoverLegacyZizobetCornerContract(heldNextCorner);
+assert.deepEqual(recoveredNextCorner,{version:1,kind:'sequence',event:'corner',target:2,side:'home',noneOffered:false},
+ 'A historical parser-migration hold recovers the ordinal from its accepted native p3 value');
+
 const awayHalf=legacy('2nd half - Awayteam total corners (1.5)','Over',2,'1.5');
 assert.deepEqual(
  {kind:recoverLegacyZizobetCornerContract(awayHalf)?.kind,
@@ -124,4 +131,7 @@ for(const [source,expected] of [
  assert.equal(await gradeStoredEventContract({...source,live_contract:contract},result,{execute}),expected,
   'Legacy native corner ticket must grade from the complete accepted provider chronology: '+source.accepted_contract.nativeMarketName);
 }
-console.log('PASS legacy Zizobet Most Corners, highest-scoring half and team/half corner recovery');
+const heldNextCornerStatus=await gradeStoredEventContract({...heldNextCorner,live_contract:recoveredNextCorner},result,{execute});
+assert.equal(heldNextCornerStatus,'WON',
+ 'The recovered historical 2nd corner ticket settles from the verified complete timeline');
+console.log('PASS legacy Zizobet Most Corners, team/half totals and recovered Who takes the Nth corner');
