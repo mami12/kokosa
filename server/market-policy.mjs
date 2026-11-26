@@ -98,13 +98,13 @@ export const isQuarterTotalOfferMarket=market=>{
   market?.accepted_contract?.builderLegs??market?.accepted_contract?.builder_legs;
  if(Array.isArray(legs)&&legs.some(isQuarterTotalOfferMarket))return true;
  const titles=titlesOf(market);
- if(!titles.some(title=>/\\b(?:total|over\\s*\\/?\\s*under)\\b/i.test(title)))return false;
+ if(!titles.some(title=>/\b(?:total|over\s*\/?\s*under)\b/i.test(title)))return false;
  const params=nativeParams(market);
  const line=market?.line??market?.total??market?.hcp??market?.handicap??
   params?.h??market?.h??market?.accepted_contract?.line;
  if(quarterLine(line))return true;
- return titles.some(title=>/\\btotal\\b.*\\(\\s*-?\\d+(?:[.,]\\d+)?\\s*\\)\\s*$/i.test(title)&&
-  quarterLine(title.match(/\\(\\s*(-?\\d+(?:[.,]\\d+)?)\\s*\\)\\s*$/)?.[1]));
+ return titles.some(title=>/\btotal\b.*\(\s*-?\d+(?:[.,]\d+)?\s*\)\s*$/i.test(title)&&
+  quarterLine(title.match(/\(\s*(-?\d+(?:[.,]\d+)?)\s*\)\s*$/)?.[1]));
 };
 export const isExcludedOfferMarket=market=>
  isHandicapOfferMarket(market)||isEarlyPayoutOfferMarket(market)||
