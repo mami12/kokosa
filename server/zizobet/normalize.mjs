@@ -281,9 +281,9 @@ export function oddsOf(row,quotes,meta,live,open=true,diagnostics){
   // Apply the same explicit exclusion policy before key generation and again
   // after native parameters have expanded the provider's title.
   if(isExcludedOfferMarket({name:rawName,nativeMarketId:String(id),line:q.h??q.total??q.line,nativeParameters:q})){note('excluded');continue;}
-  // Keep every quoted total line, including quarter thresholds (0.25/0.75).
-  // Unsupported split-settlement contracts are held for review after placement;
-  // they must not disappear from the native Zizobet offer at ingestion.
+  // Keep supported totals in the native identity. Quarter-line totals are
+  // explicitly rejected above because this site's settlement rules do not
+  // support their split-win/split-loss grades.
   // Preserve every numbered native parameter. Zizobet can add p4/p5/etc. to
   // market templates; dropping them aliases distinct offers to one market key.
   const params=Object.fromEntries(Object.entries(q).filter(([k,v])=>v!=null&&
