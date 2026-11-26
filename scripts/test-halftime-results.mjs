@@ -149,6 +149,26 @@ try{
  )).rows[0];
  assert.equal(new Date(stored.first_seen_at).toISOString(),correction.observedAt);
  assert.equal(stored.confirmed_at,null);
+
+ // A pre-existing legacy/unverified row with an old first_seen_at must not
+ // count as the first Zizobet observation for the new two-snapshot rule.
+ const oldObserved=new Date(Date.parse(withStats.observedAt)-30000).toISOString();
+ const oldFirstSeen=new Date(Date.parse(oldObserved)-3600000).toISOString();
+ await halftimeDb.query(
+  'insert into app_match_half_result(match_id,home_team,away_team,half_home_score,half_away_score,signature,first_seen_at,observed_at,source) values($1,$2,$3,$4,$5,$6,$7::timestamptz,$8::timestamptz,\'UNVERIFIED_LEGACY\')',
+  [124,withStats.homeTeam,withStats.awayTeam,withStats.home,withStats.away,withStats.signature,oldFirstSeen,oldObserved]
+ );
+ const firstZizobet=await persist({...withStats,matchId:124});
+ assert.equal(firstZizobet.confirmed,false,
+  'Legacy first_seen_at cannot bypass the two independent Zizobet observations');
+ const legacyRow=(await halftimeDb.query(
+  'select first_seen_at,confirmed_at from app_match_half_result where match_id=$1',[124]
+ )).rows[0];
+ assert.equal(new Date(legacyRow.first_seen_at).toISOString(),withStats.observedAt);
+ assert.equal(legacyRow.confirmed_at,null);
+ const secondZizobet=await persist({...withStats,matchId:124,
+  observedAt:new Date(Date.parse(withStats.observedAt)+6000).toISOString()});
+ assert.equal(secondZizobet.confirmed,true);
 }finally{await halftimeDb.close();}
 
 // A 2H counter may be derived only when the final and HT pairs have the same
