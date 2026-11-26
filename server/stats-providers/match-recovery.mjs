@@ -222,33 +222,62 @@ export function parseFotMobPayload(summary, details = null) {
     }
   }
 
-  const allStats = details?.content?.stats?.Periods?.All?.stats || [];
-  for (const group of allStats) {
-    for (const item of group.stats || []) {
-      const title = String(item.title || item.key || '').toLowerCase();
-      const statNumber=value=>value!=null&&value!==''&&Number.isFinite(Number(value))?Number(value):null;
-      const s0 = statNumber(item.stats?.[0]);
-      const s1 = statNumber(item.stats?.[1]);
-      if (/corner/i.test(title)) {
-        if (Number.isFinite(s0)) cornersH = s0;
-        if (Number.isFinite(s1)) cornersA = s1;
-      } else if (/foul/i.test(title)) {
-        if (Number.isFinite(s0)) foulsH = s0;
-        if (Number.isFinite(s1)) foulsA = s1;
-      } else if (/shots? on target/i.test(title)) {
-        if (Number.isFinite(s0)) sOnTargetH = s0;
-        if (Number.isFinite(s1)) sOnTargetA = s1;
-      } else if (/total shots?|shots/i.test(title) && !/target|inside|outside/i.test(title)) {
-        if (Number.isFinite(s0)) shotsH = s0;
-        if (Number.isFinite(s1)) shotsA = s1;
-      } else if (/possession/i.test(title)) {
-        if (Number.isFinite(s0)) possessionH = s0;
-        if (Number.isFinite(s1)) possessionA = s1;
-      } else if (/yellow card/i.test(title)) {
-        if (s0!==null&&s1!==null){yellowH=s0;yellowA=s1;yellowVerified=true;}
-      } else if (/red card/i.test(title)) {
-        if (s0!==null&&s1!==null){redH=s0;redA=s1;redVerified=true;}
-      }
+  const allStats = [
+    details?.content?.stats?.Periods?.All?.stats,
+    details?.content?.stats?.Periods?.all?.stats,
+    details?.content?.stats?.periods?.All?.stats,
+    details?.content?.stats?.periods?.all?.stats,
+    details?.content?.stats?.All?.stats
+  ].find(Array.isArray) ?? [];
+  // FotMob groups rows into sections (e.g. Cards -> Yellow Cards/Red Cards).
+  // Flatten only those section wrappers; a row's own [home,away] values stay intact.
+  const statRows=[];
+  const collectRows=(rows,depth=0)=>{
+    if(!Array.isArray(rows)||depth>3)return;
+    for(const row of rows){
+      const nested=row?.stats;
+      const section=Array.isArray(nested)&&nested.length>0&&
+        nested.every(value=>value&&typeof value==='object'&&!Array.isArray(value)&&
+          (value.title!=null||value.key!=null));
+      if(section)collectRows(nested,depth+1);
+      else statRows.push(row);
+    }
+  };
+  collectRows(allStats);
+  const statNumber=value=>{
+    if(value&&typeof value==='object')
+      value=value.value??value.total??value.displayValue??value.text??value.count;
+    if(value==null||value==='')return null;
+    const raw=String(value).trim().replace(/%$/,'').replace(',','.');
+    if(!/^-?\\d+(?:\\.\\d+)?$/.test(raw))return null;
+    const number=Number(raw);
+    return Number.isFinite(number)&&number>=0?number:null;
+  };
+  for(const item of statRows){
+    const title=String(item?.title??item?.key??item?.name??'').toLowerCase();
+    const values=Array.isArray(item?.stats)?item.stats:
+      Array.isArray(item?.values)?item.values:
+      [item?.home??item?.homeValue,item?.away??item?.awayValue];
+    const s0=statNumber(values[0]),s1=statNumber(values[1]);
+    if(/corner/i.test(title)){
+      if(Number.isInteger(s0))cornersH=s0;
+      if(Number.isInteger(s1))cornersA=s1;
+    }else if(/foul/i.test(title)){
+      if(Number.isInteger(s0))foulsH=s0;
+      if(Number.isInteger(s1))foulsA=s1;
+    }else if(/shots? on (?:target|goal)/i.test(title)){
+      if(Number.isInteger(s0))sOnTargetH=s0;
+      if(Number.isInteger(s1))sOnTargetA=s1;
+    }else if(/total shots?|^shots?$/i.test(title)&&!/target|inside|outside/i.test(title)){
+      if(Number.isInteger(s0))shotsH=s0;
+      if(Number.isInteger(s1))shotsA=s1;
+    }else if(/possession/i.test(title)){
+      if(s0!==null)possessionH=s0;
+      if(s1!==null)possessionA=s1;
+    }else if(/yellow card/i.test(title)){
+      if(Number.isInteger(s0)&&Number.isInteger(s1)){yellowH=s0;yellowA=s1;yellowVerified=true;}
+    }else if(/red card/i.test(title)){
+      if(Number.isInteger(s0)&&Number.isInteger(s1)){redH=s0;redA=s1;redVerified=true;}
     }
   }
 
