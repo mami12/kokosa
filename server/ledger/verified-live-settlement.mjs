@@ -69,8 +69,8 @@ export function verifiedSecondLiveDecision(row,{now=Date.now}={}){
  // A LIVE timed quote must carry its frozen acceptance counters. Without them,
  // the old timeline could contain an incident from before the purchase.
  if(timedKinds&&!timed)return null;
- const baselineDriven=timed||['sequence','race'].includes(contract.kind);
- const supported=['sequence','race','window','window-total','nth-time','interval-result',
+ const baselineDriven=timed||['sequence','race','half-race','half-next-event'].includes(contract.kind);
+ const supported=['sequence','race','half-race','half-next-event','window','window-total','nth-time','interval-result',
   'over','under','exact','range','atLeast','team-total-goals'];
  if(!supported.includes(contract.kind)||!(timed?['goal','corner','card','foul']:['goal','corner','card']).includes(contract.event))return null;
  if(baselineDriven){
@@ -99,6 +99,8 @@ export function verifiedSecondLiveDecision(row,{now=Date.now}={}){
   if(!pairValid(before)||!pairValid(after)||before.home!==after.home||before.away!==after.away)return null;
  }
  if(!Number.isFinite(oldFrame.clock)||!Number.isFinite(current.clock)||current.clock<oldFrame.clock)return null;
+ const halfScoped=['half-race','half-next-event'].includes(contract.kind);
+ if(halfScoped&&(contract.half!==1||oldFrame.clock>=45))return null;
 
  const firstDecision=primaryLiveDecision(contract,oldFrame);
  const secondDecision=primaryLiveDecision(contract,current);
@@ -109,7 +111,8 @@ export function verifiedSecondLiveDecision(row,{now=Date.now}={}){
  const secondDelta=gradeFromAcceptedCounters(contract,current);
  if(!['WON','LOST'].includes(firstDelta))return null;
  const crossedTimedEnd=timed&&Number(current.clock)>Number(contract.to);
- if(crossedTimedEnd){
+ const crossedHalfEnd=halfScoped&&Number(current.clock)>=45;
+ if(crossedTimedEnd||crossedHalfEnd){
   if(secondDelta!==null)return null;
   return firstDecision===firstDelta?firstDelta:null;
  }
