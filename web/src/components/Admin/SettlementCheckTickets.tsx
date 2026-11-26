@@ -13,6 +13,8 @@ type MarketDetail=Group&{markets:Market[]};
 type TestTicket={id:string;isSettlementTest?:boolean;status:string;stake:number;placedAt:string;lines:{marketName:string;outcomeName:string;matchName:string;oddsAtPlacement:number;status:string}[]};
 type PlaceResult={test:true;player:string;date:string;ticketCount:number;stakePerTicket:number;match:MatchSummary;placed:{id:string;matchId:string;marketName:string;outcomeName:string;odds:number;reused:boolean}[]};
 type Category={id:string;name:string};
+type AllMatch={id:string;name:string;status:'LIVE'|'PREMATCH';startTime?:string|null;league?:string};
+type AllResult={test:true;player:string;date:string;matchCount:number;ticketCount:number;stakePerTicket:number;matches:{id:string;name:string;status:string;marketCount:number;quoteCount:number;ticketCount:number}[]};
 const categoryLabels:Record<string,[string,string]>={
  goals:['Golat','Goals'],corners:['Kornerat','Corners'],cards:['Kartonat','Cards'],totals:['Totale','Totals'],
  intervals:['Intervale','Intervals'],results:['Rezultate','Results'],
@@ -44,6 +46,10 @@ export default function SettlementCheckTickets(){
  const[loading,setLoading]=useState(true),[detailLoading,setDetailLoading]=useState(false);
  const[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const[result,setResult]=useState<PlaceResult|null>(null);
+ const[allMatches,setAllMatches]=useState<AllMatch[]>([]);
+ const[selectedMatchIds,setSelectedMatchIds]=useState<string[]>([]);
+ const[allLoading,setAllLoading]=useState(false),[allBusy,setAllBusy]=useState(false);
+ const[allResult,setAllResult]=useState<AllResult|null>(null);
  const loadPlayers=useCallback(async()=>{
   try{
    const response=await apiClient.get<Player[]>('/admin/users');
@@ -67,11 +73,21 @@ export default function SettlementCheckTickets(){
  },[playerId,lang]);
  useEffect(()=>{void loadPlayers();},[loadPlayers]);
  useEffect(()=>{void loadCatalog();},[loadCatalog]);
+ useEffect(()=>{void loadAllMatches();},[loadAllMatches]);
  useEffect(()=>{
   void loadTickets();
   const timer=window.setInterval(()=>void loadTickets(),15000);
   return()=>window.clearInterval(timer);
  },[loadTickets]);
+ const loadAllMatches=useCallback(async()=>{
+  setAllLoading(true);setError('');
+  try{
+   const response=await apiClient.get('/admin/settlement-check/matches');
+   setAllMatches(Array.isArray(response.data?.matches)?response.data.matches:[]);
+   setSelectedMatchIds(current=>current.filter(id=>(response.data?.matches??[]).some((match:AllMatch)=>match.id===id)));
+  }catch(e:any){setError(e.response?.data?.message??tr('Ndeshjet e sotme nuk u ngarkuan.','Today’s fixtures could not be loaded.'));}
+  finally{setAllLoading(false);}
+ },[lang]);
  const openMarket=async(family:string)=>{
   setDetailLoading(true);setError('');setNotice('');setResult(null);setDetail(null);
   try{
@@ -96,6 +112,22 @@ export default function SettlementCheckTickets(){
    await loadCatalog();
   }catch(e:any){setError(e.response?.data?.message??tr('Biletat e testimit nuk u krijuan.','Test tickets could not be created.'));}
   finally{setBusy(false);}
+ };
+ const placeAll=async()=>{
+  if(!playerId||selectedMatchIds.length!==2||allBusy)return;
+  setAllBusy(true);setError('');setNotice('');setAllResult(null);
+  try{
+   const response=await apiClient.post<AllResult>('/admin/settlement-check/place-all',{
+    playerId,matchIds:selectedMatchIds,runId:createClientRequestId()
+   });
+   setAllResult(response.data);
+   setNotice(tr(
+    `${response.data.ticketCount} bileta testimi u krijuan për 2 ndeshjet dhe të gjitha kuotat aktive të lejueshme. Bilanci nuk u prek.`,
+    `${response.data.ticketCount} test tickets were created for both fixtures and all eligible active quotes. No balance was changed.`
+   ));
+   await loadTickets();
+  }catch(e:any){setError(e.response?.data?.message??tr('Testimi i dy ndeshjeve dështoi.','The two-fixture test failed.'));}
+  finally{setAllBusy(false);}
  };
  const activeOptionCount=detail?.markets.reduce((sum,market)=>sum+market.options.length,0)??0;
  return <section className="mx-auto max-w-6xl space-y-5 px-3 py-5 sm:px-6" data-testid="settlement-check-tickets">
@@ -138,6 +170,39 @@ export default function SettlementCheckTickets(){
       <p className="mt-1 text-[11px] text-text-secondary">{group.match.status} · {group.matchesAvailable} {tr('ndeshje me këtë market','fixtures with this market')}</p>
      </button>)}
     </div>}
+  </div>
+  <div className="rounded-2xl border border-tertiary bg-secondary p-4 sm:p-6" data-testid="settlement-check-all-markets">
+   <div className="flex flex-wrap items-start justify-between gap-3">
+    <div><h3 className="font-bold text-white">{tr('Testimi i vjetër: 2 ndeshje · të gjitha marketet','Legacy test: 2 fixtures · all markets')}</h3>
+     <p className="mt-1 text-xs text-text-secondary">{tr('Zgjidh saktësisht dy ndeshje të sotme ose live. Krijohet një biletë testimi për çdo kuotë aktive të lejueshme në të dyja ndeshjet. Marketet e përjashtuara nga politika e Kokosa nuk përfshihen.','Choose exactly two fixtures from today or currently live. One test ticket is created for every eligible active quote across both fixtures. Markets excluded by Kokosa policy are omitted.')}</p>
+    </div>
+    <button type="button" onClick={()=>void loadAllMatches()} disabled={allLoading||allBusy} className="rounded-lg border border-tertiary p-2 text-text-secondary disabled:opacity-50" aria-label={tr('Rifresko ndeshjet','Refresh fixtures')}><RefreshCw size={17} className={allLoading?'animate-spin':''}/></button>
+   </div>
+   {allLoading?<p className="py-6 text-center text-sm text-text-secondary">{tr('Po ngarkohen ndeshjet e sotme…','Loading today’s fixtures…')}</p>:
+    allMatches.length===0?<p className="py-6 text-center text-sm text-text-secondary">{tr('Nuk ka ndeshje aktive për testim sot.','No active fixtures are available for testing today.')}</p>:
+    <div className="mt-4 grid gap-2 md:grid-cols-2">
+     {allMatches.map(match=><label key={match.id} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${selectedMatchIds.includes(match.id)?'border-accent-green bg-accent-green/10':'border-tertiary bg-primary'}`}>
+      <input type="checkbox" checked={selectedMatchIds.includes(match.id)} disabled={allBusy||(!selectedMatchIds.includes(match.id)&&selectedMatchIds.length>=2)}
+       onChange={event=>setSelectedMatchIds(current=>event.target.checked?[...current,match.id].slice(0,2):current.filter(id=>id!==match.id))}
+       className="mt-1 accent-emerald-500"/>
+      <span className="min-w-0"><strong className="block text-sm text-white">{match.name}</strong>
+       <span className="mt-1 block text-[11px] text-text-secondary">{match.status}{match.league? ` · ${match.league}`:''}{match.startTime? ` · ${dateLabel(match.startTime)}`:''}</span>
+      </span>
+     </label>)}
+    </div>}
+   <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+    <p className="text-xs text-text-secondary">{tr(`${selectedMatchIds.length}/2 ndeshje të zgjedhura`,`${selectedMatchIds.length}/2 fixtures selected`)}</p>
+    <button type="button" disabled={!playerId||selectedMatchIds.length!==2||allBusy||allLoading} onClick={()=>void placeAll()}
+     className="flex min-h-11 items-center gap-2 rounded-xl bg-accent-green px-5 py-3 text-sm font-bold text-primary disabled:opacity-40">
+     {allBusy?<RefreshCw size={16} className="animate-spin"/>:<Play size={16}/>}
+     {tr('Vendos testet për të gjitha kuotat','Place tests for all quotes')}
+    </button>
+   </div>
+   {!playerId&&<p className="mt-2 text-xs text-amber-200">{tr('Zgjidh fillimisht llogarinë e lojtarit më sipër.','Choose the player account above first.')}</p>}
+   {allResult&&<div role="status" className="mt-4 rounded-xl border border-accent-green/30 bg-accent-green/10 p-4">
+    <strong className="text-sm text-white">{allResult.ticketCount} {tr('bileta testimi','test tickets')} · {tr('2 ndeshje','2 fixtures')}</strong>
+    <div className="mt-2 space-y-1">{allResult.matches.map(match=><p key={match.id} className="text-xs text-text-secondary">{match.name}: {match.marketCount} {tr('markete','markets')} · {match.quoteCount} {tr('kuota','quotes')} · {match.ticketCount} {tr('bileta','tickets')}</p>)}</div>
+   </div>}
   </div>
   {detailLoading&&<div role="status" className="rounded-xl border border-tertiary bg-secondary p-5 text-center text-sm text-text-secondary">{tr('Po verifikohen kuotat e marketit…','Verifying market quotes…')}</div>}
   {detail&&<div className="rounded-2xl border border-tertiary bg-secondary p-4 sm:p-6">
