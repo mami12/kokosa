@@ -5,7 +5,7 @@ create table if not exists app_settlement_override(line_id uuid primary key refe
 alter table app_settlement_override drop constraint if exists app_settlement_override_status_check;
 alter table app_settlement_override add constraint app_settlement_override_status_check check(status in ('PENDING','WON','LOST','VOID'));
 `;
-export const REVIEW_FIELDS=['corners','shots','shotsOnTarget','fouls','yellow','red','cards'];
+export const REVIEW_FIELDS=['corners','shots','shotsOnTarget','fouls','offsides','yellow','red','cards'];
 const valid=v=>v!==null&&v!==undefined&&v!==''&&Number.isInteger(Number(v))&&Number(v)>=0;
 const pair=value=>value&&valid(value.home)&&valid(value.away)?{home:Number(value.home),away:Number(value.away)}:null;
 const same=(a,b)=>!!a&&!!b&&a.home===b.home&&a.away===b.away;
@@ -24,14 +24,17 @@ export function compareFinalStatistics(observations,{attempted=[],unavailable={}
 export function settlementStatisticFields(line){
  if(Array.isArray(line.builder_legs))return [...new Set(line.builder_legs.flatMap(settlementStatisticFields))];
  const name=String(line.market_name??line.name??'').toLowerCase();
- // Player props and event windows use player/event evidence, not aggregate FT totals.
+ // Player props and event windows use event evidence. First/second-half
+ // aggregate totals remain statistic contracts with their own period counters.
  if(/\b(?:player|players|scorer|assist|to be booked|to receive a card)\b/.test(name)||
-    /\b(?:next|first|last|race|interval|window|minute|minutes|between|within|before|after|sequence|nth|first half|second half|1st half|2nd half|1h|2h)\b/.test(name))return [];
+    /\b(?:next|last|race|interval|window|minute|minutes|between|within|before|after|sequence|nth)\b/.test(name)||
+    (/\bfirst\b/.test(name)&&!(/\bfirst\s*half\b/.test(name))))return [];
  if(/yellow/.test(name))return ['yellow'];
  if(/red/.test(name))return ['red'];
  if(/card|booking|karton/.test(name))return ['cards'];
  if(/corner|korner/.test(name))return ['corners'];
  if(/shot.*(?:target|goal)|goditj.*port/.test(name))return ['shotsOnTarget'];
+  if(/offsides?|offside/.test(name))return ['offsides'];
  if(/shot|goditj/.test(name))return ['shots'];
  if(/foul|faull/.test(name))return ['fouls'];
  return [];
