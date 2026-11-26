@@ -2,7 +2,7 @@ import './fixtures/isolated-casino-env.mjs';
 import assert from 'node:assert/strict';
 import {
  marketInformationNeeds,selectedInformationEndpoints,missingSupplementalNeeds,describeJsonStructure,
- parseAiScoreFinalStatistics,
+ parseAiScoreFinalStatistics,aiscoreFixtureMatches,
  requestFootballInformation,canonicalHttpError,isFootballFixture,
  setFootballInformationMapping,inspectFootballInformation,
  createFootballInformationCollector,FOOTBALL_INFORMATION_SQL
@@ -100,6 +100,24 @@ assert.equal(parseAiScoreFinalStatistics(verifiedAiPayload,'j374oi0xz04sgqo',{..
  'a mismatch in either team blocks AiScore settlement data');
 assert.equal(parseAiScoreFinalStatistics(verifiedAiPayload,'j374oi0xz04sgqo',{...ledgerMatch,start_at:'2026-11-06T21:00:00.000Z'}),null,
  'a kickoff mismatch blocks AiScore settlement data');
+
+// AiScore team aliases use the same strict club identity as FotMob matching.
+const interMatch={match_id:102,sport_id:1,home:'Inter Milan',away:'Cagliari Calcio',
+ start_at:'2026-11-06T16:00:00.000Z'};
+const interAiPayload={data:{match:{
+ id:'j374oi0xz04sgqo',
+ home_team:{name:'Inter FC',stats:{corners:7,yellowCards:2,redCards:0}},
+ away_team:{name:'Cagliari',stats:{corners:4,yellowCards:3,redCards:0}},
+ start_at:'2026-11-06T16:00:00.000Z',status:'FT'
+}}};
+assert.equal(aiscoreFixtureMatches(interAiPayload,'j374oi0xz04sgqo',interMatch),true,
+ 'Inter Milan (Zizobet) must match Inter FC (AiScore)');
+assert.deepEqual(parseAiScoreFinalStatistics(interAiPayload,'j374oi0xz04sgqo',interMatch)?.values.corners,
+ {home:7,away:4},
+ 'AiScore final statistics can fill the Inter fixture only after the strict ID/name/kickoff check');
+assert.equal(aiscoreFixtureMatches(interAiPayload,'j374oi0xz04sgqo',
+ {...interMatch,home:'Inter Miami'}),false,
+ 'Inter Miami must not be treated as Inter Milan');
 
 const mapSql=[];
 const mapped=await setFootballInformationMapping({
