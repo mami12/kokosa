@@ -18,10 +18,10 @@ export const LIVE_PREVIEW_ROWS_SQL=
  * diagnostic and still require their own confirmed incident history.
  */
 export async function createLiveSettlementPreviews({
- runQuery=query,now=Date.now,limit=400
+ runQuery=query,now=Date.now,limit=400,matchId=null
 }={}){
  const cap=Math.max(1,Math.min(1000,Math.trunc(Number(limit)||400)));
- const rows=(await runQuery(LIVE_PREVIEW_ROWS_SQL,[cap])).rows;
+ const rows=(await runQuery(LIVE_PREVIEW_ROWS_SQL,[cap,matchId==null?null:Number(matchId)])).rows;
  let proposed=0,held=0;
  const clear=async id=>runQuery('delete from app_live_settlement_preview where line_id=$1',[id]);
  for(const row of rows){
