@@ -229,11 +229,11 @@ assert.equal(verifiedSecondLiveDecision(timedProof(
  // First-half totals use the same live milestone rule before HT.
  const halfCornerOver={version:1,kind:'half-total',event:'corner',half:1,
   choice:'over',threshold:2.5};
- const halfCornerFrame=totalsFrame('corner',2,1,42);
- assert.equal(primaryLiveDecision(halfCornerOver,halfCornerFrame),'WON',
+ const halfTotalCornerStartFrame=halfCornerFrame(2,1,42);
+ assert.equal(primaryLiveDecision(halfCornerOver,halfTotalCornerStartFrame),'WON',
   'First-half corners Over 2.5 is irreversible at three corners');
  assert.equal(verifiedSecondLiveDecision(timedProof(halfCornerOver,
-  halfCornerFrame,totalsFrame('corner',3,1,43)) ,{now}),'WON',
+  halfTotalCornerStartFrame,halfCornerFrame(3,1,43)) ,{now}),'WON',
   'First-half Over settles before HT even if another corner arrives during confirmation');
  assert.equal(primaryLiveDecision({...halfCornerOver,half:2},
   totalsFrame('corner',2,1,70)),null,
