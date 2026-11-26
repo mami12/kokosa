@@ -833,7 +833,7 @@ export function gradeLiveContract(contract,evidence={}, {ended=false,scopeEnded=
  * shadow decisions until the provider's live results have been validated.
  */
 export function gradeFromAcceptedCounters(contract,frame={}){
- if(!contract||!['sequence','race','half-race','half-next-event','window','window-total','nth-time'].includes(contract.kind))return null;
+ if(!contract||!['sequence','race','half-race','half-next-event','half-total','period-goal-total','window','window-total','nth-time'].includes(contract.kind))return null;
  const timed=['window','window-total','nth-time'].includes(contract.kind);
  // A timed bet placed during an interval is about incidents AFTER purchase.
  // Its accepted cumulative counters are frozen in entryBaseline. A later
@@ -884,6 +884,33 @@ export function gradeFromAcceptedCounters(contract,frame={}){
      count>=contract.target)return 'WON';
   if(contract.choice==='exact'&&Number.isInteger(contract.target)&&
      count>contract.target)return 'LOST';
+  return null;
+ }
+ if(['half-total','period-goal-total'].includes(contract.kind)){
+  // The match-wide counters are exact first-half counters only while 1H
+  // remains open. Second-half totals require their own period evidence.
+  if(contract.half!==1||!Number.isFinite(Number(frame.clock))||Number(frame.clock)>=45)
+   return null;
+  const colorPair=contract.cardColor?frame.teams?.[contract.cardColor+'Card']:null;
+  if(contract.cardColor&&
+     (contract.event!=='card'||frame.cardColorsVerified!==true||!colorPair))return null;
+  const pair=colorPair??frame.teams?.[contract.event];
+  const home=nonNeg(pair?.home),away=nonNeg(pair?.away);
+  if(home===null||away===null)return null;
+  const count=contract.side==='home'?home:contract.side==='away'?away:home+away;
+  if(contract.kind==='half-total'){
+   if(!Number.isFinite(contract.threshold)||!['over','under'].includes(contract.choice))return null;
+   return count>contract.threshold?
+    (contract.choice==='over'?'WON':'LOST'):null;
+  }
+  const selection=contract.selection,target=Number(contract.target);
+  if(selection==='over'||selection==='under'){
+   if(!Number.isFinite(target))return null;
+   return count>target?(selection==='over'?'WON':'LOST'):null;
+  }
+  if(selection==='atLeast')return Number.isSafeInteger(target)&&count>=target?'WON':null;
+  if(selection==='exact')return Number.isSafeInteger(target)&&count>target?'LOST':null;
+  if(selection==='range')return Number.isSafeInteger(contract.max)&&count>contract.max?'LOST':null;
   return null;
  }
  const base=contract.baseline,latest=frame.teams?.[contract.event];
