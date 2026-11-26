@@ -18,8 +18,13 @@ export function filterFixtureRowsByDay(rows,day,now=new Date()){
  return rows.filter(row=>row.live===true||String(row.service??row.status??'').toUpperCase()==='LIVE'||isFixtureOnDay(row.start_at,day,now));
 }
 
-/** Settlement-check fixtures are limited to today's Tirane calendar date; live matches remain eligible. */
+/** YYYY-MM-DD in the Tirane calendar, independent of the server's UTC date. */
+export function tiraneDateKey(now=new Date()){
+ const value=parts(now);
+ return `${value.year}-${value.month}-${value.day}`;
+}
+
+/** Settlement-test fixtures must kick off on today's Tirane date. A live match from yesterday is not eligible. */
 export function isSettlementCheckFixture(row,now=new Date()){
- if(row?.live===true||String(row?.service??'').toUpperCase()==='LIVE'||String(row?.status??'').toUpperCase()==='LIVE')return true;
  return isFixtureOnDay(row?.start_at??row?.startTime??row?.startAt,'today',now);
 }

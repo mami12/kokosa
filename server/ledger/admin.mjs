@@ -18,9 +18,9 @@ import { query } from '../db.mjs';
 import { getMatches as getMatchRows, getMatchById as getMatchRow, boostMatch } from '../matches.mjs';
 import { withOdds, serializeMatch } from '../collector.mjs';
 import { toClientMatch, toClientMatches } from './view.mjs';
-import { marketCategories, MARKET_CATEGORY_IDS } from '../market-catalog.mjs';
+import { marketCategories, marketFamily, MARKET_CATEGORY_IDS } from '../market-catalog.mjs';
 import {isSyntheticFootballMatch} from '../football-competitions.mjs';
-import {isSettlementCheckFixture} from '../fixture-dates.mjs';
+import {isSettlementCheckFixture,tiraneDateKey} from '../fixture-dates.mjs';
 import {isDecidedLiveMarket, isDecidedLiveOutcome, isDecidedLiveNumberedGoalWindow, isZizobetNativeOffer} from './decided-markets.mjs';
 import {isExcludedOfferMarket, isRetiredPlayerOfferMarket, isHandicapOfferMarket} from '../market-policy.mjs';
 import {isCurrentSettlementCheckQuote} from './settlement-check.mjs';
@@ -194,6 +194,137 @@ async function settlementCheckSelections(matchIds, refresh) {
   return matches;
 }
 
+
+const settlementCheckCategories = [
+  { id: 'goals', name: 'Golat' },
+  { id: 'corners', name: 'Kornerat' },
+  { id: 'cards', name: 'Kartonat' },
+  { id: 'totals', name: 'Totale' },
+  { id: 'intervals', name: 'Intervale' },
+  { id: 'results', name: 'Rezultate' },
+  { id: 'combos', name: 'Kombinime' },
+  { id: 'other', name: 'Të tjera' },
+];
+
+async function settlementCheckMarketGroups({ category = null, family = null } = {}) {
+  const now = new Date();
+  const nowMs = now.getTime();
+  const rows = (await getMatchRows({ catalog: true })).filter(row => {
+    const service = String(row.service ?? '').toUpperCase();
+    return ['LIVE', 'PREMATCH'].includes(service) &&
+      isSettlementCheckFixture(row, now) &&
+      !isSyntheticFootballMatch(row) && !overrides.isMatchHidden(row) &&
+      !/^(?:ended|finished|cancelled|closed|uncovered)$/i.test(String(row.status ?? '')) &&
+      !/^(?:ft|finished|ended|full.?time)$/i.test(String(row.feed_status ?? ''));
+  });
+  const serialized = await withOdds(rows, nowMs, { board: false });
+  const grouped = new Map();
+
+  for (const source of serialized) {
+    const match = toClientMatch(source);
+    const isLiveMatch = match.status === 'LIVE' || String(source.service ?? '').toUpperCase() === 'LIVE' || source.live === true;
+    if (!['LIVE', 'PREMATCH'].includes(match.status) || match.isSuspended || match.isHidden) continue;
+    const currentMinute = isLiveMatch
+      ? Number(source.currentMinute ?? source.minute ?? source.live_minute ??
+        (source.match_time_ms ? Math.floor(source.match_time_ms / 60000) : null))
+      : null;
+    const homeScore = Number(source.home_score ?? source.homeScore ?? source.score?.home ?? 0);
+    const awayScore = Number(source.away_score ?? source.awayScore ?? source.score?.away ?? 0);
+    const totalGoals = homeScore + awayScore;
+    const phase = String(source.period ?? source.phase ?? source.feed_status ?? '').toLowerCase();
+    const inSecondHalfOrHT = /^(?:2h|ht|ft|2nd half|second half|break time|half time|halftime|ended|finished)\b/.test(phase);
+    const byFamily = new Map();
+    const seen = new Set();
+
+    for (const market of match.markets ?? []) {
+      if (market.status !== 'ACTIVE' || isExcludedOfferMarket(market) ||
+          isRetiredPlayerOfferMarket(market) || isHandicapOfferMarket(market)) continue;
+      const identity = marketFamily(market);
+      if (!identity || (family && identity.key !== family)) continue;
+      const categories = marketCategories(identity.name).filter(id =>
+        settlementCheckCategories.some(item => item.id === id));
+      if (!categories.length || (category && !categories.includes(category))) continue;
+
+      const nativeZizobet = isZizobetNativeOffer(market, source);
+      if (isLiveMatch && isDecidedLiveNumberedGoalWindow(source, market)) continue;
+      if (isLiveMatch && !nativeZizobet) {
+        if (isDecidedLiveMarket(source, market)) continue;
+        if (inSecondHalfOrHT && (Number(market.period ?? 0) === 1 ||
+          /\b(?:1st|first)\s*half\b|\bhalf.?time\b(?!\s*\/?\s*(?:fulltime|ft))/i.test(String(market.name ?? '')))) continue;
+        const firstGoalTime = /^(?:when will (?:the )?(?:first goal|goal 1) be scored|(?:first|1st) goal (?:time|interval)|time of (?:the )?first goal)(?:\b|$)/i.test(String(market.name ?? ''));
+        if (firstGoalTime && totalGoals >= 1) continue;
+      }
+
+      const options = [];
+      for (const outcome of market.outcomes ?? []) {
+        if (seen.has(outcome.id) || !isCurrentSettlementCheckQuote(market, outcome, nowMs)) continue;
+        if (isLiveMatch && !nativeZizobet) {
+          if (isDecidedLiveOutcome(source, { ...market, outcomeName: outcome.name, outcomeCode: outcome.key,
+            outcome_name: outcome.name, outcome_key: outcome.key })) continue;
+          if (currentMinute !== null && Number.isFinite(currentMinute)) {
+            const label = String(outcome.name ?? '').replace(/\s*(?:st|nd|rd|th)?\s*(?:match|mins?\.?|minutes?\.?)$/i, '').trim();
+            const range = label.match(/^(?:min(?:ute)?s?\s*)?(\d{1,3})(?::\d{2})?\s*[-–]\s*(\d{1,3})(?::\d{2})?/);
+            if (range && Number(range[2]) <= currentMinute) continue;
+          }
+        }
+        seen.add(outcome.id);
+        options.push({
+          outcomeId: outcome.id, name: outcome.name, code: outcome.key ?? outcome.code ?? null,
+          odds: Number(outcome.odds), marketName: market.name,
+          line: String(market.line ?? market.specifier ?? ''),
+          selection: { outcomeId: outcome.id, oddsAtPlacement: Number(outcome.odds) },
+        });
+      }
+      if (!options.length) continue;
+      if (!byFamily.has(identity.key)) {
+        byFamily.set(identity.key, { key: identity.key, name: identity.name, categories, markets: [] });
+      }
+      byFamily.get(identity.key).markets.push({
+        name: market.name, line: String(market.line ?? market.specifier ?? ''), options,
+      });
+    }
+
+    for (const item of byFamily.values()) {
+      const activeOptions = item.markets.reduce((sum, market) => sum + market.options.length, 0);
+      const matchName = String(match.homeTeam?.name ?? match.homeTeam ?? '') + ' vs ' +
+        String(match.awayTeam?.name ?? match.awayTeam ?? '');
+      const candidate = {
+        match: {
+          id: String(match.id), name: matchName.trim(),
+          home: String(match.homeTeam?.name ?? match.homeTeam ?? ''),
+          away: String(match.awayTeam?.name ?? match.awayTeam ?? ''),
+          status: isLiveMatch ? 'LIVE' : 'PREMATCH',
+          startTime: source.startAt ?? source.start_at ?? null,
+          league: match.tournament?.name ?? source.tournament?.name ?? '',
+        },
+        markets: item.markets, activeOptions, live: isLiveMatch,
+      };
+      const existing = grouped.get(item.key);
+      if (!existing) {
+        grouped.set(item.key, {
+          key: item.key, name: item.name, categories: item.categories,
+          matchesAvailable: 1, candidate,
+        });
+      } else {
+        existing.matchesAvailable += 1;
+        const oldRank = Number(existing.candidate.live) * 100000 + existing.candidate.activeOptions;
+        const newRank = Number(candidate.live) * 100000 + candidate.activeOptions;
+        if (newRank > oldRank) existing.candidate = candidate;
+      }
+    }
+  }
+
+  const result = [...grouped.values()].map(item => ({
+    key: item.key, name: item.name, categories: item.categories,
+    matchesAvailable: item.matchesAvailable,
+    activeOptions: item.candidate.activeOptions,
+    match: item.candidate.match,
+    markets: item.candidate.markets,
+  }));
+  result.sort((a, b) => a.name.localeCompare(b.name));
+  return { date: tiraneDateKey(now), groups: result };
+}
+
 const commissionRate = (value, label) => {
   const rate = Number(value);
   if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
@@ -294,7 +425,7 @@ adminRouter.get(
          coalesce(sum(stake) filter (where status = 'PENDING'), 0)          as open_stake,
          coalesce(sum(stake) filter (where status in ('WON','LOST')), 0)    as settled_stake,
          coalesce((select sum(amount) from app_transaction where type='BET_WON'), 0) as paid_out
-       from app_ticket`,
+       from app_ticket where is_settlement_test is not true`,
     );
     const row = money.rows[0] ?? {};
     const managers = await ledger.managerFinancials();
@@ -507,24 +638,55 @@ adminRouter.post('/manager/users/:id/deposit', ...manager, moveBalance(1, 'DEPOS
 adminRouter.post('/manager/users/:id/withdraw', ...manager, moveBalance(-1, 'WITHDRAWAL', true));
 
 /* ------------------------------------------------ settlement check tickets */
-adminRouter.post('/admin/settlement-check/preview', ...admin, guard(async (req, res) => {
-  const matches = await settlementCheckSelections(req.body?.matchIds, req.app.locals.loadMatchDetailFully);
-  const ticketCount = matches.reduce((total, match) => total + match.selections.length, 0);
-  res.json({stakePerTicket:automatedCheckStake,ticketCount,totalStake:ticketCount * automatedCheckStake,matches:matches.map(({selections,...match})=>({...match,ticketCount:selections.length}))});
+adminRouter.get('/admin/settlement-check/catalog', ...admin, guard(async (req, res) => {
+  const category = String(req.query.category ?? '').trim() || null;
+  if (category && !settlementCheckCategories.some(item => item.id === category)) {
+    throw badRequest('Kategoria e marketit nuk është e vlefshme.');
+  }
+  const catalog = await settlementCheckMarketGroups({ category });
+  res.set('Cache-Control', 'no-store').json({
+    date: catalog.date, categories: settlementCheckCategories,
+    groups: catalog.groups.map(({ markets, ...group }) => group),
+  });
+}));
+adminRouter.get('/admin/settlement-check/market', ...admin, guard(async (req, res) => {
+  const family = String(req.query.family ?? '').trim();
+  if (!family) throw badRequest('Zgjidh një market.');
+  const catalog = await settlementCheckMarketGroups({ family });
+  const group = catalog.groups.find(item => item.key === family);
+  if (!group) return res.status(404).json({ message: 'Ky market nuk ka kuota aktive në ndeshjet e sotme.' });
+  res.set('Cache-Control', 'no-store').json(group);
 }));
 adminRouter.post('/admin/settlement-check/place', ...admin, guard(async (req, res) => {
-  const { playerId, matchIds, runId } = req.body ?? {};
+  const { playerId, family, runId } = req.body ?? {};
   if (!uuidPattern.test(String(runId ?? ''))) throw badRequest('Identifikuesi i kontrollit nuk është i vlefshëm. Rifresko dhe provo përsëri.');
   const player = await ledger.getUserById(playerId);
   if (!player || player.role !== 'PLAYER' || player.status !== 'ACTIVE') throw badRequest('Zgjidh një llogari lojtari aktive.');
-  const matches = await settlementCheckSelections(matchIds, req.app.locals.loadMatchDetailFully), placed = [], skipped = [];
-  for (const match of matches) for (const selection of match.selections) {
-    try {
-      const ticket = await bets.placeBet({user:player,stake:automatedCheckStake,selections:[selection],clientRequestId:checkRequestId(String(runId).toLowerCase(),selection.outcomeId)});
-      placed.push({id:ticket.id,bookingCode:ticket.bookingCode,matchId:match.id});
-    } catch (error) { skipped.push({matchId:match.id,outcomeId:selection.outcomeId,reason:error?.message ?? 'Kuota nuk u pranua.'}); }
-  }
-  res.json({stakePerTicket:automatedCheckStake,placed,skipped,totalStake:placed.length * automatedCheckStake});
+  const selectedFamily = String(family ?? '').trim();
+  if (!selectedFamily) throw badRequest('Zgjidh një market.');
+  const catalog = await settlementCheckMarketGroups({ family: selectedFamily });
+  const group = catalog.groups.find(item => item.key === selectedFamily);
+  if (!group) throw badRequest('Ky market nuk ka më kuota aktive në ndeshjet e sotme.');
+  const selections = group.markets.flatMap(market => market.options.map(option => ({
+    ...option.selection,
+    clientRequestId: checkRequestId(String(runId).toLowerCase(), option.outcomeId),
+  })));
+  const result = await bets.placeSettlementTestTickets({
+    user: player, selections, family: selectedFamily, runId: String(runId).toLowerCase(),
+  });
+  res.json({
+    test: true, player: player.username, family: selectedFamily, date: catalog.date,
+    match: group.match, ticketCount: result.placed.length,
+    stakePerTicket: result.stakePerTicket, placed: result.placed,
+  });
+}));
+adminRouter.get('/admin/settlement-check/tickets', ...admin, guard(async (req, res) => {
+  const playerId = String(req.query.playerId ?? '').trim() || null;
+  const tickets = await bets.listLogicalTickets({
+    userId: playerId, statuses: null, onlySettlementTests: true,
+    limit: Math.min(500, Math.max(1, Number(req.query.limit) || 100)),
+  });
+  res.json(tickets);
 }));
 
 /* ----------------------------------------------------------------- tickets */

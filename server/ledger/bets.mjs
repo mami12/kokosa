@@ -786,7 +786,7 @@ async function persistLiveContracts(runQuery,ticketId,lines){
 const round = (n, digits = 2) => Number(Number(n).toFixed(digits));
 
 const TICKET_COLUMNS = `t.id, t.booking_code, t.user_id, t.stake, t.total_odds, t.potential_payout, t.original_potential_payout, t.potential_quote_reconstructed,
-                        t.ticket_type, t.system_type, t.status, t.placed_at, t.settled_at`;
+                        t.ticket_type, t.system_type, t.status, t.placed_at, t.settled_at, t.is_settlement_test, t.settlement_test_family`;
 
 export function getLinePlacementScore(l) {
   const contract = l?.accepted_contract;
@@ -894,6 +894,8 @@ export const toClientTicket = (row, lines = [], username = null) => ({
   ticketType: row.ticket_type,
   systemType: row.system_type,
   status: row.status,
+  isSettlementTest: row.is_settlement_test === true,
+  settlementTestFamily: row.settlement_test_family ?? null,
   placedAt: row.placed_at,
   settledAt: row.settled_at,
   user: username ? { username } : null,
@@ -933,6 +935,101 @@ export async function getTicketWithLines(ticketId, {runQuery = query, consolidat
 }
 
 const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Places diagnostic selections as test-only tickets. They use the same frozen
+ * provider contracts and settlement tables as ordinary tickets, but are marked
+ * at creation so they never debit, credit, or contribute to player finances.
+ */
+export async function placeSettlementTestTickets({ user, selections = [], family = '', runId }, {
+  database = pool, resolve = resolveSelection,
+} = {}) {
+  if (!user || user.role !== 'PLAYER' || user.status !== 'ACTIVE') {
+    throw Object.assign(new Error('Zgjidh një llogari lojtari aktive.'), { status: 400 });
+  }
+  if (!requestIdPattern.test(String(runId ?? ''))) {
+    throw badRequest('Identifikuesi i kontrollit nuk është i vlefshëm. Rifresko dhe provo përsëri.');
+  }
+  if (!Array.isArray(selections) || selections.length < 1 || selections.length > 250) {
+    throw badRequest('Ky market nuk ka opsione aktive për testim.');
+  }
+
+  const unique = new Map();
+  for (const selection of selections) {
+    const outcomeId = String(selection?.outcomeId ?? '');
+    const clientRequestId = String(selection?.clientRequestId ?? '').toLowerCase();
+    if (!outcomeId || !requestIdPattern.test(clientRequestId)) {
+      throw badRequest('Një nga opsionet e testimit nuk është identifikuar saktë.');
+    }
+    if (!unique.has(outcomeId)) unique.set(outcomeId, { ...selection, clientRequestId });
+  }
+  const picks = [...unique.values()];
+  const lines = await Promise.all(picks.map(selection => resolve(selection)));
+  const client = await database.connect();
+  const placed = [];
+  try {
+    await client.query('begin');
+    await revalidateSelections(picks, lines, resolve, { executor: client.query.bind(client) });
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index];
+      const selection = picks[index];
+      const price = frozenSelectionPrice(line.price);
+      const stake = 100;
+      const payout = systemColumnPayout(stake, [price]);
+      if (!Number.isFinite(price) || price <= 1 || payout > 500000) {
+        throw badRequest('Një nga kuotat ka kaluar kufijtë e lejuar për testim.');
+      }
+      const payloadHash = betRequestHash({
+        stake, selections: [{ ...selection, oddsAtPlacement: price }],
+        ticketType: 'SINGLE', systemType: 'SETTLEMENT_TEST',
+      });
+      const previous = await client.query(
+        'select id, is_settlement_test, request_payload_hash from app_ticket where user_id=$1 and client_request_id=$2 for update',
+        [user.id, selection.clientRequestId],
+      );
+      if (previous.rows.length) {
+        const existing = previous.rows[0];
+        if (existing.is_settlement_test !== true || existing.request_payload_hash !== payloadHash) {
+          throw Object.assign(new Error('Identifikuesi i testimit është përdorur më parë me të dhëna të tjera.'), { status: 409 });
+        }
+        placed.push({
+          id: existing.id, matchId: String(line.matchId), marketName: line.marketName,
+          outcomeName: line.outcomeName, odds: price, reused: true,
+        });
+        continue;
+      }
+      const inserted = await client.query(
+        `insert into app_ticket
+          (user_id, stake, total_odds, potential_payout, ticket_type, system_type, status,
+           client_request_id, request_payload_hash, is_settlement_test, settlement_test_family)
+         values ($1,$2,$3,$4,'SINGLE','SETTLEMENT_TEST','PENDING',$5,$6,true,$7)
+         returning id`,
+        [user.id, stake, price, payout, selection.clientRequestId, payloadHash, String(family ?? '')],
+      );
+      const ticketId = inserted.rows[0].id;
+      await client.query(
+        `insert into app_ticket_line
+          (ticket_id,match_id,market_key,line,outcome_key,outcome_name,market_name,match_name,odds_at_placement,status,builder_legs)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'PENDING',$10::jsonb)`,
+        [ticketId,line.matchId,line.marketKey,line.line,line.outcomeKey,line.outcomeName,
+          line.marketName,line.matchName,price,JSON.stringify(line.builderLegs??null)],
+      );
+      await persistLiveContracts(client.query.bind(client),ticketId,[{...line,price}]);
+      placed.push({
+        id: ticketId, matchId: String(line.matchId), marketName: line.marketName,
+        outcomeName: line.outcomeName, odds: price, reused: false,
+      });
+    }
+    await client.query('commit');
+    return { test: true, stakePerTicket: 100, placed };
+  } catch (error) {
+    await client.query('rollback').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 
 export function betRequestHash({ stake, selections, ticketType, systemType }) {
   const payload = {
@@ -1348,8 +1445,10 @@ export async function withLines(rows, {runQuery = query, consolidate = true} = {
 }
 
 /** Select one representative per logical ticket; filter its COMPLETE status before LIMIT. */
-export async function listLogicalTickets({userId = null, managerId = null, statuses = null, from = null, to = null, limit = 200} = {}, {runQuery = query} = {}) {
+export async function listLogicalTickets({userId = null, managerId = null, statuses = null, from = null, to = null, matchDate = null, includeSettlementTests = false, onlySettlementTests = false, limit = 200} = {}, {runQuery = query} = {}) {
   const params = [], conditions = [], batchConditions = [];
+  if (onlySettlementTests) conditions.push('t.is_settlement_test is true');
+  else if (!includeSettlementTests) conditions.push('t.is_settlement_test is not true');
   if (userId) {
     params.push(userId); conditions.push(`t.user_id=$${params.length}`); batchConditions.push(`b.user_id=$${params.length}`);
   }
@@ -1361,6 +1460,22 @@ export async function listLogicalTickets({userId = null, managerId = null, statu
   if (statuses) { params.push(statuses); conditions.push(`coalesce(b.logical_status,t.status)=any($${params.length}::text[])`); }
   if (from) { params.push(from); conditions.push(`coalesce(b.created_at,t.placed_at)>=$${params.length}::timestamptz`); }
   if (to) { params.push(to); conditions.push(`coalesce(b.created_at,t.placed_at)<=$${params.length}::timestamptz`); }
+  if (matchDate) {
+    params.push(String(matchDate));
+    conditions.push(`exists (
+      select 1 from app_ticket_line date_line
+      left join app_match_snapshot date_snapshot on date_snapshot.match_id=date_line.match_id
+      where (date_line.ticket_id=t.id or (b.ticket_ids is not null and date_line.ticket_id=any(b.ticket_ids)))
+        and coalesce(
+          nullif(date_line.accepted_contract->>'kickoffAt','')::timestamptz,
+          nullif(date_snapshot.snapshot->>'start_at','')::timestamptz
+        ) is not null
+        and (coalesce(
+          nullif(date_line.accepted_contract->>'kickoffAt','')::timestamptz,
+          nullif(date_snapshot.snapshot->>'start_at','')::timestamptz
+        ) at time zone 'Europe/Tirane')::date=$${params.length}::date
+    )`);
+  }
   // The player's active/history views must not silently truncate a large test run.
   // Keep the bound finite to protect the database while allowing all ordinary
   // tickets in a local account to be returned in one request.
@@ -1383,13 +1498,13 @@ export async function listLogicalTickets({userId = null, managerId = null, statu
 }
 
 /** open tickets (My Bets -> active) */
-export async function listActive(userId, options = {}) {
-  return listLogicalTickets({userId,statuses:['PENDING'],limit:10000},options);
+export async function listActive(userId, {matchDate = null, runQuery = query} = {}) {
+  return listLogicalTickets({userId,statuses:['PENDING'],matchDate,limit:10000},{runQuery});
 }
 
 /** settled tickets (My Bets -> history): all retained tickets up to the safe response bound */
-export async function listHistory(userId, options = {}) {
-  return listLogicalTickets({userId,statuses:['WON','LOST','VOID','REVERTED','CANCELLED'],limit:10000},options);
+export async function listHistory(userId, {matchDate = null, runQuery = query} = {}) {
+  return listLogicalTickets({userId,statuses:['WON','LOST','VOID','REVERTED','CANCELLED'],matchDate,limit:10000},{runQuery});
 }
 
 /** booking code (public) or a ticket id fragment, as the betslip's search box does */
@@ -1452,6 +1567,7 @@ export async function revertTicket(ticketId, managerId = null, { database = pool
     );
     const ticket = found.rows[0];
     if (!ticket) throw Object.assign(new Error('ticket not found'), { status: 404 });
+    if (ticket.is_settlement_test === true) throw badRequest('Biletat e testimit nuk kthehen si bileta financiare.');
     if (found.rows.length !== ids.length || found.rows.some(row => row.user_id !== ticket.user_id) ||
         (batch && ticket.user_id !== batch.user_id)) throw new Error('System ticket ownership mismatch.');
     if (managerId && found.rows.some(row => row.manager_id !== managerId)) {

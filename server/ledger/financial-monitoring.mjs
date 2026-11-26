@@ -17,6 +17,7 @@ const splitCents=(amount,keys)=>{
 export function buildMatchExposure(rows){
  const tickets=new Map(),matches=new Map();
  for(const row of rows){
+  if(row.is_settlement_test===true)continue;
   let ticket=tickets.get(row.ticket_id);
   if(!ticket){ticket={id:row.ticket_id,logicalId:row.logical_id??row.ticket_id,userId:row.user_id,username:row.username,
    stake:cents(row.stake),quote:cents(row.original_potential_payout??row.potential_payout),status:row.ticket_status,matches:new Map()};tickets.set(row.ticket_id,ticket);}
@@ -52,7 +53,7 @@ export async function matchExposure(execute=query){
  const rows=(await execute(`select l.*,t.id as ticket_id,t.user_id,t.stake,t.potential_payout,t.original_potential_payout,t.status as ticket_status,u.username,
   coalesce((select b.id::text from app_ticket_batch b where t.id=any(b.ticket_ids) limit 1),t.id::text) as logical_id
   from app_ticket_line l join app_ticket t on t.id=l.ticket_id left join app_user u on u.id=t.user_id
-  where t.status not in ('REVERTED','CANCELLED') order by t.placed_at,t.id,l.id`)).rows;
+  where t.status not in ('REVERTED','CANCELLED') and t.is_settlement_test is not true order by t.placed_at,t.id,l.id`)).rows;
  return buildMatchExposure(rows);
 }
 
@@ -93,7 +94,7 @@ export async function manualSettlement(input,actor,{database=pool}={}){
    const quote=Number(ticket.original_potential_payout??ticket.potential_payout);
    const paid=next==='WON'?(lines.some(l=>l.status==='VOID')?systemColumnPayout(Number(ticket.stake),lines.filter(l=>l.status==='WON').map(l=>l.odds_at_placement)):quote):next==='VOID'?Number(ticket.stake):0;
    const previousPaid=['WON','VOID'].includes(ticket.status)?Number(ticket.potential_payout):0,delta=cents(paid)-cents(previousPaid);
-   if(delta&&ticket.user_id){
+   if(delta&&ticket.user_id&&!ticket.is_settlement_test){
     const user=(await client.query('select balance from app_user where id=$1 for update',[ticket.user_id])).rows[0];
     if(!user||cents(user.balance)+delta<0)throw fail(409,'Bilanci nuk mbulon kthimin e pagesës së mëparshme. Kontrollo llogarinë para korrigjimit.');
     const after=money(cents(user.balance)+delta);

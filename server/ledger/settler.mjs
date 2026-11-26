@@ -1476,7 +1476,7 @@ export async function recalcTicket(ticketId, { database = pool } = {}) {
       [ticketId, status, payout],
     );
 
-    if (payout > 0 && ticket.user_id) {
+    if (payout > 0 && ticket.user_id && !ticket.is_settlement_test) {
       const userRow = await client.query('select balance, manager_id, username from app_user where id = $1 for update', [
         ticket.user_id,
       ]);
@@ -1497,7 +1497,7 @@ export async function recalcTicket(ticketId, { database = pool } = {}) {
     }
 
     // Manager earnings are reports for manual settlement, never wallet money.
-    if (ticket.user_id) {
+    if (ticket.user_id && !ticket.is_settlement_test) {
       const user = await client.query('select manager_id, username from app_user where id = $1', [ticket.user_id]);
       const managerId = user.rows[0]?.manager_id;
       if (managerId && (status === 'WON' || status === 'LOST')) {
