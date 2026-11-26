@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {providerTimeline} from '../server/live-event-timeline.mjs';
 import {normalizeLiveFrame} from '../server/ledger/live-observation-store.mjs';
 import {projectZizobetHistory} from '../server/ledger/zizobet-match-history.mjs';
-import {isFinalZizobetMatch,shouldProcessFinalHistoryDetail,postFinalHistoryRetryDelay,newlyConfirmedHistoryKinds} from '../server/zizobet-feed.mjs';
+import {isFinalZizobetMatch,shouldProcessFinalHistoryDetail,postFinalHistoryRetryDelay,newlyConfirmedHistoryKinds,historyRefreshIntervalMs,historyPollBatchSize} from '../server/zizobet-feed.mjs';
 import {infoOf,oddsOf,resolveMarketTitle} from '../server/zizobet/normalize.mjs';
 import {providerResultPair,teamStatisticsFromRow} from '../server/match-statistics.mjs';
 import {zizobetEventIdentities} from '../server/zizobet/event-identity.mjs';
@@ -162,9 +162,23 @@ assert.equal(postFinalHistoryRetryDelay(2*60_000,60_000,21),30_000);
 assert.equal(postFinalHistoryRetryDelay(2*60_000,60_000,40),30_000);
 assert.equal(postFinalHistoryRetryDelay(2*60_000,60_000,41),60_000);
 assert.equal(postFinalHistoryRetryDelay(50*60_000,60_000,41),300_000);
+assert.equal(historyRefreshIntervalMs(''),30000,'All-match chronology defaults to a 30-second refresh target');
+assert.equal(historyRefreshIntervalMs(5000),15000,'History polling keeps a safe 15-second minimum');
+assert.equal(historyPollBatchSize(''),24,'History polling must process a useful batch instead of only four matches');
+assert.equal(historyPollBatchSize(64),32,'History polling batch is capped to avoid unbounded upstream pressure');
+assert.equal(historyPollBatchSize(5),5);
 assert.deepEqual(newlyConfirmedHistoryKinds([],['corner','goal']),['corner','goal']);
 assert.deepEqual(newlyConfirmedHistoryKinds(['corner'],['corner','goal']),['goal']);
 assert.deepEqual(newlyConfirmedHistoryKinds(['corner','goal'],['corner','goal']),[]);
+
+const admin=readFileSync(new URL('../server/ledger/admin.mjs',import.meta.url),'utf8');
+const supplemental=readFileSync(new URL('../server/stats-providers/service.mjs',import.meta.url),'utf8');
+assert.match(admin,/await statsProviders\.warm\(row\)/,
+ 'Admin match detail waits for its fixture-matched FotMob incident archive');
+assert.match(supplemental,/detailTimelineRequested/,
+ 'Opening an admin/detail fixture triggers FotMob chronology even without a pending event market');
+assert.match(supplemental,/reconcileKind\('corner'/,
+ 'FotMob corner incidents are retained and only retired when they reconcile to explicit team totals');
 
 const ui=readFileSync(new URL('../web/src/components/Tracker/PitchTracker.tsx',import.meta.url),'utf8');
 const css=readFileSync(new URL('../web/src/styles/zshop.css',import.meta.url),'utf8');
