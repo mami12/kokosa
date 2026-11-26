@@ -140,6 +140,8 @@ create table if not exists app_ticket (
 );
 -- Preserve the accepted quote independently from the historical settled payout.
 create table if not exists app_market_scope_policy(id serial primary key,country text not null default '',league text not null default '',categories text[] not null default '{}',families text[] not null default '{}',updated_at timestamptz not null default now());
+alter table app_ticket add column if not exists is_settlement_test boolean not null default false;
+alter table app_ticket add column if not exists settlement_test_family text;
 alter table app_ticket add column if not exists original_potential_payout numeric(14,2);
 alter table app_ticket add column if not exists potential_quote_reconstructed boolean not null default false;
 update app_ticket set original_potential_payout=case when status in ('PENDING','WON') then potential_payout
