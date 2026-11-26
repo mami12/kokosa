@@ -34,7 +34,7 @@ const repeatedIdTimeline=[
 ];
 const repeatedIdentities=zizobetEventIdentities(repeatedIdTimeline);
 assert.deepEqual(repeatedIdentities.map(item=>item.id),[
- 'shared-corner','shared-corner#2'
+ 'shared-corner','shared-corner#000002'
 ]);
 assert.deepEqual(
  zizobetEventIdentities(repeatedIdTimeline).map(item=>item.id),
