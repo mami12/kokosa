@@ -18,6 +18,19 @@ const details={
  ]}}}}
 };
 const parsed=parseFotMobPayload(summary,details);
+const partialDetailsStatus=parseFotMobPayload(
+ {status:{finished:true,scoreStr:'2 - 1'},home:{score:2},away:{score:1}},
+ {header:{status:{reason:{short:'Full-time'},scoreStr:'2 - 1'}}}
+);
+assert.equal(partialDetailsStatus.finished,true,
+ 'A partial details status must not shadow the independent finished date-list status');
+const extended=parseFotMobPayload(
+ {status:{finished:true,scoreStr:'2 - 1',reason:{short:'After penalties'}}},
+ {header:{status:{finished:true,scoreStr:'2 - 1'}}}
+);
+assert.equal(extended.finished,false,
+ 'An explicit extra-time or penalty label must override a generic FT flag');
+
 assert.equal(parsed.finished,true);
 assert.deepEqual(parsed.yellowCards,{home:2,away:1});
 assert.deepEqual(parsed.redCards,{home:1,away:0});
