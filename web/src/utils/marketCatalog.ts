@@ -11,7 +11,7 @@ import {isExcludedOfferMarket} from '../../../server/market-policy.mjs';
  * Translation is applied only when rendering; IDs, lines, prices and saved
  * selection data remain unchanged.
  */
-export type MarketCategory = 'main' | 'goals' | 'mixed' | 'corners' | 'htft' | 'other';
+export type MarketCategory = 'main' | 'goals' | 'mixed' | 'corners' | 'cards' | 'htft' | 'other';
 export type MarketLanguage = 'al' | 'en';
 
 const normalized = (value: unknown): string =>
@@ -156,7 +156,7 @@ export function marketCategoryOf(market: Market): MarketCategory {
   // Zizobet's gCorners/zzCorners native key is authoritative when the
   // visible market title is generic Over/Under (including localized titles).
   if (type === 'corners' || /\bcorners?\b|\bcorner kicks?\b/.test(name) || /(?:^|\s)(?:g|zz)?corners?(?:\s|$)/.test(nativeKey)) return 'corners';
-  if (type === 'cards' || /\bcards?\b|\bbookings?\b|yellow card|red card|disciplin/.test(name)) return 'other';
+  if (type === 'cards' || /\bcards?\b|\bbookings?\b|yellow card|red card|disciplin/.test(name)) return 'cards';
   if (/\bplayers?\b|goalscorer|scorer|to be booked|player shots?/.test(name)) return 'other';
   if (/\b(?:result|winner|1x2)\b.*\b(?:total|goals|btts|both teams)\b|\b(?:total|goals|btts)\b.*\b(?:both teams|btts)\b/.test(name)) return 'mixed';
   if (/halftime\s*\/?\s*fulltime|half\s*time\s*\/\s*full\s*time|ht\s*\/\s*ft|\b(?:1st|2nd|first|second)\s+half\b|\bperiod\b/.test(name) ||
@@ -203,11 +203,11 @@ export function marketSelectionLabel(raw: string, lang: MarketLanguage, marketNa
 }
 
 const EN_CATEGORY_LABELS: Record<MarketCategory, string> = {
-  main: 'Main', goals: 'Goals', mixed: 'Combos', corners: 'Corners',
+  main: 'Main', goals: 'Goals', mixed: 'Combos', corners: 'Corners', cards: 'Cards',
   htft: 'Halves / Periods', other: 'Other',
 };
 const AL_CATEGORY_LABELS: Record<MarketCategory, string> = {
-  main: 'Kryesore', goals: 'Golat', mixed: 'Kombinime', corners: 'Kornet',
+  main: 'Kryesore', goals: 'Golat', mixed: 'Kombinime', corners: 'Kornet', cards: 'Kartona',
   htft: 'Pjesët / Periudhat', other: 'Të tjera',
 };
 export function marketCategoryLabel(category: MarketCategory, lang: MarketLanguage): string {
