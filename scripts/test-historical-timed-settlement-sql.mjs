@@ -57,6 +57,32 @@ assert.deepEqual(injuryEvents.cornerEvents.map(f=>[f.minute,f.injury]),[[45,2],[
 assert.notEqual(injuryEvents.cornerEvents[0].id,injuryEvents.cornerEvents[1].id,
  'Two distinct added-time corners by the same player are not collapsed');
 
+// FotMob returns a complete event array even when a kind has zero incidents.
+// That is the evidence needed to settle an explicitly recorded 0-0 final total.
+const emptyFotMob=fotMobTimedIncidents([]);
+assert.equal(emptyFotMob.cornerTimelineAvailable,true);
+assert.equal(emptyFotMob.cardTimelineAvailable,true);
+assert.ok(validateHistoricalTimedEvents({
+ source:'fotmob',kind:'corner',final:true,complete:true,timelineAvailable:true,
+ homeCount:0,awayCount:0,events:[]}));
+assert.ok(validateHistoricalTimedEvents({
+ source:'fotmob',kind:'card',final:true,complete:true,timelineAvailable:true,
+ homeCount:0,awayCount:0,events:[]}));
+const fotmobNinetyPlus=fotMobTimedIncidents([
+ {type:'Corner',eventId:'fotmob-90-plus-4',isHome:true,time:'90+4'},
+ {type:'Card',eventId:'fotmob-card-90-plus-2',isHome:false,time:'90+2',card:'Yellow'}
+]);
+assert.deepEqual(fotmobNinetyPlus.cornerEvents.map(e=>[e.minute,e.injury]),[[90,4]]);
+assert.deepEqual(fotmobNinetyPlus.cardEvents.map(e=>[e.minute,e.injury,e.cardColor]),[[90,2,'yellow']]);
+assert.ok(validateHistoricalTimedEvents({
+ source:'fotmob',kind:'corner',final:true,complete:true,timelineAvailable:true,
+ homeCount:1,awayCount:0,events:fotmobNinetyPlus.cornerEvents
+}),'A 90+4 FotMob corner is eligible when its final team counters reconcile');
+assert.ok(validateHistoricalTimedEvents({
+ source:'fotmob',kind:'card',final:true,complete:true,timelineAvailable:true,
+ homeCount:0,awayCount:1,events:fotmobNinetyPlus.cardEvents
+}),'A 90+2 FotMob card retains its side and color');
+
 const ap=apiFootballTimedIncidents([
  {type:'Card',detail:'Red Card',team:{id:12},time:{elapsed:42},player:{id:73,name:'Sent Off Player'}}
 ],{teams:{home:{id:11},away:{id:12}}});
