@@ -135,7 +135,7 @@ export default function PitchTracker({matchId,homeTeam,awayTeam,eventsOnly=false
   };
   const eventRows=(items:MatchEvent[])=>items.map(event=>{
     const team=event.team==='home'?homeTeam:awayTeam;
-    return <article key={(supplemental?'extra:':'main:')+eventIdentity(event)}
+    return <article key={'event:'+eventIdentity(event)}
       className="grid grid-cols-[2.8rem_1.25rem_minmax(0,1fr)] items-start gap-2 border-b border-slate-700/50 px-3 py-2.5 last:border-b-0 sm:px-4">
       <time className="pt-0.5 text-right font-mono text-xs font-semibold tabular-nums text-slate-300">
         {event.minuteLabel??event.minute}′
