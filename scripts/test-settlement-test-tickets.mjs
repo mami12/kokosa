@@ -61,9 +61,9 @@ try {
   const ticketId = result.placed[0].id;
 
   const initial = (await run('select balance from app_user where id=$1', [user.id])).rows[0];
-  assert.equal(Number(initial.balance), 2500, 'test ticket creation must not debit the player');
+  assert.equal(Number(initial.balance), 2400, 'test ticket creation debits the player stake');
   const ledger = (await run('select count(*)::int as count from app_transaction where user_id=$1', [user.id])).rows[0];
-  assert.equal(ledger.count, 0, 'test ticket creation must not write wallet transactions');
+  assert.equal(ledger.count, 1, 'test ticket creation writes the normal BET_PLACED wallet transaction');
 
   const saved = (await run(
     'select is_settlement_test, settlement_test_family, status from app_ticket where id=$1', [ticketId]
@@ -85,8 +85,8 @@ try {
   await run("update app_ticket_line set status='WON' where ticket_id=$1", [ticketId]);
   const closed = await recalcTicket(ticketId, { database });
   assert.equal(closed.status, 'WON');
-  assert.equal(Number((await run('select balance from app_user where id=$1',[user.id])).rows[0].balance), 2500);
-  assert.equal((await run('select count(*)::int as count from app_transaction where user_id=$1',[user.id])).rows[0].count, 0);
+  assert.equal(Number((await run('select balance from app_user where id=$1',[user.id])).rows[0].balance), 2615, 'winning test ticket credits the accepted 2.15 payout');
+  assert.equal((await run('select count(*)::int as count from app_transaction where user_id=$1',[user.id])).rows[0].count, 2, 'wallet records both stake debit and win credit');
 
   const insertNormalTicket = async (matchId, acceptedContract = null) => {
     const ticket = (await run(
@@ -122,7 +122,7 @@ try {
   }, { runQuery: run });
   assert.deepEqual(testOnly.map(ticket => ticket.id), [ticketId]);
 
-  console.log('PASS settlement test tickets: no wallet debit/credit, idempotent placement, real settlement, and Tirane match-date filtering');
+  console.log('PASS settlement test tickets: wallet debit/credit, idempotent placement, real settlement, and Tirane match-date filtering');
 } finally {
   await db.close();
 }
