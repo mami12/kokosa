@@ -6,7 +6,11 @@ import {recordWatchedLiveFrame} from '../ledger/live-observation-store.mjs';
  */
 export function createEventCollector({
  getWatchIds=acceptedBetWatchIds,save=saveEventEvidence,recordFrame=recordWatchedLiveFrame,
- now=Date.now,refreshMs=15000,maxActive=3
+ now=Date.now,refreshMs=15000,maxActive=3,
+ settleMatch=async matchId=>{
+  const {settleLiveMatchMilestones}=await import('../ledger/settler.mjs');
+  return settleLiveMatchMilestones(matchId);
+ }
 }={}){
  let active=0;
  const last=new Map(),inflight=new Set();
@@ -31,6 +35,12 @@ export function createEventCollector({
    ]);
    for(const item of settled)if(item.status==='rejected')
     console.warn('[primary event capture]',String(row.match_id),String(item.reason?.message??item.reason));
+   // A committed primary observation immediately runs settlement only for this
+   // watched fixture. The financial writer still requires independent proof.
+   if(settled[1]?.status==='fulfilled'){
+    try{await settleMatch(row.match_id);}
+    catch(error){console.warn('[primary live settlement]',String(row.match_id),error?.message??error);}
+   }
   }finally{inflight.delete(id);active--;}
  };
 }
