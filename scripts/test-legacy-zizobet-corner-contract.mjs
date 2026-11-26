@@ -138,7 +138,7 @@ const result={home_score:1,away_score:0,corners_home:10,corners_away:3,
 const execute=async(sql,args)=>{
  if(sql.startsWith('with covered as'))return {rows:[{
   home:10,away:3,total:13,count_home:10,count_away:3,
-  normal_home:10,normal_away:3,
+  normal_home:10,normal_away:3,nth_team:'home',nth_same_time:1,
   through_minute:90,complete:true,open_recovery_gap:false,
   observed_at:'2026-11-18T22:00:00Z',confirmed_at:'2026-11-18T22:00:00Z',
   second_poll_at:'2026-11-18T22:00:00Z',phase_ambiguous:false
