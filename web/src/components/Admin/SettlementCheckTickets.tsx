@@ -57,7 +57,7 @@ export default function SettlementCheckTickets(){
    <div className="flex gap-3"><Ticket className="shrink-0 text-accent-green" size={22}/><div>
     <h2 className="font-black text-white">{tr('Kontrolli i shlyerjes me bileta','Settlement check with tickets')}</h2>
     <p className="mt-1 text-sm text-text-secondary">{tr('Zgjidh vetëm lojtarin. Sistemi merr automatikisht katër ndeshje aktive të ditës dhe krijon bileta prove 100 Lek për çdo kuotë aktive të lejueshme në to. Kuotat e fshehura, të pezulluara, të skaduara ose të përfunduara nuk përfshihen.','Choose only a player. The system automatically takes four active fixtures from today and creates 100 Lek test tickets for every eligible active quote in them. Hidden, suspended, stale or already decided quotes are excluded.')}</p>
-    <p className="mt-2 text-xs font-semibold text-accent-green">{tr('BILETA TESTIMI · PA DEBITIM OSE FITIM REAL','TEST TICKETS · NO REAL DEBIT OR PAYOUT')}</p>
+    <p className="mt-2 text-xs font-semibold text-accent-green">{tr('BILETA PROVE · DEBITOHET 100 LEK DHE FITIMI/KTHIMI KREDITOhet NË BILANC','TEST TICKETS · NORMAL WALLET DEBIT AND WIN/REFUND CREDIT')}</p>
    </div></div>
   </div>
   {error&&<p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</p>}
