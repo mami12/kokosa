@@ -131,9 +131,9 @@ const checkRequestId = (runId, outcomeId) => {
 };
 
 async function settlementCheckSelections(matchIds, refresh) {
-  if (!Array.isArray(matchIds) || matchIds.length !== 2) throw badRequest('Zgjidh saktësisht dy ndeshje.');
+  if (!Array.isArray(matchIds) || matchIds.length !== 4) throw badRequest('Kontrolli automatik kërkon saktësisht katër ndeshje.');
   const ids = matchIds.map(value => Number(value));
-  if (ids.some(id => !Number.isSafeInteger(id) || id <= 0) || new Set(ids).size !== 2) throw badRequest('Dy ndeshjet duhet të jenë të ndryshme.');
+  if (ids.some(id => !Number.isSafeInteger(id) || id <= 0) || new Set(ids).size !== 2) throw badRequest('Katër ndeshjet duhet të jenë të ndryshme.');
   const matches = [];
   for (const id of ids) {
     const row = await getMatchRow(id);
