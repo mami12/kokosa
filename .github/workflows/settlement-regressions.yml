@@ -45,6 +45,7 @@ jobs:
       - run: node scripts/test-zizobet-all-match-history.mjs && node scripts/test-provider-timeline-retention.mjs
       - run: npm ci --prefix web
       - run: npm run build:web
+      - run: npm run test:auth-refresh
       - run: npm run test:markets
       - name: Optional real FotMob fixture verification
         continue-on-error: true
