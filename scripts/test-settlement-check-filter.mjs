@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {isCurrentSettlementCheckQuote} from '../server/ledger/settlement-check.mjs';
+import {marketCategories} from '../server/market-catalog.mjs';
 import {isDecidedLiveNumberedGoalWindow} from '../server/ledger/decided-markets.mjs';
 import {isSettlementCheckFixture} from '../server/fixture-dates.mjs';
 
