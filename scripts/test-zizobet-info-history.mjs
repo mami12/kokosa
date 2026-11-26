@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {providerTimeline} from '../server/live-event-timeline.mjs';
 import {normalizeLiveFrame} from '../server/ledger/live-observation-store.mjs';
 import {projectZizobetHistory} from '../server/ledger/zizobet-match-history.mjs';
-import {shouldProcessFinalHistoryDetail,postFinalHistoryRetryDelay} from '../server/zizobet-feed.mjs';
+import {isFinalZizobetMatch,shouldProcessFinalHistoryDetail,postFinalHistoryRetryDelay} from '../server/zizobet-feed.mjs';
 import {infoOf,oddsOf,resolveMarketTitle} from '../server/zizobet/normalize.mjs';
 import {providerResultPair,teamStatisticsFromRow} from '../server/match-statistics.mjs';
 
@@ -86,6 +86,10 @@ assert.equal(lateHistory.events.at(-1).minute,94);
 
 // A header can mark FT via MatchStatusID while the detailed endpoint omits
 // EventStatus. That detail must be archived rather than silently discarded.
+assert.equal(isFinalZizobetMatch({MatchStatusID:40}),true,
+ 'MatchStatusID alone marks the fixture ended for scheduling and display');
+assert.equal(isFinalZizobetMatch({EventStatus:40}),true);
+assert.equal(isFinalZizobetMatch({MatchStatusID:30}),false);
 assert.equal(shouldProcessFinalHistoryDetail('ended',{MatchStatusID:40}),true);
 assert.equal(shouldProcessFinalHistoryDetail('ended',{EventStatus:40}),true);
 assert.equal(shouldProcessFinalHistoryDetail('ended',{}),true,
