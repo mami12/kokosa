@@ -238,7 +238,7 @@ export async function managerFinancials(managerId = null, {runQuery = query} = {
            from app_ticket t
            left join app_ticket_batch b on b.ticket_ids @> ARRAY[t.id] and t.user_id=b.user_id
            join app_user u on u.id = t.user_id
-          where u.manager_id = m.id
+          where u.manager_id = m.id and t.is_settlement_test is not true
        ) t on true
        left join lateral (
          select coalesce(sum(-x.amount), 0) as commission
