@@ -1,5 +1,5 @@
-import {useEffect,useMemo,useState} from 'react';
-import {AlertTriangle,CheckCircle2,Play,RefreshCw,Ticket} from 'lucide-react';
+import {useEffect,useState} from 'react';
+import {CheckCircle2,Play,RefreshCw,Ticket} from 'lucide-react';
 import {apiClient} from '../../api/client';
 import {createClientRequestId} from '../../utils/clientRequestId.mjs';
 import {useLanguage} from '../../context/LanguageContext';
@@ -31,7 +31,6 @@ export default function SettlementCheckTickets(){
   finally{setLoading(false);}
  };
  useEffect(()=>{void load();},[]);
- const selectedMatches=useMemo(()=>matches.filter(match=>match.id===first||match.id===second),[matches,first,second]);
  const previewTickets=async()=>{
   if(!ready||busy)return;
   setBusy(true);setError('');setResult(null);
