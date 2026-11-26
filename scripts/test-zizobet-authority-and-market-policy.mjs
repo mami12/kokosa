@@ -12,6 +12,7 @@ import {MARKET_CATEGORY_IDS,catalogRows,setCatalogRows,marketIsEnabled,marketCat
 import {snapshotRow} from '../server/ledger/match-snapshots.mjs';
 import {createEventEvidenceStore,gradeEventLine} from '../server/ledger/event-evidence.mjs';
 import {eventMarketRequirement} from '../server/ledger/event-market-policy.mjs';
+import {assertMarketEnabled} from '../server/ledger/market-catalog-store.mjs';
 
 assert.equal(eventMarketRequirement({name:'Scoring Type'}),'GOAL_CONTRACT_DATA_REQUIRED',
  'Scoring Type cannot be settled from aggregate score without explicit goal-method facts');
