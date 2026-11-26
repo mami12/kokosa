@@ -11,8 +11,10 @@ assert.equal(isSettlementCheckFixture({start_at:'2026-11-26T10:00:00+01:00',serv
  'tomorrow prematch fixture is excluded');
 assert.equal(isSettlementCheckFixture({start_at:'2026-12-25T10:00:00+01:00',service:'PREMATCH'},dateNow),false,
  'next month prematch fixture is excluded');
-assert.equal(isSettlementCheckFixture({start_at:'2026-11-24T22:00:00+01:00',service:'LIVE',status:'LIVE'},dateNow),true,
- 'a match still live remains selectable even if it started yesterday');
+assert.equal(isSettlementCheckFixture({start_at:'2026-11-24T22:00:00+01:00',service:'LIVE',status:'LIVE'},dateNow),false,
+ 'a match still live is excluded when its Tirane kickoff date was yesterday');
+assert.equal(isSettlementCheckFixture({start_at:'2026-11-25T09:00:00+01:00',service:'LIVE',status:'LIVE'},dateNow),true,
+ 'a live fixture that kicked off today remains eligible');
 const market={id:'m1',status:'ACTIVE',suspended:false};
 const fresh={id:'o1',status:'ACTIVE',odds:2.25,priceValidUntil:2000};
 assert.equal(isCurrentSettlementCheckQuote(market,fresh,now),true,
