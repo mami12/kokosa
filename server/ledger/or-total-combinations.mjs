@@ -5,7 +5,7 @@
  */
 const fold=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
  .toLowerCase().replace(/[_–—]+/g,' ')
- .replace(/\bhome(team)?\b/g,'home team').replace(/\baway(team)?\b/g,'away team')
+ .replace(/\bhome\s*team\b|\bhometeam\b/g,'home team').replace(/\baway\s*team\b|\bawayteam\b/g,'away team')
  .replace(/\s+/g,' ').trim();
 const titleContract=value=>{
  const m=fold(value).match(/^((?:home|away)(?: team)?|draw)\s+(?:wins?|to win)\s+or\s+total(?:\s+goals?)?\s+(over|under)(?:\s+(\d{1,3}(?:[.,]\d+)?))?$/);
