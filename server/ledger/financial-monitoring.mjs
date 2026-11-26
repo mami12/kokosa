@@ -17,6 +17,7 @@ const splitCents=(amount,keys)=>{
 export function buildMatchExposure(rows){
  const tickets=new Map(),matches=new Map();
  for(const row of rows){
+  if(row.is_settlement_test===true)continue;
   let ticket=tickets.get(row.ticket_id);
   if(!ticket){ticket={id:row.ticket_id,logicalId:row.logical_id??row.ticket_id,userId:row.user_id,username:row.username,
    stake:cents(row.stake),quote:cents(row.original_potential_payout??row.potential_payout),status:row.ticket_status,matches:new Map()};tickets.set(row.ticket_id,ticket);}
