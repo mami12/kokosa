@@ -14,7 +14,7 @@ type TestTicket={id:string;isSettlementTest?:boolean;status:string;stake:number;
 type PlaceResult={test:true;player:string;date:string;ticketCount:number;stakePerTicket:number;match:MatchSummary;placed:{id:string;matchId:string;marketName:string;outcomeName:string;odds:number;reused:boolean}[]};
 type Category={id:string;name:string};
 const categoryLabels:Record<string,[string,string]>={
- goals:['Golat','Goals'],corners:['Kornerat','Corners'],totals:['Totale','Totals'],
+ goals:['Golat','Goals'],corners:['Kornerat','Corners'],cards:['Kartonat','Cards'],totals:['Totale','Totals'],
  intervals:['Intervale','Intervals'],results:['Rezultate','Results'],
  combos:['Kombinime','Combos'],other:['Të tjera','Other']
 };
