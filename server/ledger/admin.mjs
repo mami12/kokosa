@@ -18,9 +18,9 @@ import { query } from '../db.mjs';
 import { getMatches as getMatchRows, getMatchById as getMatchRow, boostMatch } from '../matches.mjs';
 import { withOdds, serializeMatch } from '../collector.mjs';
 import { toClientMatch, toClientMatches } from './view.mjs';
-import { marketCategories, MARKET_CATEGORY_IDS } from '../market-catalog.mjs';
+import { marketCategories, marketFamily, MARKET_CATEGORY_IDS } from '../market-catalog.mjs';
 import {isSyntheticFootballMatch} from '../football-competitions.mjs';
-import {isSettlementCheckFixture} from '../fixture-dates.mjs';
+import {isSettlementCheckFixture,tiraneDateKey} from '../fixture-dates.mjs';
 import {isDecidedLiveMarket, isDecidedLiveOutcome, isDecidedLiveNumberedGoalWindow, isZizobetNativeOffer} from './decided-markets.mjs';
 import {isExcludedOfferMarket, isRetiredPlayerOfferMarket, isHandicapOfferMarket} from '../market-policy.mjs';
 import {isCurrentSettlementCheckQuote} from './settlement-check.mjs';
@@ -192,6 +192,136 @@ async function settlementCheckSelections(matchIds, refresh) {
     matches.push({id:match.id,name:`${match.homeTeam?.name ?? match.homeTeam ?? ''} vs ${match.awayTeam?.name ?? match.awayTeam ?? ''}`.trim(),status:match.status,marketCount:selectedMarkets.size,selections});
   }
   return matches;
+}
+
+
+const settlementCheckCategories = [
+  { id: 'goals', name: 'Golat' },
+  { id: 'corners', name: 'Kornerat' },
+  { id: 'totals', name: 'Totale' },
+  { id: 'intervals', name: 'Intervale' },
+  { id: 'results', name: 'Rezultate' },
+  { id: 'combos', name: 'Kombinime' },
+  { id: 'other', name: 'Të tjera' },
+];
+
+async function settlementCheckMarketGroups({ category = null, family = null } = {}) {
+  const now = new Date();
+  const nowMs = now.getTime();
+  const rows = (await getMatchRows({ catalog: true })).filter(row => {
+    const service = String(row.service ?? '').toUpperCase();
+    return ['LIVE', 'PREMATCH'].includes(service) &&
+      isSettlementCheckFixture(row, now) &&
+      !isSyntheticFootballMatch(row) && !overrides.isMatchHidden(row) &&
+      !/^(?:ended|finished|cancelled|closed|uncovered)$/i.test(String(row.status ?? '')) &&
+      !/^(?:ft|finished|ended|full.?time)$/i.test(String(row.feed_status ?? ''));
+  });
+  const serialized = await withOdds(rows, nowMs, { board: false });
+  const grouped = new Map();
+
+  for (const source of serialized) {
+    const match = toClientMatch(source);
+    const isLiveMatch = match.status === 'LIVE' || String(source.service ?? '').toUpperCase() === 'LIVE' || source.live === true;
+    if (!['LIVE', 'PREMATCH'].includes(match.status) || match.isSuspended || match.isHidden) continue;
+    const currentMinute = isLiveMatch
+      ? Number(source.currentMinute ?? source.minute ?? source.live_minute ??
+        (source.match_time_ms ? Math.floor(source.match_time_ms / 60000) : null))
+      : null;
+    const homeScore = Number(source.home_score ?? source.homeScore ?? source.score?.home ?? 0);
+    const awayScore = Number(source.away_score ?? source.awayScore ?? source.score?.away ?? 0);
+    const totalGoals = homeScore + awayScore;
+    const phase = String(source.period ?? source.phase ?? source.feed_status ?? '').toLowerCase();
+    const inSecondHalfOrHT = /^(?:2h|ht|ft|2nd half|second half|break time|half time|halftime|ended|finished)\b/.test(phase);
+    const byFamily = new Map();
+    const seen = new Set();
+
+    for (const market of match.markets ?? []) {
+      if (market.status !== 'ACTIVE' || isExcludedOfferMarket(market) ||
+          isRetiredPlayerOfferMarket(market) || isHandicapOfferMarket(market)) continue;
+      const identity = marketFamily(market);
+      if (!identity || (family && identity.key !== family)) continue;
+      const categories = marketCategories(identity.name).filter(id =>
+        settlementCheckCategories.some(item => item.id === id));
+      if (!categories.length || (category && !categories.includes(category))) continue;
+
+      const nativeZizobet = isZizobetNativeOffer(market, source);
+      if (isLiveMatch && isDecidedLiveNumberedGoalWindow(source, market)) continue;
+      if (isLiveMatch && !nativeZizobet) {
+        if (isDecidedLiveMarket(source, market)) continue;
+        if (inSecondHalfOrHT && (Number(market.period ?? 0) === 1 ||
+          /\b(?:1st|first)\s*half\b|\bhalf.?time\b(?!\s*\/?\s*(?:fulltime|ft))/i.test(String(market.name ?? '')))) continue;
+        const firstGoalTime = /^(?:when will (?:the )?(?:first goal|goal 1) be scored|(?:first|1st) goal (?:time|interval)|time of (?:the )?first goal)(?:\b|$)/i.test(String(market.name ?? ''));
+        if (firstGoalTime && totalGoals >= 1) continue;
+      }
+
+      const options = [];
+      for (const outcome of market.outcomes ?? []) {
+        if (seen.has(outcome.id) || !isCurrentSettlementCheckQuote(market, outcome, nowMs)) continue;
+        if (isLiveMatch && !nativeZizobet) {
+          if (isDecidedLiveOutcome(source, { ...market, outcomeName: outcome.name, outcomeCode: outcome.key,
+            outcome_name: outcome.name, outcome_key: outcome.key })) continue;
+          if (currentMinute !== null && Number.isFinite(currentMinute)) {
+            const label = String(outcome.name ?? '').replace(/\s*(?:st|nd|rd|th)?\s*(?:match|mins?\.?|minutes?\.?)$/i, '').trim();
+            const range = label.match(/^(?:min(?:ute)?s?\s*)?(\d{1,3})(?::\d{2})?\s*[-–]\s*(\d{1,3})(?::\d{2})?/);
+            if (range && Number(range[2]) <= currentMinute) continue;
+          }
+        }
+        seen.add(outcome.id);
+        options.push({
+          outcomeId: outcome.id, name: outcome.name, code: outcome.key ?? outcome.code ?? null,
+          odds: Number(outcome.odds), marketName: market.name,
+          line: String(market.line ?? market.specifier ?? ''),
+          selection: { outcomeId: outcome.id, oddsAtPlacement: Number(outcome.odds) },
+        });
+      }
+      if (!options.length) continue;
+      if (!byFamily.has(identity.key)) {
+        byFamily.set(identity.key, { key: identity.key, name: identity.name, categories, markets: [] });
+      }
+      byFamily.get(identity.key).markets.push({
+        name: market.name, line: String(market.line ?? market.specifier ?? ''), options,
+      });
+    }
+
+    for (const item of byFamily.values()) {
+      const activeOptions = item.markets.reduce((sum, market) => sum + market.options.length, 0);
+      const matchName = String(match.homeTeam?.name ?? match.homeTeam ?? '') + ' vs ' +
+        String(match.awayTeam?.name ?? match.awayTeam ?? '');
+      const candidate = {
+        match: {
+          id: String(match.id), name: matchName.trim(),
+          home: String(match.homeTeam?.name ?? match.homeTeam ?? ''),
+          away: String(match.awayTeam?.name ?? match.awayTeam ?? ''),
+          status: isLiveMatch ? 'LIVE' : 'PREMATCH',
+          startTime: source.startAt ?? source.start_at ?? null,
+          league: match.tournament?.name ?? source.tournament?.name ?? '',
+        },
+        markets: item.markets, activeOptions, live: isLiveMatch,
+      };
+      const existing = grouped.get(item.key);
+      if (!existing) {
+        grouped.set(item.key, {
+          key: item.key, name: item.name, categories: item.categories,
+          matchesAvailable: 1, candidate,
+        });
+      } else {
+        existing.matchesAvailable += 1;
+        const oldRank = Number(existing.candidate.live) * 100000 + existing.candidate.activeOptions;
+        const newRank = Number(candidate.live) * 100000 + candidate.activeOptions;
+        if (newRank > oldRank) existing.candidate = candidate;
+      }
+    }
+  }
+
+  const result = [...grouped.values()].map(item => ({
+    key: item.key, name: item.name, categories: item.categories,
+    matchesAvailable: item.matchesAvailable,
+    activeOptions: item.candidate.activeOptions,
+    match: item.candidate.match,
+    markets: item.candidate.markets,
+  }));
+  result.sort((a, b) => a.name.localeCompare(b.name));
+  return { date: tiraneDateKey(now), groups: result };
 }
 
 const commissionRate = (value, label) => {
