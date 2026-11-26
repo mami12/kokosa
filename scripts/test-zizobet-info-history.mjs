@@ -46,7 +46,14 @@ assert.equal(repeatedDisplay.length,2,'Dashboard must not collapse repeated prov
 assert.deepEqual(repeatedDisplay.map(event=>[event.id,event.minute]),[
  ['shared-corner',46],['shared-corner#000002',47]
 ]);
+
 assert.deepEqual(repeatedDisplay.map(event=>event.sequence),[1,2]);
+const partlyCancelled=providerTimeline('same-id-cancelled',[
+ {id:'same-id-cancelled',type:'corner_kick',team:1,gt:12},
+ {id:'same-id-cancelled',type:'corner_kick',team:1,gt:12,cancelled:true}
+]);
+assert.equal(partlyCancelled.length,1,
+ 'Cancelling one repeated-ID row must not delete the other occurrence');
 const repeatedFrame=normalizeLiveFrame({
  Match:{Score:'0:0',MatchTimeExtended:'47:30',CornersTeam1:2,CornersTeam2:0},
  TimeLines:repeatedIdTimeline
