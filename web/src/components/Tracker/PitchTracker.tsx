@@ -62,7 +62,7 @@ export default function PitchTracker({matchId,homeTeam,awayTeam,eventsOnly=false
     if(type==='shot'||/shot on target|\bshot\b/.test(text))return 'shot';
     return type;
   };
-  const normName=(value:string)=>String(value??'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const normName=(value:string)=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
   const reconciled=[...mainEvents];
   const matchedPrimary=new Set<number>();
   const cardColour=(event:MatchEvent)=>{
