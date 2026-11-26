@@ -969,6 +969,9 @@ export async function placeSettlementTestTickets({ user, selections = [], family
   const placed = [];
   try {
     await client.query('begin');
+    const lockedUser = await client.query('select balance, username from app_user where id=$1 and deleted_at is null and status=\'ACTIVE\' for update',[user.id]);
+    if (!lockedUser.rows.length) throw badRequest('Llogaria e lojtarit nuk është aktive.');
+    let availableBalance = Number(lockedUser.rows[0].balance);
     await revalidateSelections(picks, lines, resolve, { executor: client.query.bind(client) });
     for (let index = 0; index < lines.length; index++) {
       const line = lines[index];
@@ -998,6 +1001,8 @@ export async function placeSettlementTestTickets({ user, selections = [], family
         });
         continue;
       }
+      if (availableBalance < stake) throw badRequest(`Bilanci i ${lockedUser.rows[0].username} nuk mjafton për të krijuar të gjitha biletat. Shtoji fonde dhe provo përsëri.`);
+      availableBalance = round(availableBalance - stake);
       const inserted = await client.query(
         `insert into app_ticket
           (user_id, stake, total_odds, potential_payout, ticket_type, system_type, status,
@@ -1015,6 +1020,12 @@ export async function placeSettlementTestTickets({ user, selections = [], family
           line.marketName,line.matchName,price,JSON.stringify(line.builderLegs??null)],
       );
       await persistLiveContracts(client.query.bind(client),ticketId,[{...line,price}]);
+      await client.query('update app_user set balance=$2,updated_at=now() where id=$1',[user.id,availableBalance]);
+      await client.query(
+        `insert into app_transaction (user_id,amount,type,reference_id,balance_after,description)
+         values ($1,$2,'BET_PLACED',$3,$4,$5)`,
+        [user.id,-stake,ticketId,availableBalance,`Biletë prove ${line.marketName} - 1 zgjedhje`],
+      );
       placed.push({
         id: ticketId, matchId: String(line.matchId), marketName: line.marketName,
         outcomeName: line.outcomeName, odds: price, reused: false,
