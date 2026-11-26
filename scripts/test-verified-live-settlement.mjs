@@ -226,6 +226,14 @@ assert.equal(verifiedSecondLiveDecision(timedProof(
  timeWindow,frameFor('goal',1,0),frameFor('goal',0,1)),{now}),null,
  'A provider team correction between independent polls must not pay');
 
+ // Full-match totals now settle at the first irreversible milestone.
+ // Over wins and Under loses only after the count passes the quoted line.
+ const totalsFrame=(event,home,away,clock=64,extra={})=>({
+  source:'zizobet',clock,counts:{[event]:home+away},
+  teams:{[event]:{home,away},...(extra.teams??{})},
+  cardColorsVerified:extra.cardColorsVerified===true,
+  events:[],coverage:{},ended:false
+ });
  // First-half totals use the same live milestone rule before HT.
  const halfCornerOver={version:1,kind:'half-total',event:'corner',half:1,
   choice:'over',threshold:2.5};
@@ -259,14 +267,7 @@ assert.equal(verifiedSecondLiveDecision(timedProof(
  assert.equal(primaryLiveDecision(halfYellow,
   {...halfYellowFrame,cardColorsVerified:false}),null,
   'Unverified yellow/red counts cannot settle early');
- // Full-match totals now settle at the first irreversible milestone.
- // Over wins and Under loses only after the count passes the quoted line.
- const totalsFrame=(event,home,away,clock=64,extra={})=>({
-  source:'zizobet',clock,counts:{[event]:home+away},
-  teams:{[event]:{home,away},...(extra.teams??{})},
-  cardColorsVerified:extra.cardColorsVerified===true,
-  events:[],coverage:{},ended:false
- });
+
  const cornerOver={version:1,kind:'over',event:'corner',threshold:2.5};
  const cornerOverFrame=totalsFrame('corner',2,1);
  const cornerOverRow=timedProof(cornerOver,cornerOverFrame,cornerOverFrame);
