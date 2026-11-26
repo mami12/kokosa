@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {recoverLegacyZizobetCornerContract} from '../server/ledger/legacy-zizobet-corner-contract.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
+import {nativeZizobetContractRow} from '../server/ledger/native-zizobet-contract.mjs';
+import {liveContract} from '../server/ledger/live-contract-rules.mjs';
 
 const legacy=(nativeMarketName,nativeOutcomeName,providerPeriod=0,line='')=>({
  id:'00000000-0000-4000-8000-000000000099',
@@ -62,6 +64,28 @@ heldNextCorner.accepted_contract.settlementHold='NATIVE_PARAMETERS_UNMAPPED';
 heldNextCorner.market_key='zz901@eyJwMyI6Mn0';
 heldNextCorner.accepted_contract.providerMarketKey='zz901@eyJwMyI6Mn0';
 heldNextCorner.accepted_contract.nativeParameters={p3:2};
+const heldAccepted=heldNextCorner.accepted_contract;
+const decodedHeldCorner=nativeZizobetContractRow({
+ provider_id:heldAccepted.sourceProviderId,
+ market_key:heldAccepted.providerMarketKey,
+ market_name:heldAccepted.providerMarketName,
+ outcome_key:heldAccepted.providerOutcomeKey,
+ outcome_name:heldAccepted.nativeOutcomeName,
+ line:heldAccepted.line,
+ period:heldAccepted.providerPeriod,
+ native_market_id:heldAccepted.nativeMarketId,
+ native_outcome_id:heldAccepted.nativeOutcomeId,
+ native_market_name:heldAccepted.nativeMarketName,
+ native_outcome_name:heldAccepted.nativeOutcomeName,
+ native_parameters:heldAccepted.nativeParameters
+});
+assert.equal(decodedHeldCorner.market_name,'Who takes the 2 corner',
+ 'Native market title decodes the frozen corner ordinal p3');
+assert.deepEqual(liveContract({...heldNextCorner,...decodedHeldCorner,
+ outcome_name:heldAccepted.nativeOutcomeName,outcome_key:heldAccepted.providerOutcomeKey,
+ line:heldAccepted.line,period:heldAccepted.providerPeriod}),{
+ version:1,kind:'sequence',event:'corner',target:2,side:'home',noneOffered:false
+},'Decoded historical corner title and outcome form a valid sequence contract');
 const recoveredNextCorner=recoverLegacyZizobetCornerContract(heldNextCorner);
 assert.deepEqual(recoveredNextCorner,{version:1,kind:'sequence',event:'corner',target:2,side:'home',noneOffered:false},
  'A historical parser-migration hold recovers the ordinal from its accepted native p3 value');
