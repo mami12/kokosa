@@ -54,12 +54,14 @@ try{
  assert.equal(await judge('interval-leader',{from:10,to:20,side:'home'}),'WON');
  assert.equal(await judge('race',{target:1,side:'home'}),'WON');
  assert.equal(await judge('race',{target:2,side:'home'}),'VOID','Neither team reached 2');
- assert.equal(await judge('player-goal',{playerName:'Home Scorer',choice:true}),'WON',
-  'Confirmed historical scorer proves the named player scored');
- assert.equal(await judge('player-goal',{playerName:'Home Scorer',choice:false}),'LOST',
-  'Verified historical goal disproves no-goal selection');
+ assert.equal(await judge('last-event',{side:'away'}),'WON','The verified last scorer is recovered from the historical timeline');
+ assert.equal(await judge('nth-time',{target:2,choice:'range',from:20,to:25}),'WON','The second goal time is settled from verified chronology');
+ assert.equal(await judge('half-first-event',{half:1,side:'home'}),'WON','First-half first goal uses the provider timeline');
+ assert.equal(await judge('half-last-event',{half:1,side:'away'}),'WON','First-half last goal uses the provider timeline');
+ assert.equal(await judge('player-goal',{playerName:'Home Scorer',choice:true}),null,
+  'Supplementary historical scorer facts do not enable excluded player props');
  assert.equal(await judge('player-goal',{playerName:'Unused Bench Player',choice:true}),null,
-  'No scorer entry is not proof of participation or absence');
+  'Player props remain outside the allowed settlement scope');
  assert.equal(await gradeStoredEventContract(
   {...line('window',{from:10,to:20,choice:true}),live_contract:{
     version:1,kind:'window',event:'corner',from:10,to:20,choice:true}},
