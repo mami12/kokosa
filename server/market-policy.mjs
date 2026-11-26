@@ -32,7 +32,9 @@ const hasPlayerParameter=market=>{
 };
 const PLAYER_WORDS=/\b(?:player|players|goalscorer|goal scorer|top scorer|scorer|assist|assists|goalkeeper|goal keeper|lojtar\w*|shenues\w*|asist\w*)\b|\{pl\}/i;
 const NAMED_PLAYER=/^[\p{L}][\p{L}'-]{1,35},\s*[\p{L}][\p{L}'-]{1,35}/u;
-const UNSUPPORTED_STATS=/\b(?:fouls?|faull\w*|shots?|tackles?|nderhyrje\w*|throw[ -]?ins?|rivenie\w*|saves?|pritje\w*)\b/i;
+const UNSUPPORTED_STATS=/\b(?:fouls?|faull\w*|shots?|tackles?|nderhyrje\w*|throw[ -]?ins?|rivenie\w*|saves?|pritje\w*|off[\s-]?sides?|ball\s+possession|scoring\s+type)\b/i;
+const SENDING_OFF_MARKET=/\b(?:sending off|sent off)\b/i;
+const WHO_TAKES_PLACEHOLDER_CORNER=/\bwho takes the \[?corner!?\]?\s+corner\b/i;
 const CARD_MARKET_WORDS=/\b(?:cards?|carded|karton\w*|bookings?|sending off|sent off)\b/i;
 const ZIZOBET_MARKET_KEY=/^(?:zz\d+@[A-Za-z0-9_-]+|zizobet:(?:live|prematch):\d+)$/i;
 /** Card offers must carry a native Zizobet identity. Name-only catalogue families
@@ -81,6 +83,31 @@ export const isEarlyPayoutOfferMarket=market=>{
   key.match(/^zz(\d+)@/)?.[1]??key.match(/^zizobet:(?:live|prematch):(\d+)$/i)?.[1]??'');
  return titlesOf(market).some(title=>/1x2\s*\(xup\)|early\s*payout/.test(title))||nativeId==='27073';
 };
+/** Totals on quarter-goal/corner/card lines cannot be settled by the site's
+ * supported full-win/full-loss rules. Block the quoted line globally, not the
+ * whole Total market family, so ordinary .5 lines remain available. */
+const quarterLine=value=>{
+ if(value==null||String(value).trim()==='')return false;
+ const n=Number(String(value).replace(',','.'));
+ if(!Number.isFinite(n))return false;
+ const cents=Math.round(Math.abs(n)*100)%100;
+ return cents===25||cents===75;
+};
+export const isQuarterTotalOfferMarket=market=>{
+ const legs=market?.builder_legs??market?.builderLegs??
+  market?.accepted_contract?.builderLegs??market?.accepted_contract?.builder_legs;
+ if(Array.isArray(legs)&&legs.some(isQuarterTotalOfferMarket))return true;
+ const titles=titlesOf(market);
+ if(!titles.some(title=>/\\b(?:total|over\\s*\\/?\\s*under)\\b/i.test(title)))return false;
+ const params=nativeParams(market);
+ const line=market?.line??market?.total??market?.hcp??market?.handicap??
+  params?.h??market?.h??market?.accepted_contract?.line;
+ if(quarterLine(line))return true;
+ return titles.some(title=>/\\btotal\\b.*\\(\\s*-?\\d+(?:[.,]\\d+)?\\s*\\)\\s*$/i.test(title)&&
+  quarterLine(title.match(/\\(\\s*(-?\\d+(?:[.,]\\d+)?)\\s*\\)\\s*$/)?.[1]));
+};
 export const isExcludedOfferMarket=market=>
  isHandicapOfferMarket(market)||isEarlyPayoutOfferMarket(market)||
+ titlesOf(market).some(title=>SENDING_OFF_MARKET.test(title)||WHO_TAKES_PLACEHOLDER_CORNER.test(title))||
+ isQuarterTotalOfferMarket(market)||
  nonZizobetCardQuote(market)||(!genericCardCatalogFamily(market)&&isRetiredPlayerOfferMarket(market));
