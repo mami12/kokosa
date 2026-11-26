@@ -171,6 +171,15 @@ assert.deepEqual(newlyConfirmedHistoryKinds([],['corner','goal']),['corner','goa
 assert.deepEqual(newlyConfirmedHistoryKinds(['corner'],['corner','goal']),['goal']);
 assert.deepEqual(newlyConfirmedHistoryKinds(['corner','goal'],['corner','goal']),[]);
 
+const admin=readFileSync(new URL('../server/ledger/admin.mjs',import.meta.url),'utf8');
+const supplemental=readFileSync(new URL('../server/stats-providers/service.mjs',import.meta.url),'utf8');
+assert.match(admin,/await statsProviders\.warm\(row\)/,
+ 'Admin match detail waits for its fixture-matched FotMob incident archive');
+assert.match(supplemental,/detailTimelineRequested/,
+ 'Opening an admin/detail fixture triggers FotMob chronology even without a pending event market');
+assert.match(supplemental,/reconcileKind\('corner'/,
+ 'FotMob corner incidents are retained and only retired when they reconcile to explicit team totals');
+
 const ui=readFileSync(new URL('../web/src/components/Tracker/PitchTracker.tsx',import.meta.url),'utf8');
 const css=readFileSync(new URL('../web/src/styles/zshop.css',import.meta.url),'utf8');
 assert.doesNotMatch(ui,/\.slice\(0,\s*8\)/,
