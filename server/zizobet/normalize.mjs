@@ -49,7 +49,7 @@ export function resolveMarketTitle(raw,q,{intervalWidth,competitors}={}){
  // p1/p2/h/p3 quote parameters; never infer the interval from the live clock.
  // Zizobet also sends the same one-minute total as an unresolved {from}/{to}
  // template. Resolve it only from the exact quote p1/p2 and h parameters.
- const oneMinuteTemplate=name.match(/^1 minute\\s*[-–]\\s*total(?:\\s+(corners?|goals?|offsides?))?\\s+from\\s+\\{from\\}\\s+to\\s+\\{to\\}\\s*\\((\\d+(?:[.,]\\d+)?)\\)$/i);
+ const oneMinuteTemplate=name.match(/^1 minute\s*[-–]\s*total(?:\s+(corners?|goals?|offsides?))?\s+from\s+\{from\}\s+to\s+\{to\}\s*\((\d+(?:[.,]\d+)?)\)$/i);
  if(oneMinuteTemplate){
   const from=Number(q.p1),to=Number(q.p2);
   const titleValue=Number(oneMinuteTemplate[2].replace(',','.'));
@@ -301,7 +301,7 @@ export function oddsOf(row,quotes,meta,live,open=true,diagnostics){
   // is not a valid market contract and must not leak into the betslip.
   const competitors={competitor1:row.home,competitor2:row.away};
   const resolvedName=resolveMarketTitle(live&&id===18639?'Correct score [{score}]':rawName,q,{intervalWidth:measuredWidth,competitors});
-  if(resolvedName==null&&(/[{}]|\\[[^\\[\\]]*[a-z!_][^\\[\\]]*\\]/i.test(rawName))){note('unresolvedMarketTitle');continue;}
+  if(resolvedName==null&&(/[{}]|\[[^\[\]]*[a-z!_][^\[\]]*\]/i.test(rawName))){note('unresolvedMarketTitle');continue;}
   let name=resolvedName??rawName;
   if(live&&id===602)name='1X2';
   name=name.replace(/\bHometeam\b/gi,'Home team').replace(/\bAwayteam\b/gi,'Away team');
