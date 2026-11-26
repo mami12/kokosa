@@ -64,7 +64,7 @@ export function nativeMarketPolicyKeys(m,match){
 }
 export function marketCategories(name){
  const n=String(name).toLowerCase(),tags=[];
- for(const[tag,pattern]of Object.entries({totals:/total|over.?under/,intervals:/interval|minutes?|when will|time of/,corners:/corner/,cards:/card|booking/,fouls:/foul/,shots:/shot/,players:/player|scorer|\{pl\}|scoring type/,combos:/&|(?:^|[^\d])\+|bet builder|\b(?:and|both halves)\b/,results:/1x2|result|winner|double chance|correct score|draw no bet/,goals:/goal|score|clean sheet|to nil/}))if(pattern.test(n))tags.push(tag);
+ for(const[tag,pattern]of Object.entries({totals:/total|over.?under/,intervals:/interval|minutes?|when will|time of|\b(?:1st|2nd|first|second)\s*half\b|\bhalves\b|\bperiods?\b/,corners:/corner/,cards:/card|booking/,fouls:/foul/,shots:/shot/,players:/player|scorer|\{pl\}|scoring type/,combos:/&|(?:^|[^\d])\+|bet builder|\b(?:and|both halves)\b/,results:/1x2|result|winner|double chance|correct score|draw no bet/,goals:/goal|score|clean sheet|to nil/}))if(pattern.test(n))tags.push(tag);
  return tags.length?tags:['other'];
 }
 export function observeMarket(m){const family=marketFamily(m);if(family&&isFootballMarketName(family.name)&&!isExcludedOfferMarket(m)&&!isExcludedOfferMarket({name:family.name})&&!catalog.has(family.key))catalog.set(family.key,{...family,categories:marketCategories(family.name)});return family;}
