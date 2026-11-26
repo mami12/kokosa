@@ -345,9 +345,13 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    const finalReviewNeeded=final&&(settlementFields.length>0||finalTimelineNeeds.length>0);
    const eventKindsKey=JSON.stringify(finalTimelineNeeds.slice().sort());
    const old=cached??await read('display:'+id);
+   // Admin/detail views need the source-labelled FotMob timeline in the same
+   // response cycle, even when no pending ticket currently needs that market.
+   const detailTimelineRequested=(viewed.get(id)??0)>now();
+   const detailTimelineReady=old?.fotmobTimelineChecked===true;
    const requiredKey=[...requiredForMatch].sort().join('|');
    const cachedKey=[...(old?.settlementFields??[])].sort().join('|');
-   if(old?.version===5&&old.identity===identity&&old.next>now()&&Number.isFinite(Number(old.at))&&now()-Number(old.at)<localTtl&&!urgent.has(id)&&(!final||old.finalReview&&cachedKey===requiredKey&&old.finalEventKindsKey===eventKindsKey)){displayCache.set(id,old);return;}
+   if(old?.version===5&&old.identity===identity&&old.next>now()&&Number.isFinite(Number(old.at))&&now()-Number(old.at)<localTtl&&!urgent.has(id)&&(!detailTimelineRequested||detailTimelineReady)&&(!final||old.finalReview&&cachedKey===requiredKey&&old.finalEventKindsKey===eventKindsKey)){displayCache.set(id,old);return;}
    // Start each refresh with new facts. Keeping non-null values froze live totals forever.
    const entry={version:5,identity,values:{},goalIntervals:null,sources:{},at:now()};
    const persistedHistoricalKinds=new Set();
@@ -466,7 +470,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    // If the primary score has goals but the SQL event timeline is missing,
    // a detail viewer still needs an advisory FotMob scorer lookup.
    const missingGoalActors=needsFotMobScorerLookup(row,primaryGoal);
-   if(missingGoalActors||needsAnyActors()||!matchStatsReady(entry)||finalReviewNeeded){
+   if(missingGoalActors||needsAnyActors()||!matchStatsReady(entry)||finalReviewNeeded||detailTimelineRequested){
     if(finalReviewNeeded)attempted.push('fotmob');
     try{
      const targetDate=row.start_at||row.startAt||new Date().toISOString();
@@ -512,10 +516,23 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
         const incidents=fotMobIncidents(details);
         const eventList=details?.content?.matchFacts?.events?.events;
         const shotList=details?.content?.shotmap?.shots;
-        const completeKinds=[...(Array.isArray(eventList)?['goal','card']:[]),
-         ...(Array.isArray(shotList)?['shot']:[])];
+        const completeKinds=[];
+        const reconcileKind=(kind,home,away)=>{
+         if(!Array.isArray(eventList)&&kind!=='shot'||kind==='shot'&&!Array.isArray(shotList))return;
+         if(!validCount(home)||!validCount(away))return;
+         const rows=incidents.filter(item=>item.kind===kind&&item.team);
+         if(rows.filter(item=>item.team==='home').length===Number(home)&&
+            rows.filter(item=>item.team==='away').length===Number(away))
+          completeKinds.push(kind);
+        };
+        reconcileKind('goal',parsed.homeScore,parsed.awayScore);
+        reconcileKind('corner',parsed.cornersHome,parsed.cornersAway);
+        reconcileKind('card',parsed.cardsHome,parsed.cardsAway);
+        reconcileKind('foul',parsed.statistics?.fouls?.home,parsed.statistics?.fouls?.away);
+        reconcileKind('shot',parsed.statistics?.shots?.home,parsed.statistics?.shots?.away);
         await storeSupplementalIncidents(Number(id),'fotmob',fm.match.id,incidents,
          {execute:runQuery,payload:details,completeKinds});
+        entry.fotmobTimelineChecked=true;
         await enrichPrimaryActors(Number(id),'fotmob',primaryActors,incidents,{execute:runQuery});
         await refreshActors();
        }catch(error){
