@@ -52,7 +52,7 @@ export async function matchExposure(execute=query){
  const rows=(await execute(`select l.*,t.id as ticket_id,t.user_id,t.stake,t.potential_payout,t.original_potential_payout,t.status as ticket_status,u.username,
   coalesce((select b.id::text from app_ticket_batch b where t.id=any(b.ticket_ids) limit 1),t.id::text) as logical_id
   from app_ticket_line l join app_ticket t on t.id=l.ticket_id left join app_user u on u.id=t.user_id
-  where t.status not in ('REVERTED','CANCELLED') order by t.placed_at,t.id,l.id`)).rows;
+  where t.status not in ('REVERTED','CANCELLED') and t.is_settlement_test is not true order by t.placed_at,t.id,l.id`)).rows;
  return buildMatchExposure(rows);
 }
 
