@@ -8,8 +8,9 @@ import {providerResultPair} from '../match-statistics.mjs';
 export const ZIZOBET_MATCH_HISTORY_SQL = [
  "create table if not exists app_zizobet_match_history (match_id bigint primary key, details jsonb not null, timeline_signature text, observed_at timestamptz not null default now());",
  "alter table app_zizobet_match_history add column if not exists evidence_observed_at timestamptz;",
- "create table if not exists app_zizobet_match_incident (match_id bigint not null, kind text not null check(kind in ('goal','corner','card','foul')), provider_event_id text not null, team text not null check(team in ('home','away')), minute integer not null check(minute between 0 and 130), detail jsonb not null, active boolean not null default true, first_observed_at timestamptz not null default now(), observed_at timestamptz not null default now(), primary key(match_id,kind,provider_event_id));",
- "create index if not exists app_zizobet_match_incident_lookup on app_zizobet_match_incident(match_id,kind,active,minute);"
+ "create table if not exists app_zizobet_match_incident (match_id bigint not null, kind text not null check(kind in ('goal','corner','card','foul')), provider_event_id text not null, team text not null check(team in ('home','away')), minute integer not null check(minute between 0 and 130), sequence integer, detail jsonb not null, active boolean not null default true, first_observed_at timestamptz not null default now(), observed_at timestamptz not null default now(), primary key(match_id,kind,provider_event_id));",
+ "alter table app_zizobet_match_incident add column if not exists sequence integer;",
+ "create index if not exists app_zizobet_match_incident_lookup on app_zizobet_match_incident(match_id,kind,active,minute,sequence);"
 ].join('\n');
 
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -66,8 +67,8 @@ export function projectZizobetHistory(matchId,data,row={}){
   ['goal','corner','card','foul'].includes(e.type)&&['home','away'].includes(e.team)&&
   Number.isInteger(e.minute)&&e.minute>=0&&e.minute<=130&&e.id!=null&&String(e.id)
  ).map(e=>({
-  id:String(e.id),kind:e.type,team:e.team,minute:e.minute,
-  minuteLabel:e.minuteLabel??null,seconds:e.seconds??null,phase:e.phase??null,
+  id:String(e.id),kind:e.type,team:e.team,minute:e.minute,sequence:e.sequence??null,
+  minuteLabel:e.minuteLabel??null,seconds:e.seconds??null,sequence:e.sequence??null,phase:e.phase??null,
   playerName:e.player??null,playerId:e.playerId??null,
   cardColor:e.cardColor??null,ownGoal:e.ownGoal??null
  })):[];
@@ -108,11 +109,11 @@ export function createZizobetHistoryArchive({database=pool,now=()=>new Date()}={
    if(timelineAvailable&&prior?.timeline!==timelineSignature){
     if(events.length){
      await client.query(
-      "insert into app_zizobet_match_incident(match_id,kind,provider_event_id,team,minute,detail,active,observed_at) "+
-      "select $1,e.kind,e.id,e.team,e.minute,e.detail,true,$3::timestamptz "+
-      "from jsonb_to_recordset($2::jsonb) as e(kind text,id text,team text,minute integer,detail jsonb) "+
+      "insert into app_zizobet_match_incident(match_id,kind,provider_event_id,team,minute,sequence,detail,active,observed_at) "+
+      "select $1,e.kind,e.id,e.team,e.minute,e.sequence,e.detail,true,$3::timestamptz "+
+      "from jsonb_to_recordset($2::jsonb) as e(kind text,id text,team text,minute integer,sequence integer,detail jsonb) "+
       "on conflict(match_id,kind,provider_event_id) do update set "+
-      "team=excluded.team,minute=excluded.minute, "+
+      "team=excluded.team,minute=excluded.minute,sequence=excluded.sequence, "+
       "detail=case when app_zizobet_match_incident.team=excluded.team and "+
       "app_zizobet_match_incident.minute=excluded.minute then "+
       "app_zizobet_match_incident.detail || excluded.detail else excluded.detail end, "+
