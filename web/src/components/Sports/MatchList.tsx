@@ -61,7 +61,7 @@ export default function MatchList({ tournamentId, categoryId, sportId, isLiveOnl
   useEffect(() => {
     const controller=new AbortController();
     let active=true,busy=false,refreshQueued=false,nextOffset=0,more=false;
-    const PAGE=24;
+    const PAGE=20;
     setMatches([]);setVisibleIds([]);setLoading(true);setHasMore(false);setLoadingMore(false);
     const paramsFor=(offset:number)=>{
       const params:Record<string,string|number>={view:'board',page:1,_snapshot:Date.now(),limit:PAGE,offset};
