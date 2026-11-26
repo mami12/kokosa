@@ -637,24 +637,55 @@ adminRouter.post('/manager/users/:id/deposit', ...manager, moveBalance(1, 'DEPOS
 adminRouter.post('/manager/users/:id/withdraw', ...manager, moveBalance(-1, 'WITHDRAWAL', true));
 
 /* ------------------------------------------------ settlement check tickets */
-adminRouter.post('/admin/settlement-check/preview', ...admin, guard(async (req, res) => {
-  const matches = await settlementCheckSelections(req.body?.matchIds, req.app.locals.loadMatchDetailFully);
-  const ticketCount = matches.reduce((total, match) => total + match.selections.length, 0);
-  res.json({stakePerTicket:automatedCheckStake,ticketCount,totalStake:ticketCount * automatedCheckStake,matches:matches.map(({selections,...match})=>({...match,ticketCount:selections.length}))});
+adminRouter.get('/admin/settlement-check/catalog', ...admin, guard(async (req, res) => {
+  const category = String(req.query.category ?? '').trim() || null;
+  if (category && !settlementCheckCategories.some(item => item.id === category)) {
+    throw badRequest('Kategoria e marketit nuk është e vlefshme.');
+  }
+  const catalog = await settlementCheckMarketGroups({ category });
+  res.set('Cache-Control', 'no-store').json({
+    date: catalog.date, categories: settlementCheckCategories,
+    groups: catalog.groups.map(({ markets, ...group }) => group),
+  });
+}));
+adminRouter.get('/admin/settlement-check/market', ...admin, guard(async (req, res) => {
+  const family = String(req.query.family ?? '').trim();
+  if (!family) throw badRequest('Zgjidh një market.');
+  const catalog = await settlementCheckMarketGroups({ family });
+  const group = catalog.groups.find(item => item.key === family);
+  if (!group) return res.status(404).json({ message: 'Ky market nuk ka kuota aktive në ndeshjet e sotme.' });
+  res.set('Cache-Control', 'no-store').json(group);
 }));
 adminRouter.post('/admin/settlement-check/place', ...admin, guard(async (req, res) => {
-  const { playerId, matchIds, runId } = req.body ?? {};
+  const { playerId, family, runId } = req.body ?? {};
   if (!uuidPattern.test(String(runId ?? ''))) throw badRequest('Identifikuesi i kontrollit nuk është i vlefshëm. Rifresko dhe provo përsëri.');
   const player = await ledger.getUserById(playerId);
   if (!player || player.role !== 'PLAYER' || player.status !== 'ACTIVE') throw badRequest('Zgjidh një llogari lojtari aktive.');
-  const matches = await settlementCheckSelections(matchIds, req.app.locals.loadMatchDetailFully), placed = [], skipped = [];
-  for (const match of matches) for (const selection of match.selections) {
-    try {
-      const ticket = await bets.placeBet({user:player,stake:automatedCheckStake,selections:[selection],clientRequestId:checkRequestId(String(runId).toLowerCase(),selection.outcomeId)});
-      placed.push({id:ticket.id,bookingCode:ticket.bookingCode,matchId:match.id});
-    } catch (error) { skipped.push({matchId:match.id,outcomeId:selection.outcomeId,reason:error?.message ?? 'Kuota nuk u pranua.'}); }
-  }
-  res.json({stakePerTicket:automatedCheckStake,placed,skipped,totalStake:placed.length * automatedCheckStake});
+  const selectedFamily = String(family ?? '').trim();
+  if (!selectedFamily) throw badRequest('Zgjidh një market.');
+  const catalog = await settlementCheckMarketGroups({ family: selectedFamily });
+  const group = catalog.groups.find(item => item.key === selectedFamily);
+  if (!group) throw badRequest('Ky market nuk ka më kuota aktive në ndeshjet e sotme.');
+  const selections = group.markets.flatMap(market => market.options.map(option => ({
+    ...option.selection,
+    clientRequestId: checkRequestId(String(runId).toLowerCase(), option.outcomeId),
+  })));
+  const result = await bets.placeSettlementTestTickets({
+    user: player, selections, family: selectedFamily, runId: String(runId).toLowerCase(),
+  });
+  res.json({
+    test: true, player: player.username, family: selectedFamily, date: catalog.date,
+    match: group.match, ticketCount: result.placed.length,
+    stakePerTicket: result.stakePerTicket, placed: result.placed,
+  });
+}));
+adminRouter.get('/admin/settlement-check/tickets', ...admin, guard(async (req, res) => {
+  const playerId = String(req.query.playerId ?? '').trim() || null;
+  const tickets = await bets.listLogicalTickets({
+    userId: playerId, statuses: null, onlySettlementTests: true,
+    limit: Math.min(500, Math.max(1, Number(req.query.limit) || 100)),
+  });
+  res.json(tickets);
 }));
 
 /* ----------------------------------------------------------------- tickets */
