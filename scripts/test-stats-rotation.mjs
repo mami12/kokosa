@@ -15,6 +15,7 @@ async function harness({env={},rows=[row()],stats=()=>totals,override=()=>null,e
  await database.exec(`truncate app_ticket,app_ticket_line,app_match_result,app_stats_cache,app_stats_usage,app_stat_review`);
  let at=start;const calls=[],unexpected=[],matches=new Map(rows.map(r=>[Number(r.match_id),r])),saved=[],persistedGoals=[],persistedTimed=[];
  const config={STATS_REALTIME_ENABLED:'false',WORLDCUP26_LEAGUES:'eng.1',...env};
+ const loadedFinal=[];
  const request=async(value,options)=>{
   const url=new URL(value),path=url.pathname;
   const provider=url.host==='sports.bzzoiro.com'?'bsd':url.host==='worldcup26.ir'?'worldcup26':url.host==='sportapi.ai'?'sportapi':url.host==='api.goal-api.com'?'goalapi':'apifootball';
@@ -56,7 +57,7 @@ async function harness({env={},rows=[row()],stats=()=>totals,override=()=>null,e
   }
   unexpected.push(value);throw Error('UNEXPECTED_TEST_ENDPOINT');
  };
- const create=()=>createStatsService({runQuery:(...args)=>database.query(...args),env:config,request,now:()=>at,loadMatch:async id=>matches.get(id),loadSnapshots:async()=>[],
+ const create=()=>createStatsService({runQuery:(...args)=>database.query(...args),env:config,request,now:()=>at,loadMatch:async id=>{loadedFinal.push(Number(id));return matches.get(id);},loadSnapshots:async()=>[],
   getEventWatchIds:async()=>new Set((await database.query("select distinct match_id from app_ticket_line where status='PENDING' and market_name='Total goals in minutes 1-15'")).rows.map(r=>String(r.match_id))),saveEvidence:async(id,evidence)=>saved.push({id,evidence}),
   ...(persistFacts?{persistGoalFacts:async(id,evidence)=>{persistedGoals.push({id,evidence});return {stored:true};},
    persistTimedFacts:async(id,evidence)=>{persistedTimed.push({id,evidence});return {stored:true};}}:{})});
@@ -64,13 +65,13 @@ async function harness({env={},rows=[row()],stats=()=>totals,override=()=>null,e
   await database.query('insert into app_ticket(id,status) values($1,$2) on conflict(id) do update set status=excluded.status',[ticket,status]);
   await database.query('insert into app_ticket_line(ticket_id,match_id,status,market_name,live_contract) values($1,$2,$3,$4,$5::jsonb)',[ticket,id,lineStatus,'1X2',liveContract?JSON.stringify(liveContract):null]);
  };
- return {service:create(),create,calls,matches,config,saved,persistedGoals,persistedTimed,bet,advance:ms=>{at+=ms;},setTime:value=>{at=Date.parse(value);},stats:(service,r=rows[0])=>teamStatisticsFromRow({...r,stats:service.displayStatistics(r)}),verify:()=>{assert.deepEqual(unexpected,[]);cases++;}};
+ return {service:create(),create,calls,matches,config,saved,persistedGoals,persistedTimed,loadedFinal,bet,advance:ms=>{at+=ms;},setTime:value=>{at=Date.parse(value);},stats:(service,r=rows[0])=>teamStatisticsFromRow({...r,stats:service.displayStatistics(r)}),verify:()=>{assert.deepEqual(unexpected,[]);cases++;}};
 }
 
 try{
  await database.exec(`create table app_ticket(id text primary key,status text);
   create table app_ticket_line(ticket_id text,match_id bigint,status text,market_name text,live_contract jsonb);
-  create table app_match_result(match_id bigint primary key,home_score int,away_score int);
+  create table app_match_result(match_id bigint primary key,home_score int,away_score int,source text not null default 'ZIZOBET');
   create table app_match_event_coverage(match_id bigint,provider text,kind text,count_home int,count_away int,complete boolean,confirmed_at timestamptz,card_colors_verified boolean,through_minute int,observed_at timestamptz);
   create table app_stats_cache(cache_key text primary key,payload jsonb not null,updated_at timestamptz not null default now());
   create table app_stats_usage(provider text,period text,calls int,primary key(provider,period));
@@ -87,7 +88,7 @@ try{
    rows:[row(101,{feed_status:'FT'})],events:()=>source,persistFacts:true});
   await h.bet(101);
   await database.query("update app_ticket_line set market_name='Total goals in minutes 1-15' where match_id=101");
-  await database.query('insert into app_match_result values(101,0,0)');
+  await database.query('insert into app_match_result(match_id,home_score,away_score) values(101,0,0)');
   await h.service.tick();
   assert.equal(h.persistedTimed.length,0,'External cards/corners cannot become primary facts');
   assert.equal(h.persistedGoals.length,0,'External goal incidents cannot become primary facts');
@@ -113,7 +114,7 @@ try{
  {
   const h=await harness({rows:[row(101,{feed_status:'FT'})]});await h.bet(101);
   await database.query("update app_ticket_line set market_name='Total Corners Over/Under' where match_id=101");
-  await database.query('insert into app_match_result values(101,0,0)');
+  await database.query('insert into app_match_result(match_id,home_score,away_score) values(101,0,0)');
   const oldFetch=globalThis.fetch;globalThis.fetch=async()=>new Response('{}',{status:503});
   try{await h.service.tick();}finally{globalThis.fetch=oldFetch;}
   assert.ok(h.calls.length>0,'a pending aggregate-stat market starts final verification even when the catalog lags');h.verify();
@@ -148,7 +149,7 @@ try{
    stats:provider=>provider==='worldcup26'?{...totals,home:{...totals.home,corners:4}}:totals});
   await h.bet(101);
   await database.query("update app_ticket_line set market_name='Total Corners Over/Under' where match_id=101");
-  await database.query('insert into app_match_result values(101,0,0)');
+  await database.query('insert into app_match_result(match_id,home_score,away_score) values(101,0,0)');
   const oldFetch=globalThis.fetch;globalThis.fetch=async()=>new Response('{}',{status:503});
   try{await h.service.tick();}finally{globalThis.fetch=oldFetch;}
   const review=(await database.query('select payload from app_stat_review where match_id=101')).rows[0].payload;
@@ -261,7 +262,7 @@ try{
   const h=await harness({env:{BSD_API_KEY:'test-key'}});await h.bet(101);
   await database.query("update app_ticket_line set market_name='Total goals in minutes 1-15'");
   await h.service.tick();assert.equal(h.saved.length,0);
-  h.matches.get(101).feed_status='FT';await database.query('insert into app_match_result values(101,0,0)');
+  h.matches.get(101).feed_status='FT';await database.query('insert into app_match_result(match_id,home_score,away_score) values(101,0,0)');
   await h.service.tick();assert.equal(h.saved.length,0,
    'Final third-party events remain supplementary, not settlement evidence');h.verify();
  }
@@ -302,6 +303,41 @@ try{
    raw:{...rows[0].raw,eventTimeline:[{id:'corner-1',type:'corner',minute:18}]}});
   await h.service.tick();
   assert.ok(h.calls.length>beforeEvent,'Zizobet incident change bypasses cached secondary stats');
+  h.verify();
+ }
+
+ // Final-statistics settlement recovery loads only a bounded rotating batch.
+ // The durable cursor survives a service restart and wraps without starving IDs.
+ {
+  const rows=Array.from({length:8},(_,i)=>row(401+i,{feed_status:'FT'}));
+  const h=await harness({rows,env:{STATS_PROVIDERS_ENABLED:'true',
+   STATS_FINAL_BATCH_SIZE:'3',WORLDCUP26_DAY_LIMIT:'0',BSD_DAY_LIMIT:'0',
+   SPORTAPI_DAY_LIMIT:'0',GOALAPI_DAY_LIMIT:'0',APIFOOTBALL_DAY_LIMIT:'0'}});
+  for(const r of rows){
+   await h.bet(r.match_id,'final-'+r.match_id);
+   await database.query(
+    'insert into app_match_result(match_id,home_score,away_score,source) values($1,0,0,\'ZIZOBET\')',
+    [r.match_id]
+   );
+  }
+  let result=await h.service.warmFinalPending();
+  assert.equal(result.examined,3,'The final recovery pass is bounded by STATS_FINAL_BATCH_SIZE');
+  assert.deepEqual(h.loadedFinal,[401,402,403]);
+  h.loadedFinal.length=0;
+  const restarted=h.create();
+  result=await restarted.warmFinalPending();
+  assert.equal(result.examined,3);
+  assert.deepEqual(h.loadedFinal,[404,405,406],
+   'The persisted cursor resumes after a service restart');
+  h.loadedFinal.length=0;
+  result=await restarted.warmFinalPending();
+  assert.equal(result.examined,2);
+  assert.deepEqual(h.loadedFinal,[407,408]);
+  h.loadedFinal.length=0;
+  result=await restarted.warmFinalPending();
+  assert.equal(result.examined,3);
+  assert.deepEqual(h.loadedFinal,[401,402,403],
+   'When the cursor reaches the end it wraps to pending fixtures at the start');
   h.verify();
  }
  console.log(`PASS ${cases} provider scenarios: on-demand watched matches, ten-minute fallback, rotation/restart, verified statistics, HTTP quotas and final evidence`);
