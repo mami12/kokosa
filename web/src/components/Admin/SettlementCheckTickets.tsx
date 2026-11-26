@@ -73,7 +73,6 @@ export default function SettlementCheckTickets(){
  },[playerId,lang]);
  useEffect(()=>{void loadPlayers();},[loadPlayers]);
  useEffect(()=>{void loadCatalog();},[loadCatalog]);
- useEffect(()=>{void loadAllMatches();},[loadAllMatches]);
  useEffect(()=>{
   void loadTickets();
   const timer=window.setInterval(()=>void loadTickets(),15000);
@@ -88,6 +87,7 @@ export default function SettlementCheckTickets(){
   }catch(e:any){setError(e.response?.data?.message??tr('Ndeshjet e sotme nuk u ngarkuan.','Today’s fixtures could not be loaded.'));}
   finally{setAllLoading(false);}
  },[lang]);
+ useEffect(()=>{void loadAllMatches();},[loadAllMatches]);
  const openMarket=async(family:string)=>{
   setDetailLoading(true);setError('');setNotice('');setResult(null);setDetail(null);
   try{
