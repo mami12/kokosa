@@ -662,6 +662,19 @@ adminRouter.get('/admin/settlement-check/matches', ...admin, guard(async (_req, 
   }).filter(Boolean);
   res.set('Cache-Control', 'no-store').json({ date: tiraneDateKey(now), matches });
 }));
+adminRouter.post('/admin/settlement-check/preview', ...admin, guard(async (req, res) => {
+  const matches = await settlementCheckSelections(req.body?.matchIds);
+  const ticketCount = matches.reduce((total, match) => total + match.selections.length, 0);
+  res.json({
+    stakePerTicket: 100,
+    ticketCount,
+    totalStake: ticketCount * 100,
+    matches: matches.map(({ selections, ...match }) => ({
+      ...match,
+      ticketCount: selections.length,
+    })),
+  });
+}));
 adminRouter.post('/admin/settlement-check/place-all', ...admin, guard(async (req, res) => {
   const { playerId, matchIds, runId } = req.body ?? {};
   const normalizedRunId = String(runId ?? '').toLowerCase();
