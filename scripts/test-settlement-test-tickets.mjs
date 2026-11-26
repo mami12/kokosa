@@ -109,7 +109,7 @@ try {
   );
 
   const daily = await listLogicalTickets({
-    userId: user.id, statuses: ['PENDING'], matchDate: '2026-11-26', limit: 100,
+    userId: user.id, statuses: null, matchDate: '2026-11-26', limit: 100,
   }, { runQuery: run });
   const dailyIds = new Set(daily.map(ticket => ticket.id));
   assert.equal(dailyIds.has(sameDay), true, 'kickoff on the selected Tirane date is included');
