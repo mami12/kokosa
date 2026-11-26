@@ -61,6 +61,11 @@ export function projectZizobetHistory(matchId,data,row={}){
   yellowCards:pair(game,'YellowCards'),redCards:pair(game,'RedCards'),
   fouls:pair(game,'Fouls'),shots:pair(game,'Shots')
  };
+ // Preserve the complete bounded native timeline for display and forensic review.
+ // The normalized incident ledger below remains restricted to supported event
+ // kinds and is the only input eligible for financial settlement.
+ if(frame.eventListAvailable)details.timeline=frame.rawTimeline??[];
+ if(frame.rawTimelineTruncated)details.timelineTruncated=true;
  // A missing field is unknown, never a fabricated zero or stale overwrite.
  const clean=Object.fromEntries(Object.entries(details).filter(([,v])=>v!==null));
  const events=frame.eventListAvailable?frame.events.filter(e=>
