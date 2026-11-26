@@ -170,13 +170,16 @@ export async function findFotMobFixture(home,away,targetDates,expectedKickoff=nu
  */
 export function parseFotMobPayload(summary, details = null) {
   const header = details?.header;
-  const status = header?.status || summary?.status;
-  const completionLabel=[status?.reason?.short,status?.reason?.shortKey].filter(Boolean).join(' ').trim();
-  // 1X2/goal totals usually settle at 90 minutes. A final scoreboard after
-  // extra time or a penalty shoot-out is not a verified regulation FT result.
-  const extended=/\b(?:aet|after\s*extra\s*time|extra\s*time|after\s*et|pens?|penalties|penalty\s*shootout)\b/i.test(completionLabel);
-  const isFinished=!extended&&(status?.finished===true||
-    /^(?:ft|ended|finished)/i.test(completionLabel));
+  // Date-list and details endpoints can expose different status completeness.
+  // Inspect both rather than letting a partial details status shadow FT.
+  const statuses=[header?.status,summary?.status].filter(Boolean);
+  const completionLabels=statuses.flatMap(status=>
+    [status?.reason?.short,status?.reason?.shortKey,status?.reason?.name,
+     status?.reason?.long,status?.reason?.text].filter(value=>typeof value==='string')).join(' ').trim();
+  // Any explicit extra-time/penalty status overrides a generic finished flag.
+  const extended=/\b(?:aet|after\s*extra\s*time|extra\s*time|after\s*et|pens?|penalties|penalty\s*shootout)\b/i.test(completionLabels);
+  const isFinished=!extended&&statuses.some(status=>status?.finished===true||
+    /^(?:ft|full.?time|ended|finished)$/i.test(String(status?.reason?.short??status?.reason?.shortKey??'').trim()));
 
   // Number('') is zero: never manufacture a 0-0 when FotMob omits its score.
   const scoreStr = header?.status?.scoreStr || summary?.status?.scoreStr || null;
