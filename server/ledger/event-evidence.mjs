@@ -1,4 +1,3 @@
-import {createHash} from 'node:crypto';
 import {eventContract,eventInWindow} from './event-contract.mjs';
 const query=async(...args)=>(await import('../db.mjs')).query(...args);
 import {eventMarketRequirement} from './event-market-policy.mjs';
