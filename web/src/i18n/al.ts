@@ -42,6 +42,8 @@ export default {
     "username": "Përdoruesi",
     "password": "Fjalëkalimi",
     "login_btn": "Identifikohu",
+    "logging_in": "Duke u identifikuar...",
+    "connection_failed": "Lidhja me serverin dështoi. Provo përsëri.",
     "login_failed": "Identifikimi dështoi"
   },
   "sections": {
