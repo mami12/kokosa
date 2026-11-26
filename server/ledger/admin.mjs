@@ -424,7 +424,7 @@ adminRouter.get(
          coalesce(sum(stake) filter (where status = 'PENDING'), 0)          as open_stake,
          coalesce(sum(stake) filter (where status in ('WON','LOST')), 0)    as settled_stake,
          coalesce((select sum(amount) from app_transaction where type='BET_WON'), 0) as paid_out
-       from app_ticket`,
+       from app_ticket where is_settlement_test is not true`,
     );
     const row = money.rows[0] ?? {};
     const managers = await ledger.managerFinancials();
