@@ -122,6 +122,25 @@ export function gradeHeldNativeCombo(line,result){
  const rawPeriod=Number(saved.providerPeriod??0);
  if(![0,1,2].includes(rawPeriod)||
     (line.period!=null&&Number(line.period)!==rawPeriod))return null;
+ const frozen={
+  market_name:saved.providerMarketName,
+  outcome_name:saved.providerOutcomeName,
+  outcome_key:saved.providerOutcomeKey,
+  line:String(saved.line??''),period:rawPeriod,
+  accepted_contract:saved
+ };
+ // The accepted Zizobet title plus its frozen line and Yes/No selection
+ // are sufficient for this explicitly unmapped full-time OR-total family.
+ if(reason==='NATIVE_PARAMETERS_UNMAPPED'||reason==='NATIVE_FINAL_RULE_UNMAPPED'){
+  const orSelection=parseOrTotalSelection(frozen);
+  if(orSelection)return gradeOrTotalSelection(orSelection,result?.home_score,result?.away_score);
+  // Older catalog versions did not classify Cornerbet or some native corner totals.
+  if(/corner/i.test(String(frozen.market_name??''))){
+   const repaired={...line,...frozen,accepted_contract:{...saved,settlementHold:null}};
+   const status=gradeLine(repaired,result);
+   if(['WON','LOST','VOID'].includes(status))return status;
+  }
+ }
  if(reason==='NATIVE_PARAMETERS_UNMAPPED'){
   if(!saved.nativeMarketName||!saved.providerMarketKey||saved.nativeMarketId==null)return null;
   let decoded;
@@ -143,13 +162,6 @@ export function gradeHeldNativeCombo(line,result){
   const status=gradeLine(repaired,result);
   return ['WON','LOST','VOID'].includes(status)?status:null;
  }
- const frozen={
-  market_name:saved.providerMarketName,
-  outcome_name:saved.providerOutcomeName,
-  outcome_key:saved.providerOutcomeKey,
-  line:String(saved.line??''),period:rawPeriod,
-  accepted_contract:saved
- };
  const contract=parseHalfCombination(frozen,{
   home:saved.homeTeamName??result?.home_team,
   away:saved.awayTeamName??result?.away_team
