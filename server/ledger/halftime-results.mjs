@@ -1,7 +1,8 @@
 /**
  * Durable half-time score evidence. NEVER store half-time values in
  * app_match_result, whose scores mean the 90-minute final result.
- * A single valid primary HT transition closes the first-half score period.
+ * The first valid HT transition fixes the 1H cutoff; two matching Zizobet
+ * observations at least five seconds apart confirm its score and statistics.
  */
 import {getMatches,getMatchById} from '../matches.mjs';
 import {matchSnapshots} from './match-snapshots.mjs';
@@ -9,8 +10,12 @@ import {query} from '../db.mjs';
 import {verifiedFinalStatistics} from '../match-statistics.mjs';
 
 export const HALFTIME_RESULT_SQL=[
- 'create table if not exists app_match_half_result (match_id bigint primary key, home_team text not null, away_team text not null, half_home_score integer not null check(half_home_score between 0 and 200), half_away_score integer not null check(half_away_score between 0 and 200), signature text not null, first_seen_at timestamptz not null default now(), observed_at timestamptz not null default now(), confirmed_at timestamptz, correction_count integer not null default 0, source text not null default ' + "'UNVERIFIED_LEGACY', statistics jsonb not null default '{}'::jsonb);",
+ 'create table if not exists app_match_half_result (match_id bigint primary key, home_team text not null, away_team text not null, half_home_score integer not null check(half_home_score between 0 and 200), half_away_score integer not null check(half_away_score between 0 and 200), signature text not null, first_seen_at timestamptz not null default now(), signature_first_seen_at timestamptz not null default now(), observed_at timestamptz not null default now(), confirmed_at timestamptz, correction_count integer not null default 0, source text not null default ' + "'UNVERIFIED_LEGACY', statistics jsonb not null default '{}'::jsonb);",
  'alter table app_match_half_result alter column source set default ' + "'UNVERIFIED_LEGACY';",
+ "alter table app_match_half_result add column if not exists signature_first_seen_at timestamptz;",
+ "update app_match_half_result set signature_first_seen_at=first_seen_at where signature_first_seen_at is null;",
+ "alter table app_match_half_result alter column signature_first_seen_at set default now();",
+ "alter table app_match_half_result alter column signature_first_seen_at set not null;",
  "alter table app_match_half_result add column if not exists statistics jsonb not null default '{}'::jsonb;",
  ''
 ].join('\n');
@@ -65,17 +70,18 @@ export function extractConfirmedHalfTimeCandidate(row){
 export async function persistHalfTimeCandidate(candidate,{execute=query}={}){
  if(!candidate||candidate.source!=='ZIZOBET')return {stored:false,confirmed:false};
  const statement=[
- 'insert into app_match_half_result (match_id,home_team,away_team,half_home_score,half_away_score,signature,observed_at,source,first_seen_at,confirmed_at,statistics)',
- "values ($1,$2,$3,$4,$5,$6,$7::timestamptz,'ZIZOBET',$7::timestamptz,null,$8::jsonb)",
+ 'insert into app_match_half_result (match_id,home_team,away_team,half_home_score,half_away_score,signature,observed_at,source,first_seen_at,signature_first_seen_at,confirmed_at,statistics)',
+ "values ($1,$2,$3,$4,$5,$6,$7::timestamptz,'ZIZOBET',$7::timestamptz,$7::timestamptz,null,$8::jsonb)",
  'on conflict(match_id) do update set',
  'home_team=excluded.home_team, away_team=excluded.away_team,',
  'half_home_score=excluded.half_home_score,half_away_score=excluded.half_away_score,',
  'correction_count=app_match_half_result.correction_count+case when app_match_half_result.signature<>excluded.signature then 1 else 0 end,',
  'signature=excluded.signature,source=excluded.source,',
- // A changed HT result starts a fresh confirmation window. The time boundary
- // remains the first observation of the CURRENT, unchanged score signature.
- "first_seen_at=case when app_match_half_result.source='ZIZOBET' and app_match_half_result.signature=excluded.signature then app_match_half_result.first_seen_at else excluded.observed_at end,",
- "confirmed_at=case when app_match_half_result.source='ZIZOBET' and app_match_half_result.signature=excluded.signature and excluded.observed_at-app_match_half_result.first_seen_at>=interval '5 seconds' then coalesce(app_match_half_result.confirmed_at,now()) else null end,",
+ // first_seen_at remains the original HT cutoff. A separate timestamp tracks
+ // the first observation of this exact signature for the five-second rule.
+ "first_seen_at=case when app_match_half_result.source='ZIZOBET' then app_match_half_result.first_seen_at else excluded.observed_at end,",
+ "signature_first_seen_at=case when app_match_half_result.source='ZIZOBET' and app_match_half_result.signature=excluded.signature then app_match_half_result.signature_first_seen_at else excluded.observed_at end,",
+ "confirmed_at=case when app_match_half_result.source='ZIZOBET' and app_match_half_result.signature=excluded.signature and excluded.observed_at-app_match_half_result.signature_first_seen_at>=interval '5 seconds' then coalesce(app_match_half_result.confirmed_at,now()) else null end,",
  "statistics=case when app_match_half_result.source='ZIZOBET' and app_match_half_result.signature=excluded.signature then coalesce(app_match_half_result.statistics,'{}'::jsonb)||excluded.statistics else excluded.statistics end,",
  'observed_at=excluded.observed_at',
  'where excluded.observed_at>app_match_half_result.observed_at',
