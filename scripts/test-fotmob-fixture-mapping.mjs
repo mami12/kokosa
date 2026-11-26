@@ -46,4 +46,24 @@ assert.equal(await findFotMobFixture('Arsenal','Chelsea',[day],null,{fetchDate:d
  'A missing original kickoff cannot authorize an external fixture');
 assert.equal(await findFotMobFixture('Arsenal','Chelsea',[day],kickoff,
  {fetchDate:async()=>({leagues:[]})}),null);
+// Provider label variants for the same senior club must resolve for every fixture lookup.
+const interFixture={leagues:[{name:'Serie A',matches:[
+ {id:887766,home:{name:'Inter FC',shortName:'Inter'},
+  away:{name:'Cagliari Calcio',shortName:'Cagliari'},
+  status:{utcTime:kickoff}}
+]}]};
+const inter=await findFotMobFixture('Inter Milan','Cagliari Calcio',[day],kickoff,
+ {fetchDate:async()=>interFixture});
+assert.equal(inter?.match.id,887766,
+ 'Zizobet Inter Milan must match FotMob Inter FC using the shared team identity');
+assert.equal(await findFotMobFixture('Internazionale Milano','Cagliari',[day],kickoff,
+ {fetchDate:async()=>interFixture}).then(x=>x?.match.id),887766,
+ 'Internazionale Milano must resolve to the same senior club');
+assert.equal(await findFotMobFixture('Inter Miami','Cagliari',[day],kickoff,
+ {fetchDate:async()=>interFixture}),null,
+ 'Inter Miami must never collapse into Inter Milan');
+assert.equal(await findFotMobFixture('Inter Turku','Cagliari',[day],kickoff,
+ {fetchDate:async()=>interFixture}),null,
+ 'Inter Turku must never collapse into Inter Milan');
+
 console.log('PASS safe FotMob match discovery: UTC status time, aliases, home/away, kickoff, ambiguity and missing evidence');
