@@ -42,6 +42,8 @@ export default {
     "username": "Username",
     "password": "Password",
     "login_btn": "Sign In",
+    "logging_in": "Signing in...",
+    "connection_failed": "Could not connect to the server. Please try again.",
     "login_failed": "Sign-in failed"
   },
   "sections": {

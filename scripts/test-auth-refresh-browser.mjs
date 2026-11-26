@@ -136,8 +136,15 @@ try {
 
   const forbidden=await refresh('forbidden');reply(forbidden,{message:'account is banned'},403);await finish('forbidden');
   assert.equal((await state()).user,null);assert.equal((await state()).token,null,'a current authoritative 403 expires the account');
-  const temporaryLogin=await login('temporaryLogin','E',600);reply(temporaryLogin,{message:'temporary failure'},503);await finish('temporaryLogin');
-  assert.equal((await state()).user.id,'E','successful login remains valid when the follow-up refresh temporarily fails');
+  await start('temporaryLogin','login','E','test-only');
+  const firstTemporaryAttempt=await queued(loginRequests,++loginCount);
+  reply(firstTemporaryAttempt,{message:'temporary failure'},503);
+  const retriedTemporaryAttempt=await queued(loginRequests,++loginCount);
+  reply(retriedTemporaryAttempt,{token:'local-token-E',user:user('E',600)});
+  reply(await queued(requests,++meCount),user('E',650));
+  await finish('temporaryLogin');
+  assert.equal((await state()).user.id,'E','transient login failures are retried and the returned identity is retained');
+  assert.equal((await state()).user.balance,650);
   assert.equal((await state()).token,'local-token-E');
   const invalid=await refresh('invalid');reply(invalid,{message:'not authenticated'},401);await finish('invalid');
   assert.equal((await state()).user,null);assert.equal((await state()).token,null,'a current authoritative 401 removes an invalid token');

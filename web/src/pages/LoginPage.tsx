@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../context/LanguageContext';
@@ -9,17 +9,28 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitting = useRef(false);
   const { login } = useAuth();
   const navigate = useNavigate();
   const { t } = useLanguage();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
+    setIsSubmitting(true);
+    setError('');
     try {
       await login(username, password);
       navigate('/');
     } catch (err: any) {
-      setError(err.response?.data?.message || t('auth.login_failed'));
+      const message = err.response?.data?.message || err.response?.data?.error;
+      const networkFailure = !err.response || ['ERR_NETWORK', 'ECONNABORTED'].includes(err.code);
+      setError(message || (networkFailure ? t('auth.connection_failed') : t('auth.login_failed')));
+    } finally {
+      submitting.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -69,9 +80,10 @@ export default function LoginPage() {
               />
             </div>
           </div>
-          <button type="submit"
-            className="flex w-full items-center justify-center gap-2 rounded-md bg-gradient-to-r from-[#7F00FF] to-[#9d5bf0] px-4 py-3 text-sm font-bold text-white shadow-lg shadow-purple-950/50 transition-all hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-blue">
-            {t('auth.login_btn')} <ArrowRight size={16}/>
+          <button type="submit" disabled={isSubmitting} aria-busy={isSubmitting}
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-gradient-to-r from-[#7F00FF] to-[#9d5bf0] px-4 py-3 text-sm font-bold text-white shadow-lg shadow-purple-950/50 transition-all hover:brightness-110 disabled:cursor-wait disabled:opacity-70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-blue">
+            {isSubmitting ? t('auth.logging_in') : t('auth.login_btn')}
+            {isSubmitting ? <span aria-hidden className="h-4 w-4 animate-spin rounded-full border-2 border-white/35 border-t-white"/> : <ArrowRight size={16}/>}
           </button>
         </form>
       </div>
