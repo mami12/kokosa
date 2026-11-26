@@ -44,7 +44,7 @@ assert.deepEqual(
 const repeatedDisplay=providerTimeline('same-id-match',repeatedIdTimeline);
 assert.equal(repeatedDisplay.length,2,'Dashboard must not collapse repeated provider IDs');
 assert.deepEqual(repeatedDisplay.map(event=>[event.id,event.minute]),[
- ['shared-corner',46],['shared-corner#2',47]
+ ['shared-corner',46],['shared-corner#000002',47]
 ]);
 assert.deepEqual(repeatedDisplay.map(event=>event.sequence),[1,2]);
 const repeatedFrame=normalizeLiveFrame({
