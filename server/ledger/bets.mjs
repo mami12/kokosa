@@ -1567,6 +1567,7 @@ export async function revertTicket(ticketId, managerId = null, { database = pool
     );
     const ticket = found.rows[0];
     if (!ticket) throw Object.assign(new Error('ticket not found'), { status: 404 });
+    if (ticket.is_settlement_test === true) throw badRequest('Biletat e testimit nuk kthehen si bileta financiare.');
     if (found.rows.length !== ids.length || found.rows.some(row => row.user_id !== ticket.user_id) ||
         (batch && ticket.user_id !== batch.user_id)) throw new Error('System ticket ownership mismatch.');
     if (managerId && found.rows.some(row => row.manager_id !== managerId)) {
