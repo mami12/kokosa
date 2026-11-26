@@ -116,8 +116,8 @@ const coverage=[
   ['possession',real.statistics.possession?.home!=null&&real.statistics.possession?.away!=null]
  ].filter(([,ok])=>ok).map(([name])=>name);
  console.log('PASS FOTMOB LIVE '+JSON.stringify({
-  id:String(selected.match.id),league:selected.league,
-  home:selected.match.home.name,away:selected.match.away.name,
+  id:String(match.id),league:league,
+  home:match.home.name,away:match.away.name,
   kickoff:kickoffIso,score:real.homeScore+'-'+real.awayScore,
   goalEvents:real.goalEvents.length,cornerEvents:real.cornerEvents.length,
   cardEvents:real.cardEvents.length,statistics:coverage
