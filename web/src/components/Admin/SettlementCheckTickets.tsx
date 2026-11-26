@@ -14,10 +14,10 @@ const dateLabel=(value?:string|null)=>{if(!value)return '—';const date=new Dat
 export default function SettlementCheckTickets(){
  const {lang}=useLanguage(),tr=(sq:string,en:string)=>lang==='en'?en:sq;
  const [players,setPlayers]=useState<Player[]>([]),[matches,setMatches]=useState<Match[]>([]);
- const [playerId,setPlayerId]=useState(''),[first,setFirst]=useState(''),[second,setSecond]=useState('');
+ const [playerId,setPlayerId]=useState('');
  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false);
  const [preview,setPreview]=useState<Preview|null>(null),[result,setResult]=useState<Result|null>(null),[error,setError]=useState('');
- const ready=Boolean(playerId&&first&&second&&first!==second);
+ const selectedMatches=matches.slice(0,4);\n const ready=Boolean(playerId&&selectedMatches.length===4);
  const load=async()=>{
   setLoading(true);setError('');
   try{
@@ -35,7 +35,7 @@ export default function SettlementCheckTickets(){
   if(!ready||busy)return;
   setBusy(true);setError('');setResult(null);
   try{
-   const response=await apiClient.post<Preview>('/admin/settlement-check/preview',{matchIds:[first,second]});
+   const response=await apiClient.post<Preview>('/admin/settlement-check/preview',{matchIds:selectedMatches.map(match=>match.id)});
    setPreview(response.data);
   }catch(e:any){setPreview(null);setError(e.response?.data?.message||tr('Kontrolli nuk u krijua.','The preview could not be created.'));}
   finally{setBusy(false);}
@@ -45,7 +45,7 @@ export default function SettlementCheckTickets(){
   setBusy(true);setError('');
   try{
    const response=await apiClient.post<Result>('/admin/settlement-check/place-all',{
-    playerId,matchIds:[first,second],runId:createClientRequestId()
+    playerId,matchIds:selectedMatches.map(match=>match.id),runId:createClientRequestId()
    });
    setResult(response.data);setPreview(null);
   }catch(e:any){setError(e.response?.data?.message||tr('Biletat e testimit nuk u krijuan.','Test tickets could not be created.'));}
@@ -59,7 +59,7 @@ export default function SettlementCheckTickets(){
   <div className="rounded-2xl border border-tertiary bg-secondary p-4 sm:p-6">
    <div className="flex gap-3"><Ticket className="shrink-0 text-accent-green" size={22}/><div>
     <h2 className="font-black text-white">{tr('Kontrolli i shlyerjes me bileta','Settlement check with tickets')}</h2>
-    <p className="mt-1 text-sm text-text-secondary">{tr('Zgjidh dy ndeshje dhe një lojtar. Sistemi krijon një biletë prove 100 Lek për çdo kuotë aktive të lejueshme në të dyja ndeshjet. Kuotat e fshehura, të pezulluara, të skaduara ose të përfunduara nuk përfshihen.','Choose two fixtures and a player. The system creates one 100 Lek test ticket for every eligible active quote across both fixtures. Hidden, suspended, stale or already decided quotes are excluded.')}</p>
+    <p className="mt-1 text-sm text-text-secondary">{tr('Zgjidh vetëm lojtarin. Sistemi merr automatikisht katër ndeshje aktive të ditës dhe krijon bileta prove 100 Lek për çdo kuotë aktive të lejueshme në to. Kuotat e fshehura, të pezulluara, të skaduara ose të përfunduara nuk përfshihen.','Choose only a player. The system automatically takes four active fixtures from today and creates 100 Lek test tickets for every eligible active quote in them. Hidden, suspended, stale or already decided quotes are excluded.')}</p>
     <p className="mt-2 text-xs font-semibold text-accent-green">{tr('BILETA TESTIMI · PA DEBITIM OSE FITIM REAL','TEST TICKETS · NO REAL DEBIT OR PAYOUT')}</p>
    </div></div>
   </div>
@@ -68,25 +68,19 @@ export default function SettlementCheckTickets(){
    <div className="flex items-center justify-between gap-3"><h3 className="font-bold text-white">{tr('Përzgjedhja','Selection')}</h3>
     <button type="button" onClick={()=>void load()} disabled={loading||busy} className="rounded-lg border border-tertiary p-2 text-text-secondary disabled:opacity-50" aria-label={tr('Rifresko','Refresh')}><RefreshCw size={17} className={loading?'animate-spin':''}/></button>
    </div>
-   <div className="mt-4 grid gap-4 md:grid-cols-3">
+   <div className="mt-4 grid gap-4 md:grid-cols-2">
     <label className="text-sm text-text-secondary">{tr('Llogaria e lojtarit','Player account')}
      <select value={playerId} disabled={loading||busy} onChange={event=>{setPlayerId(event.target.value);setPreview(null);setResult(null);}} className="mt-1 w-full rounded-xl border border-tertiary bg-primary px-3 py-3 text-white">
       <option value="">{tr('Zgjidh lojtarin','Choose player')}</option>
-      {players.map(player=><option key={player.id} value={player.id}>{player.username} · {money(player.balance)}</option>)}
+      {players.map(player=><option key={player.id} value={player.id}>{player.username}</option>)}
      </select>
     </label>
-    <label className="text-sm text-text-secondary">{tr('Ndeshja e parë','First match')}
-     <select value={first} disabled={loading||busy} onChange={event=>changeMatch('first',event.target.value)} className="mt-1 w-full rounded-xl border border-tertiary bg-primary px-3 py-3 text-white">
-      <option value="">{tr('Zgjidh ndeshjen','Choose match')}</option>
-      {matches.filter(match=>match.id!==second).map(match=><option key={match.id} value={match.id}>{match.status==='LIVE'?'LIVE':'PRE'} · {match.name}</option>)}
-     </select>
-    </label>
-    <label className="text-sm text-text-secondary">{tr('Ndeshja e dytë','Second match')}
-     <select value={second} disabled={loading||busy} onChange={event=>changeMatch('second',event.target.value)} className="mt-1 w-full rounded-xl border border-tertiary bg-primary px-3 py-3 text-white">
-      <option value="">{tr('Zgjidh ndeshjen','Choose match')}</option>
-      {matches.filter(match=>match.id!==first).map(match=><option key={match.id} value={match.id}>{match.status==='LIVE'?'LIVE':'PRE'} · {match.name}</option>)}
-     </select>
-    </label>
+    <div className="text-sm text-text-secondary">{tr('Katër ndeshjet e zgjedhura automatikisht','Four automatically selected matches')}
+     <div className="mt-1 space-y-1 rounded-xl border border-tertiary bg-primary p-3 text-white">
+      {selectedMatches.map(match=><div key={match.id} className="text-xs">{match.status==='LIVE'?'LIVE':'PRE'} · {match.name}</div>)}
+      {!selectedMatches.length&&<span className="text-text-secondary">{tr('Nuk ka ndeshje aktive.','No active fixtures.')}</span>}
+     </div>
+    </div>
    </div>
    <div className="mt-5 flex flex-wrap gap-3">
     <button type="button" disabled={!ready||busy} onClick={()=>void previewTickets()} className="rounded-xl border border-accent-green/50 px-5 py-3 font-bold text-accent-green disabled:opacity-40">{busy?<RefreshCw size={17} className="inline animate-spin"/>:null} {tr('Kontrollo biletat që do krijohen','Preview tickets')}</button>
@@ -106,7 +100,7 @@ export default function SettlementCheckTickets(){
   {result&&<div role="status" className="rounded-2xl border border-accent-green/30 bg-accent-green/10 p-4 sm:p-6">
    <div className="flex gap-3"><CheckCircle2 className="shrink-0 text-accent-green" size={22}/><div>
     <h3 className="font-bold text-white">{tr('Biletat e testimit u krijuan','Test tickets created')}</h3>
-    <p className="mt-1 text-sm text-text-secondary">{tr(`${result.ticketCount} bileta prove u krijuan për dy ndeshjet. Bilanci real nuk u prek.`,`${result.ticketCount} test tickets were created for the two fixtures. The real balance was not changed.`)}</p>
+    <p className="mt-1 text-sm text-text-secondary">{tr(`${result.ticketCount} bileta prove u krijuan për katër ndeshjet. Bilanci real nuk u prek.`,`${result.ticketCount} test tickets were created for the four fixtures. The real balance was not changed.`)}</p>
    </div></div>
    <div className="mt-4 space-y-2">{result.matches.map(match=><p key={match.id} className="text-xs text-text-secondary">{match.name}: {match.marketCount} {tr('markete','markets')} · {match.quoteCount} {tr('kuota','quotes')} · {match.ticketCount} {tr('bileta','tickets')}</p>)}</div>
   </div>}
