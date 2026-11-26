@@ -188,6 +188,7 @@ let settleTimer = null;
 let supplementalTimer = null;
 let pendingLiveMonitor = null;
 let settlementBusy = false;
+let settlementRerunReason = null;
 let lastUnresolvedCheck = 0;
 // De-duplicate repeated full-time frames after durable result persistence.
 const archivedTerminalMatches = new Set();
@@ -266,7 +267,8 @@ let lastDeletedHistoryCleanup = 0;
 let lastUnbetEvidenceCleanup = 0;
 const settlementHealth = {lastAttemptAt:null,lastSuccessAt:null,lastError:null,lastResult:null};
 async function runSettlement(why = 'periodic') {
-  if (shuttingDown || !ledgerReady || settlementBusy) return null;
+  if (shuttingDown || !ledgerReady) return null;
+  if(settlementBusy){if(why!=='periodic')settlementRerunReason=why;return null;}
   settlementBusy = true;
   settlementHealth.lastAttemptAt = new Date().toISOString();
   try {
@@ -329,6 +331,9 @@ async function runSettlement(why = 'periodic') {
     try { await pendingResults.refresh(); }
     catch(error) { console.error('[settle] pending result subscriptions could not refresh:',error.message); }
     settlementBusy = false;
+    const rerun=settlementRerunReason;
+    settlementRerunReason=null;
+    if(rerun&&!shuttingDown)queueMicrotask(()=>void runSettlement(rerun));
   }
 }
 
@@ -1143,6 +1148,11 @@ async function boot() {
           statsProviders.observeMatch(row);
           footballInformation.observeMatch(row);
         }
+      },
+      onHistoryConfirmed:info=>{
+        if(!ledgerReady||shuttingDown)return;
+        const kinds=Array.isArray(info?.kinds)?info.kinds.join(','):'event';
+        trackBackground(runSettlement(`confirmed Zizobet ${kinds} history for ${info?.matchId??'match'}`));
       },
       onMarketDefinitions:definitions=>{
         if(!ledgerReady||config.sportsProvider!=='zizobet')return;
