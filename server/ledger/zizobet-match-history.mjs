@@ -10,7 +10,7 @@ export const ZIZOBET_MATCH_HISTORY_SQL = [
  "alter table app_zizobet_match_history add column if not exists evidence_observed_at timestamptz;",
  "create table if not exists app_zizobet_match_incident (match_id bigint not null, kind text not null check(kind in ('goal','corner','card','foul')), provider_event_id text not null, team text not null check(team in ('home','away')), minute integer not null check(minute between 0 and 130), sequence integer, detail jsonb not null, active boolean not null default true, first_observed_at timestamptz not null default now(), observed_at timestamptz not null default now(), primary key(match_id,kind,provider_event_id));",
  "alter table app_zizobet_match_incident add column if not exists sequence integer;",
- "create index if not exists app_zizobet_match_incident_lookup on app_zizobet_match_incident(match_id,kind,active,minute,sequence);"
+ "create index if not exists app_zizobet_match_incident_sequence_lookup on app_zizobet_match_incident(match_id,kind,active,minute,sequence);"
 ].join('\n');
 
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
