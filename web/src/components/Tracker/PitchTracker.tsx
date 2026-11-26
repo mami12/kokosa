@@ -33,9 +33,8 @@ export default function PitchTracker({matchId,homeTeam,awayTeam,eventsOnly=false
 
   const archived=(snapshot?.events??[]).filter(event=>event.matchId===String(matchId));
   const pushed=(matchEvents??[]).filter(event=>event.matchId===String(matchId));
-  // The primary event list remains authoritative for event existence.
-  // Supplementary providers may add a named actor, never invent a missing
-  // original goal/foul/card. Names inherit only for the same incident ID.
+  // Zizobet remains the primary source. The fixture-matched FotMob archive
+  // supplements missing incidents and corroborates corrected event times.
   const official=retainEventPlayerNames(pushed.length?pushed:archived,archived);
   const unique=(items:MatchEvent[])=>{
     const seen=new Set<string>();
@@ -109,8 +108,8 @@ export default function PitchTracker({matchId,homeTeam,awayTeam,eventsOnly=false
   const eventLabel=(event:MatchEvent)=>{
     const type=String(event.type??'').toLowerCase();
     const text=String(event.text??'').toLowerCase();
-    if(type==='goal')return english?'Goal':'Gol';
-    if(type==='corner')return english?'Corner':'Korner';
+    if(type==='goal'||type==='score_change')return english?'Goal':'Gol';
+    if(type==='corner'||type==='corner_kick')return english?'Corner':'Korner';
     if(type==='yellow_card'||type==='card'&&/yellow|verd/.test(text))
       return english?'Yellow card':'Karton i verdhë';
     if(type==='red_card'||type==='card'&&/red|kuq/.test(text))
@@ -128,8 +127,8 @@ export default function PitchTracker({matchId,homeTeam,awayTeam,eventsOnly=false
       return <span className="h-4 w-2.5 rounded-[2px] border border-yellow-300 bg-yellow-400" aria-hidden="true"/>;
     if(type==='red_card'||type==='card'&&/red|kuq/.test(text))
       return <span className="h-4 w-2.5 rounded-[2px] border border-red-300 bg-red-500" aria-hidden="true"/>;
-    if(type==='goal')return <CircleDot size={16} className="text-emerald-300"/>;
-    if(type==='corner')return <Flag size={15} className="text-slate-300"/>;
+    if(type==='goal'||type==='score_change')return <CircleDot size={16} className="text-emerald-300"/>;
+    if(type==='corner'||type==='corner_kick')return <Flag size={15} className="text-slate-300"/>;
     if(type==='shot')return <Target size={15} className="text-slate-300"/>;
     return <Activity size={15} className="text-slate-400"/>;
   };
