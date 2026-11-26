@@ -39,6 +39,47 @@ assert.equal(liveQuote[0].outcomeName,'Under');
 assert.equal(liveQuote[0].price,1.93);
 assert.equal(liveQuote[0].line,'7.5');
 
+const minuteTotal=oddsOf({match_id:67},[
+ {mid:912,id:16,market_name:'1 minute - total from {from} to {to} (0.5)',
+  position_name:'Over',p1:16,p2:16,h:0.5,odds:12.5}
+],emptyMeta(),false,true);
+assert.equal(minuteTotal.length,1,'the generic one-minute total resolves from quote-native p1/p2');
+assert.equal(minuteTotal[0].marketName,'Total 0.5 goals in minutes 16-16 (1-minute interval)');
+assert.equal(minuteTotal[0].line,'0.5');
+assert.ok(!/[{}]/.test(minuteTotal[0].marketName),'ticket/admin labels must not retain {from}/{to} placeholders');
+
+const unresolvedMinuteTotal=oddsOf({match_id:68},[
+ {mid:913,id:17,market_name:'1 minute - total from {from} to {to} (0.5)',
+  position_name:'Over',h:0.5,odds:12.5}
+],emptyMeta(),false,true);
+assert.equal(unresolvedMinuteTotal.length,0,'an interval market without its p1/p2 values is not published with a broken template');
+
+for(const [id,name,extra] of [
+ [914,'Scoring Type',{}],
+ [915,'Offsides odd/even',{}],
+ [916,'First offside',{}],
+ [917,'1 minute - total offsides from {from} to {to} (0.5)',{p1:16,p2:16,h:0.5}],
+ [918,'Who takes the [corner!] corner',{}],
+ [919,'Sending off',{}],
+ [920,'1st team ball possession %',{}],
+ [921,'Total Fouls',{}]
+]){
+ const hidden=oddsOf({match_id:69},[
+  {mid:id,id:id+100,market_name:name,position_name:'Over',odds:2.1,...extra}
+ ],emptyMeta(),false,true);
+ assert.equal(hidden.length,0,name+' must not reach player odds');
+}
+for(const [line,id] of [['0.25',922],['0.75',923]]){
+ const hidden=oddsOf({match_id:70},[
+  {mid:id,id:id+100,market_name:'Total Goals',position_name:'Over',h:line,odds:2.1}
+ ],emptyMeta(),false,true);
+ assert.equal(hidden.length,0,'Total Goals '+line+' is excluded before publication');
+}
+const normalTotal=oddsOf({match_id:71},[
+ {mid:924,id:1024,market_name:'Total Goals',position_name:'Over',h:0.5,odds:1.95}
+],emptyMeta(),false,true);
+assert.equal(normalTotal.length,1,'supported .5 totals remain published');
+
 const unlabelled=oddsOf({match_id:64},[
  {mid:909,id:13,pos:1,coef:1.9}
 ],emptyMeta(),false,true);

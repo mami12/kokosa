@@ -47,6 +47,20 @@ export function resolveMarketTitle(raw,q,{intervalWidth,competitors}={}){
  // The provider catalog exposes parameterized minute windows as readable
  // placeholders rather than bracket tokens. Resolve them only from the native
  // p1/p2/h/p3 quote parameters; never infer the interval from the live clock.
+ // Zizobet also sends the same one-minute total as an unresolved
+ // {from}/{to} template. Resolve it only from that quote's p1/p2 and h;
+ // generic "total" is the football goals total, not a guess from the live clock.
+ const oneMinuteTemplate=name.match(/^1 minute\s*[-–]\s*total(?:\s+(corners?|goals?|offsides?))?\s+from\s+\{from\}\s+to\s+\{to\}\s*\((\d+(?:[.,]\d+)?)\)$/i);
+ if(oneMinuteTemplate){
+  const from=Number(q.p1),to=Number(q.p2);
+  const titleValue=Number(oneMinuteTemplate[2].replace(',','.'));
+  const value=q.h==null?titleValue:Number(q.h);
+  if(q.p1==null||q.p2==null||!Number.isSafeInteger(from)||from<0||from>130||
+     !Number.isSafeInteger(to)||to!==from||!Number.isFinite(value)||value<0||
+     !Number.isInteger(value*2)||value!==titleValue)return null;
+  const kind=String(oneMinuteTemplate[1]??'goals').toLowerCase();
+  return 'Total '+value+' '+kind+' in minutes '+from+'-'+to+' (1-minute interval)';
+ }
  const oneMinuteWindow=name.match(/^1 minute\s*[-–]\s*total\s+(corners?|goals?|offsides?)\s+from first value:00 to value min$/i);
  if(oneMinuteWindow){
   const from=Number(q.p1),to=Number(q.p2),value=Number(q.h);
@@ -266,10 +280,10 @@ export function oddsOf(row,quotes,meta,live,open=true,diagnostics){
   if(isAamsLogicMarket(rawName)){note('excludedAamsLogic');continue;}
   // Apply the same explicit exclusion policy before key generation and again
   // after native parameters have expanded the provider's title.
-  if(isExcludedOfferMarket({name:rawName,nativeMarketId:String(id)})){note('excluded');continue;}
-  // Keep every quoted total line, including quarter thresholds (0.25/0.75).
-  // Unsupported split-settlement contracts are held for review after placement;
-  // they must not disappear from the native Zizobet offer at ingestion.
+  if(isExcludedOfferMarket({name:rawName,nativeMarketId:String(id),line:q.h??q.total??q.line,nativeParameters:q})){note('excluded');continue;}
+  // Keep supported totals in the native identity. Quarter-line totals are
+  // explicitly rejected above because this site's settlement rules do not
+  // support their split-win/split-loss grades.
   // Preserve every numbered native parameter. Zizobet can add p4/p5/etc. to
   // market templates; dropping them aliases distinct offers to one market key.
   const params=Object.fromEntries(Object.entries(q).filter(([k,v])=>v!=null&&
@@ -286,14 +300,17 @@ export function oddsOf(row,quotes,meta,live,open=true,diagnostics){
   const nativeOutcomeId=q.id??q.oid??q.outcomeId??q.outcome_id??q.selectionId??q.selection_id;
   if(nativeOutcomeId==null||String(nativeOutcomeId).trim()===''){note('missingOutcomeId');continue;}
   const measuredWidth=[...(widths.get(id)??[])].sort((a,b)=>b[1]-a[1]||a[0]-b[0])[0]?.[0];
-  // Keep the exact provider title if a dynamic placeholder cannot be expanded.
-  // Its native parameters are still frozen and the ticket is held for review
-  // rather than making the quoted offer vanish from the market list.
+  // Preserve ordinary static provider titles. Dynamic templates that still
+  // contain unresolved placeholders are rejected below rather than shown literally.
   const competitors={competitor1:row.home,competitor2:row.away};
-  let name=resolveMarketTitle(live&&id===18639?'Correct score [{score}]':rawName,q,{intervalWidth:measuredWidth,competitors})??rawName;
+  const resolvedName=resolveMarketTitle(live&&id===18639?'Correct score [{score}]':rawName,q,{intervalWidth:measuredWidth,competitors});
+  // An unresolved provider template is not a usable display/settlement contract.
+  // Do not fall back to the literal {from}, {to}, [score], or [corner!] string.
+  if(resolvedName==null&&(/[{}]|\[[^\[\]]*[a-z!_][^\[\]]*\]/i.test(rawName))){note('unresolvedMarketTitle');continue;}
+  let name=resolvedName??rawName;
   if(live&&id===602)name='1X2';
   name=name.replace(/\bHometeam\b/gi,'Home team').replace(/\bAwayteam\b/gi,'Away team');
-  if(isExcludedOfferMarket({name,pl:q.pl,nativeMarketId:String(id),marketKey:key}))continue;
+  if(isExcludedOfferMarket({name,pl:q.pl,nativeMarketId:String(id),marketKey:key,line,nativeParameters:params}))continue;
   if(q.pl&&!name.includes(String(q.pl)))name+=' · '+q.pl;
   const fullResult=(live&&id===602)||(!live&&id===448);
   const fullTotal=(live&&id===603)||(!live&&id===537);
