@@ -241,6 +241,9 @@ assert.equal(verifiedSecondLiveDecision(timedProof(
   'Total Corners Over 2.5 becomes irreversible at three corners');
  assert.equal(verifiedSecondLiveDecision(cornerOverRow,{now}),'WON',
   'Total Corners Over 2.5 settles after the second agreeing Zizobet observation');
+ assert.equal(verifiedSecondLiveDecision(timedProof(cornerOver,
+  cornerOverFrame,totalsFrame('corner',3,1,65)) ,{now}),'WON',
+  'Additional corners between confirmation polls do not delay an already irreversible Over win');
  const cornerUnder={...cornerOver,kind:'under'};
  assert.equal(verifiedSecondLiveDecision(timedProof(cornerUnder,cornerOverFrame,
   cornerOverFrame,'LOST'),{now}),'LOST',
