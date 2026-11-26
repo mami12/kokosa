@@ -118,7 +118,7 @@ export function verifiedSecondLiveDecision(row,{now=Date.now}={}){
  */
 export async function settleVerifiedLiveProposals({
  runQuery=query,updateLine,closeTicket,enabled=process.env.LIVE_VERIFIED_AUTO_SETTLEMENT_ENABLED!=='false',
- now=Date.now,limit=400
+ now=Date.now,limit=400,matchId=null
 }={}){
  if(!enabled)return {enabled:false,examined:0,graded:0,closed:[]};
  if(typeof updateLine!=='function'||typeof closeTicket!=='function')
