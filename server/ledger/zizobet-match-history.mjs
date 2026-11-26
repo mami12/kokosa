@@ -68,7 +68,7 @@ export function projectZizobetHistory(matchId,data,row={}){
   Number.isInteger(e.minute)&&e.minute>=0&&e.minute<=130&&e.id!=null&&String(e.id)
  ).map(e=>({
   id:String(e.id),kind:e.type,team:e.team,minute:e.minute,sequence:e.sequence??null,
-  minuteLabel:e.minuteLabel??null,seconds:e.seconds??null,sequence:e.sequence??null,phase:e.phase??null,
+  minuteLabel:e.minuteLabel??null,seconds:e.seconds??null,phase:e.phase??null,
   playerName:e.player??null,playerId:e.playerId??null,
   cardColor:e.cardColor??null,ownGoal:e.ownGoal??null
  })):[];
@@ -118,7 +118,7 @@ export function createZizobetHistoryArchive({database=pool,now=()=>new Date()}={
       "app_zizobet_match_incident.minute=excluded.minute then "+
       "app_zizobet_match_incident.detail || excluded.detail else excluded.detail end, "+
       "active=true,observed_at=excluded.observed_at",
-      [id,JSON.stringify(events.map(e=>({kind:e.kind,id:e.id,team:e.team,minute:e.minute,
+      [id,JSON.stringify(events.map(e=>({kind:e.kind,id:e.id,team:e.team,minute:e.minute,sequence:e.sequence,
        detail:Object.fromEntries(Object.entries(e).filter(([,v])=>v!==null))}))),observed]);
     }
     // Only reconciled full timelines can retire corrected/deleted provider events.
