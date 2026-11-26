@@ -11,12 +11,21 @@ import { formatOdds } from '../utils/formatOdds';
 
 const formatMoney=(value:number)=>Number.isFinite(value)?value.toLocaleString('sq-AL',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
 
+const getTiraneDateKey=()=>{
+  const parts=new Intl.DateTimeFormat('en-GB',{
+    timeZone:'Europe/Tirane',year:'numeric',month:'2-digit',day:'2-digit'
+  }).formatToParts(new Date());
+  const values=Object.fromEntries(parts.map(part=>[part.type,part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+};
+
 export default function MyBetsPage(){
   const {t}=useLanguage();
   const {isAuthenticated}=useAuth();
   const [activeTickets,setActiveTickets]=useState<Ticket[]>([]);
   const [historyTickets,setHistoryTickets]=useState<Ticket[]>([]);
   const [activeTab,setActiveTab]=useState<'active'|'history'>('active');
+  const [selectedDate,setSelectedDate]=useState(()=>getTiraneDateKey());
   const [loading,setLoading]=useState(true);
   const [refreshing,setRefreshing]=useState(false);
   const [error,setError]=useState(false);
@@ -25,7 +34,8 @@ export default function MyBetsPage(){
     if(silent)setRefreshing(true);else setLoading(true);
     try{
       const [activeRes,historyRes]=await Promise.all([
-        apiClient.get('/bets/active'),apiClient.get('/bets/history')
+        apiClient.get('/bets/active',{params:{date:selectedDate}}),
+        apiClient.get('/bets/history',{params:{date:selectedDate}})
       ]);
       setActiveTickets(Array.isArray(activeRes.data)?activeRes.data:[]);
       setHistoryTickets(Array.isArray(historyRes.data)?historyRes.data:[]);
@@ -36,7 +46,7 @@ export default function MyBetsPage(){
     }finally{
       setLoading(false);setRefreshing(false);
     }
-  },[]);
+  },[selectedDate]);
 
   useEffect(()=>{
     if(!isAuthenticated){setLoading(false);return;}
@@ -166,6 +176,15 @@ export default function MyBetsPage(){
             <span className="hidden sm:inline">Rifresko</span>
           </button>
         </header>
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-700 bg-[#151e2b] px-4 py-3">
+          <div>
+            <label htmlFor="my-bets-match-date" className="block text-xs font-semibold text-slate-200">{t('Data e ndeshjes')}</label>
+            <p className="mt-1 text-[11px] text-slate-400">{t('Shfaqen biletat sipas datës së nisjes së ndeshjes.')}</p>
+          </div>
+          <input id="my-bets-match-date" type="date" value={selectedDate}
+            onChange={event=>setSelectedDate(event.target.value)}
+            className="min-h-10 rounded-md border border-slate-600 bg-[#101824] px-3 text-sm text-slate-100"/>
+        </div>
         <div role="tablist" aria-label="Gjendja e biletave"
           className="mb-5 grid grid-cols-2 gap-1 rounded-lg border border-slate-700 bg-[#151e2b] p-1">
           {([
