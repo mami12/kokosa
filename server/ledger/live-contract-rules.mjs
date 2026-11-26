@@ -833,7 +833,7 @@ export function gradeLiveContract(contract,evidence={}, {ended=false,scopeEnded=
  * shadow decisions until the provider's live results have been validated.
  */
 export function gradeFromAcceptedCounters(contract,frame={}){
- if(!contract||!['sequence','race','window','window-total','nth-time'].includes(contract.kind))return null;
+ if(!contract||!['sequence','race','half-race','half-next-event','window','window-total','nth-time'].includes(contract.kind))return null;
  const timed=['window','window-total','nth-time'].includes(contract.kind);
  // A timed bet placed during an interval is about incidents AFTER purchase.
  // Its accepted cumulative counters are frozen in entryBaseline. A later
@@ -892,6 +892,18 @@ export function gradeFromAcceptedCounters(contract,frame={}){
  if([bh,ba,h,a].some(v=>v===null)||h<bh||a<ba)return null;
  const deltaHome=h-bh,deltaAway=a-ba,delta=deltaHome+deltaAway;
  const end=frame.ended===true;
+ const halfScoped=['half-race','half-next-event'].includes(contract.kind);
+ // Match-wide running counters equal 1H counters only before the half-time
+ // boundary. Never borrow them to settle a 2H contract or a 45+ ambiguity.
+ if(halfScoped&&(contract.half!==1||!Number.isFinite(Number(frame.clock))||
+    Number(frame.clock)>=45))return null;
+ if(contract.kind==='half-next-event'){
+  if(contract.event!=='goal'||!Number.isSafeInteger(contract.target)||
+     contract.target!==bh+ba+1||delta!==1)return null;
+  const scoringSide=deltaHome===1?'home':deltaAway===1?'away':null;
+  if(!scoringSide)return null;
+  return contract.side===scoringSide?'WON':'LOST';
+ }
  if(contract.kind==='sequence'){
   if(contract.target!==bh+ba+1)return null;
   if(delta===1){
@@ -901,7 +913,7 @@ export function gradeFromAcceptedCounters(contract,frame={}){
   if(delta===0&&end)return contract.noneOffered===true?(contract.side==='none'?'WON':'LOST'):'VOID';
   return null;
  }
- if(bh>=contract.target||ba>=contract.target)return null;
+ if(!['race','half-race'].includes(contract.kind)||bh>=contract.target||ba>=contract.target)return null;
  const homeReached=h>=contract.target,awayReached=a>=contract.target;
  if(contract.side==='none'){
   if(homeReached||awayReached)return 'LOST';
