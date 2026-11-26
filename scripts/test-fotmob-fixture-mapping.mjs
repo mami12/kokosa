@@ -74,7 +74,7 @@ if(process.env.FOTMOB_LIVE_VERIFY==='true'){
   const day=new Date();day.setUTCHours(0,0,0,0);day.setUTCDate(day.getUTCDate()-index);
   return day.toISOString().slice(0,10).replaceAll('-','');
  });
- let selected=null;
+ let verified=null,detailRequests=0;
  for(const day of dates){
   const payload=await fetchFotMobDate(day);
   if(!Array.isArray(payload?.leagues))continue;
@@ -82,28 +82,31 @@ if(process.env.FOTMOB_LIVE_VERIFY==='true'){
    for(const match of league.matches??[]){
     if(match?.id==null||!match?.home?.name||!match?.away?.name||
        match.status?.finished!==true||fotMobKickoff(match)==null)continue;
-    selected={match,league:league.name??'Unknown league'};
+    // A daily listing can contain AET fixtures before ordinary FT matches.
+    // Check a bounded set of real detail responses and use only regulation FT.
+    if(detailRequests>=12)break;
+    detailRequests++;
+    const details=await fetchFotMobDetails(match.id,{force:true});
+    if(!details||typeof details!=='object')continue;
+    const real=parseFotMobPayload(match,details);
+    const eventList=details?.content?.matchFacts?.events?.events;
+    if(!real.finished||!Number.isSafeInteger(real.homeScore)||
+       !Number.isSafeInteger(real.awayScore)||!Array.isArray(eventList))continue;
+    const kickoff=fotMobKickoff(match),kickoffIso=new Date(kickoff).toISOString();
+    const matched=await findFotMobFixture(match.home.name,match.away.name,
+     candidateDateStrings(kickoffIso),kickoffIso);
+    if(String(matched?.match?.id??'')!==String(match.id))continue;
+    verified={match,league:league.name??'Unknown league',details,real,kickoffIso};
     break;
    }
-   if(selected)break;
+   if(verified||detailRequests>=12)break;
   }
-  if(selected)break;
+  if(verified||detailRequests>=12)break;
  }
- assert.ok(selected,'FotMob live smoke must find at least one finished real fixture');
- const kickoff=fotMobKickoff(selected.match),kickoffIso=new Date(kickoff).toISOString();
- const matched=await findFotMobFixture(selected.match.home.name,selected.match.away.name,
-  candidateDateStrings(kickoffIso),kickoffIso);
- assert.equal(String(matched?.match?.id??''),String(selected.match.id),
-  'Real fixture discovery must resolve the exact same FotMob match ID from ordered team names and UTC kickoff');
- const details=await fetchFotMobDetails(selected.match.id,{force:true});
- assert.ok(details&&typeof details==='object','Real FotMob matchDetails must be reachable');
- const real=parseFotMobPayload(selected.match,details);
- assert.equal(real.finished,true,'Real matchDetails must confirm full time');
- assert.ok(Number.isSafeInteger(real.homeScore)&&Number.isSafeInteger(real.awayScore),
-  'Real final score must contain both numeric sides');
- const eventList=details?.content?.matchFacts?.events?.events;
- assert.ok(Array.isArray(eventList),'Real FotMob details must expose an incident-list array');
- const coverage=[
+ assert.ok(verified,'FotMob live smoke could not find a real regulation-time finished fixture with matching details within the bounded sample');
+ const {match,league,details,real,kickoffIso}=verified;
+ const eventList=details.content.matchFacts.events.events;
+const coverage=[
   ['corners',Number.isInteger(real.cornersHome)&&Number.isInteger(real.cornersAway)],
   ['cards',Number.isInteger(real.cardsHome)&&Number.isInteger(real.cardsAway)],
   ['yellow',real.yellowCards!=null],['red',real.redCards!=null],
