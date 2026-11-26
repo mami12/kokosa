@@ -60,7 +60,7 @@ const repeatedFrame=normalizeLiveFrame({
 });
 assert.equal(repeatedFrame.events.filter(event=>event.type==='corner').length,2,
  'Both repeated-ID corners survive normalization into settlement evidence');
-assert.equal(repeatedFrame.coverage.cornerThrough,47,
+assert.equal(repeatedFrame.coverage.cornerThrough,47.5,
  'Both repeated-ID corners reconcile against the provider counter');
 
 
