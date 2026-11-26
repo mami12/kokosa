@@ -88,16 +88,17 @@ export function verifiedSecondLiveDecision(row,{now=Date.now}={}){
     second>now+5000||now-second>60000||now-stored>300000||now-latest>300000)return null;
 
  const pairValid=pair=>pair&&['home','away'].every(side=>Number.isSafeInteger(pair[side])&&pair[side]>=0);
+ const countersConsistent=(before,after)=>{
+  if(!pairValid(before)||!pairValid(after))return false;
+  return ['home','away'].every(side=>baselineDriven?
+   before[side]===after[side]:after[side]>=before[side]);
+ };
  if(contract.cardColor!=null){
   if(contract.event!=='card'||!['yellow','red'].includes(contract.cardColor)||
      oldFrame.cardColorsVerified!==true||current.cardColorsVerified!==true)return null;
   const field=contract.cardColor+'Card';
-  const before=oldFrame.teams?.[field],after=current.teams?.[field];
-  if(!pairValid(before)||!pairValid(after)||before.home!==after.home||before.away!==after.away)return null;
- }else{
-  const before=oldFrame.teams?.[contract.event],after=current.teams?.[contract.event];
-  if(!pairValid(before)||!pairValid(after)||before.home!==after.home||before.away!==after.away)return null;
- }
+  if(!countersConsistent(oldFrame.teams?.[field],current.teams?.[field]))return null;
+ }else if(!countersConsistent(oldFrame.teams?.[contract.event],current.teams?.[contract.event]))return null;
  if(!Number.isFinite(oldFrame.clock)||!Number.isFinite(current.clock)||current.clock<oldFrame.clock)return null;
  const halfScoped=['half-race','half-next-event'].includes(contract.kind);
  if(halfScoped&&(contract.half!==1||oldFrame.clock>=45))return null;
