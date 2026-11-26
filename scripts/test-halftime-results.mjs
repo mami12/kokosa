@@ -1,5 +1,6 @@
 import './fixtures/isolated-casino-env.mjs';
 import assert from 'node:assert/strict';
+import {PGlite} from '@electric-sql/pglite';
 import {HALFTIME_RESULT_SQL,extractConfirmedHalfTimeCandidate,
  persistHalfTimeCandidate} from '../server/ledger/halftime-results.mjs';
 import {infoOf} from '../server/zizobet/normalize.mjs';
@@ -7,6 +8,7 @@ import {normalizeTeamStatistics} from '../server/match-statistics.mjs';
 import {firstHalfScoreOnly,gradeAtVerifiedHalfTime,scorePeriodOf} from '../server/ledger/settler.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
 import {snapshotRow} from '../server/ledger/match-snapshots.mjs';
+import {deriveVerifiedSecondHalfStatistics} from '../server/ledger/results.mjs';
 const observed='2026-11-11T20:45:30Z',status='2026-11-11T20:45:31Z';
 const live={match_id:123,home:'Red FC',away:'Blue FC',home_score:2,away_score:1,
  periods_score:[{t1:2,t2:1}],feed_status:'HT',score_at:observed,
@@ -111,13 +113,66 @@ for(const line of [
  assert.equal(gradeAtVerifiedHalfTime(line,half),null);
 }
 let sql='',args;
-await persistHalfTimeCandidate(withStats,{execute:async(q,p)=>{sql=q;args=p;return {rowCount:1,rows:[{confirmed_at:'2026-11-11T20:45:30Z',correction_count:0}]};}});
+const firstPending=await persistHalfTimeCandidate(withStats,{execute:async(q,p)=>{
+ sql=q;args=p;return {rowCount:1,rows:[{confirmed_at:null,correction_count:0}]};
+}});
+assert.equal(firstPending.confirmed,false,'One HT sample cannot confirm a financial cutoff');
 assert.match(sql,/excluded\.observed_at>app_match_half_result\.observed_at/);
-assert.match(sql,/confirmed_at=now\(\)/);
-assert.match(sql,/first_seen_at=app_match_half_result\.first_seen_at/);
-assert.doesNotMatch(sql,/interval '5 seconds'/);
+assert.match(sql,/confirmed_at=case/);
+assert.match(sql,/interval '5 seconds'/);
+assert.match(sql,/first_seen_at=case/);
+assert.match(sql,/else null end/);
 assert.equal(args[0],123);
 assert.equal(JSON.parse(args[7]).shots.home,10,'persisted HT statistics use the new durable JSON argument');
+
+// Exercise the actual PostgreSQL upsert: first observation pending, unchanged
+// observation after five seconds confirmed, corrected signature pending again.
+const halftimeDb=new PGlite();
+try{
+ await halftimeDb.exec(HALFTIME_RESULT_SQL);
+ const persist=candidate=>persistHalfTimeCandidate(candidate,{
+  execute:(query,params)=>halftimeDb.query(query,params)
+ });
+ const first=await persist(withStats);
+ assert.equal(first.stored,true);
+ assert.equal(first.confirmed,false);
+ const later={...withStats,observedAt:new Date(Date.parse(withStats.observedAt)+6000).toISOString()};
+ const confirmed=await persist(later);
+ assert.equal(confirmed.confirmed,true,'Two independent matching HT samples at least five seconds apart confirm');
+ const correction={...later,signature:'corrected-ht-signature',
+  observedAt:new Date(Date.parse(later.observedAt)+6000).toISOString()};
+ const reset=await persist(correction);
+ assert.equal(reset.confirmed,false,'A corrected HT score resets the confirmation window');
+ assert.equal(reset.corrections,1);
+ const stored=(await halftimeDb.query(
+  'select first_seen_at,confirmed_at,correction_count from app_match_half_result where match_id=$1',[123]
+ )).rows[0];
+ assert.equal(new Date(stored.first_seen_at).toISOString(),correction.observedAt);
+ assert.equal(stored.confirmed_at,null);
+}finally{await halftimeDb.close();}
+
+// A 2H counter may be derived only when the final and HT pairs have the same
+// verified provider. FotMob FT minus Zizobet HT is not a valid 2H statistic.
+const htStats={corners:{home:6,away:4}};
+const mixed=deriveVerifiedSecondHalfStatistics(
+ {source:'ZIZOBET'},
+ {statistics:{corners:{home:17,away:9}},
+  _settlementSources:{corners:[{provider:'fotmob'}]}},
+ htStats
+);
+assert.deepEqual(mixed,{});
+const sameSource=deriveVerifiedSecondHalfStatistics(
+ {source:'ZIZOBET'},
+ {statistics:{corners:{home:17,away:9}},
+  _settlementSources:{corners:['ZIZOBET']}},
+ htStats
+);
+assert.deepEqual(sameSource,{corners:{home:11,away:5}});
+assert.deepEqual(deriveVerifiedSecondHalfStatistics(
+ {source:'ADMIN'},
+ {statistics:{corners:{home:17,away:9}},_settlementSources:{corners:['ADMIN']}},
+ htStats
+),{},'Manual FT totals cannot be mixed with Zizobet HT evidence');
 // First-half corners/cards use the actual verified PRIMARY chronology; the
 // half-time score alone is insufficient to decide their event totals.
 const facts=[
