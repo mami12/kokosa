@@ -1476,7 +1476,7 @@ export async function recalcTicket(ticketId, { database = pool } = {}) {
       [ticketId, status, payout],
     );
 
-    if (payout > 0 && ticket.user_id && !ticket.is_settlement_test) {
+    if (payout > 0 && ticket.user_id) {
       const userRow = await client.query('select balance, manager_id, username from app_user where id = $1 for update', [
         ticket.user_id,
       ]);
