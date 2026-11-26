@@ -7,6 +7,7 @@ import {projectZizobetHistory} from '../server/ledger/zizobet-match-history.mjs'
 import {isFinalZizobetMatch,shouldProcessFinalHistoryDetail,postFinalHistoryRetryDelay,newlyConfirmedHistoryKinds} from '../server/zizobet-feed.mjs';
 import {infoOf,oddsOf,resolveMarketTitle} from '../server/zizobet/normalize.mjs';
 import {providerResultPair,teamStatisticsFromRow} from '../server/match-statistics.mjs';
+import {zizobetEventIdentities} from '../server/zizobet/event-identity.mjs';
 
 const raw=Array.from({length:12},(_,i)=>({
  id:'c'+i,type:'corner_kick',team:i%2===0?1:2,gt:i*6+1
@@ -21,7 +22,40 @@ const frame=normalizeLiveFrame({
 });
 assert.equal(frame.events.filter(e=>e.type==='corner').length,12,
  'All first-to-last corners remain in the evidence used for ticket grading');
+
 assert.equal(frame.coverage.cornerThrough,79,'All twelve corners reconcile to scoreboard');
+
+// A provider can reuse one event ID for two separate corners. Keep both rows
+// in both the dashboard and financial evidence, and keep their occurrence IDs
+// stable across identical polling snapshots.
+const repeatedIdTimeline=[
+ {id:'shared-corner',type:'corner_kick',team:1,gt:'46',clk:'46:12'},
+ {id:'shared-corner',type:'corner_kick',team:1,gt:'47',clk:'47:08'}
+];
+const repeatedIdentities=zizobetEventIdentities(repeatedIdTimeline);
+assert.deepEqual(repeatedIdentities.map(item=>item.id),[
+ 'shared-corner','shared-corner#000002'
+]);
+assert.deepEqual(
+ zizobetEventIdentities(repeatedIdTimeline).map(item=>item.id),
+ repeatedIdentities.map(item=>item.id),
+ 'Repeated polls retain the same per-occurrence identities'
+);
+const repeatedDisplay=providerTimeline('same-id-match',repeatedIdTimeline);
+assert.equal(repeatedDisplay.length,2,'Dashboard must not collapse repeated provider IDs');
+assert.deepEqual(repeatedDisplay.map(event=>[event.id,event.minute]),[
+ ['shared-corner',46],['shared-corner#2',47]
+]);
+assert.deepEqual(repeatedDisplay.map(event=>event.sequence),[1,2]);
+const repeatedFrame=normalizeLiveFrame({
+ Match:{Score:'0:0',MatchTimeExtended:'47:30',CornersTeam1:2,CornersTeam2:0},
+ TimeLines:repeatedIdTimeline
+});
+assert.equal(repeatedFrame.events.filter(event=>event.type==='corner').length,2,
+ 'Both repeated-ID corners survive normalization into settlement evidence');
+assert.equal(repeatedFrame.coverage.cornerThrough,47,
+ 'Both repeated-ID corners reconcile against the provider counter');
+
 
 const cornerGame={EventStatus:40,MatchStatusID:40,Score:'1:0',
  RESULT_CORNERHT:'4:2',RESULT_CORNERFT:'10:3'};

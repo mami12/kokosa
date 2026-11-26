@@ -5,6 +5,7 @@ import {eventMarketRequirement} from './event-market-policy.mjs';
 import {parseTeamGoalMarket} from './live-contract-rules.mjs';
 import {classifyZizobetCardEvents} from '../zizobet/card-events.mjs';
 import {isRegularTimeEvent} from './event-contract.mjs';
+import {zizobetEventIdentities} from '../zizobet/event-identity.mjs';
 export const needsEvents=m=>!!eventMarketRequirement(m)||/header|headed|own goal|scoring method|method of.*goal/i.test(m.market_name??m.name??'');
 /** One bounded snapshot per fixture, only while a matching ticket needs it.
  * Only Zizobet event evidence is eligible for financial settlement. */
@@ -113,22 +114,14 @@ export function normalizeEvents(data,source){
   if(/(?:\(\s*og\s*\)|\bown goal\b|\bautogol\b)/i.test(String(e.pl??'')))return true;
   return null;
  };
- const stableZizoId=e=>{
-  if(e.id!=null&&String(e.id).trim())return String(e.id);
-  // Timeline indices change when the provider reorders/corrects old events.
-  // A content-derived identity is stable across polls; indistinguishable
-  // duplicate events fail reconciliation rather than fabricating order.
-  return 'anonymous:'+createHash('sha256').update(JSON.stringify([
-   e.type??null,e.team??null,e.gt??e.minute??e.time??null,e.clk??null,
-   e.pl??null,e.playerId??e.player_id??null,e.cardColor??e.card_color??e.color??null
-  ])).digest('hex').slice(0,32);
- };
- const zizoCardEvents=source==='zizobet'?classifyZizobetCardEvents(data.TimeLines??[],data.Match??{}):null;
- if(source==='zizobet')events=(data.TimeLines??[]).map((e,index)=>{
+ const zizoRows=source==='zizobet'?(data.TimeLines??[]):[];
+ const zizoIdentities=zizobetEventIdentities(zizoRows);
+ const zizoCardEvents=source==='zizobet'?classifyZizobetCardEvents(zizoRows,data.Match??{}):null;
+ if(source==='zizobet')events=zizoRows.map((e,index)=>{
   const type=String(e.type??'').toLowerCase();
   const eventTime=zizobetEventTime(e.gt??e.minute??e.time,e.clk),minute=eventTime.minute;
   const card=zizoCardEvents?.cardIndices.has(index)===true;
-  return {disabled:!active(e)||cornerNotTaken(e),id:stableZizoId(e),
+  return {disabled:!active(e)||cornerNotTaken(e),id:zizoIdentities[index].id,sequence:zizoIdentities[index].sequence,
    type:type==='score_change'?'goal':(type==='corner_kick'||type==='corner')?'corner':card?'card':/foul/.test(type)?'foul':/offside/.test(type)?'offside':e.type,
    cardColor:card?zizoCardEvents.colors.get(index)??null:null,
    ownGoal:type==='score_change'?explicitOwnGoal(e):null,
@@ -144,7 +137,14 @@ export function normalizeEvents(data,source){
    phase:e.phase??e.period??e.periodName??e.period_name??e.half??eventTime.phase,
    updatedAt:e.updated_uts??null};
  });
- const unique=new Map();for(const event of events){const key=String(event.id),old=unique.get(key);if(!old||Number(event.updatedAt??0)>=Number(old.updatedAt??0)||!Number.isFinite(Number(old.updatedAt)))unique.set(key,event);}
+ const unique=new Map();
+ for(const event of events){
+  const key=String(event.id),old=unique.get(key);
+  // Zizobet occurrence IDs are unique within the snapshot, including repeated
+  // provider IDs. Other feeds retain their existing correction/deduplication.
+  if(source==='zizobet'||!old||Number(event.updatedAt??0)>=Number(old.updatedAt??0)||!Number.isFinite(Number(old.updatedAt)))
+   unique.set(key,event);
+ }
  const retained=[...unique.values()].filter(e=>!e.disabled);
  // For closed corner windows, prove the timeline covers every corner observed
  // by this same provider at its own clock. Missing counters, invalid teams
@@ -185,7 +185,7 @@ function gradeSingleEventLine(line,result){
  const contract=eventContract(line),name=contract.name??'',label=String(line.outcome_name??''),key=String(line.outcome_key??'').toLowerCase();
  if(!supportedContract(line))return null;
  if(/extra time|overtime|shootout|early payout|scoring type|scoring method|shots?|fouls?/i.test(name))return null;
- const regular=ev.events.filter(e=>!e.shootout&&isRegularTimeEvent(e)).sort((a,b)=>a.minute-b.minute||(a.injury??0)-(b.injury??0)||(a.seconds??0)-(b.seconds??0));
+ const regular=ev.events.filter(e=>!e.shootout&&isRegularTimeEvent(e)).sort((a,b)=>a.minute-b.minute||(a.injury??0)-(b.injury??0)||(a.seconds??0)-(b.seconds??0)||(a.sequence??Number.MAX_SAFE_INTEGER)-(b.sequence??Number.MAX_SAFE_INTEGER));
  let all=regular.filter(e=>e.type==='goal');
  // Stable provider IDs identify one physical event, even if a source repeats it.
  const eventIds=all.filter(e=>e.id!=null&&String(e.id)!=='').map(e=>String(e.id));
@@ -193,11 +193,11 @@ function gradeSingleEventLine(line,result){
  if(!completeByTeam(all,result.home_score,result.away_score))return null;
  if(/corners?/i.test(name)){all=regular.filter(e=>e.type==='corner');if(!completeByTeam(all,result.corners_home,result.corners_away))return null;}
  if(/cards?/i.test(name)){if(/yellow|red/i.test(name))return null;all=regular.filter(e=>e.type==='card');if(!completeByTeam(all,result.cards_home,result.cards_away))return null;}
- if(/first.*scorer|last.*scorer|^(?:first goal|last goal|who scores goal)/i.test(name)&&all.some((e,i)=>i&&e.minute===all[i-1].minute&&(e.injury??0)===(all[i-1].injury??0)&&(!Number.isFinite(e.seconds)||!Number.isFinite(all[i-1].seconds)||e.seconds===all[i-1].seconds)))return null;
+ if(/first.*scorer|last.*scorer|^(?:first goal|last goal|who scores goal)/i.test(name)&&all.some((e,i)=>i&&e.minute===all[i-1].minute&&(e.injury??0)===(all[i-1].injury??0)&&(!Number.isFinite(e.seconds)||!Number.isFinite(all[i-1].seconds)||e.seconds===all[i-1].seconds)&&(!Number.isSafeInteger(e.sequence)||!Number.isSafeInteger(all[i-1].sequence))))return null;
  let selected=all;
  if(contract.timing){
   const timed=all.filter(e=>eventInWindow(e,contract)),goal=timed[contract.timing-1];
-  if(timed.some((e,i)=>i&&e.minute===timed[i-1].minute&&(e.injury??0)===(timed[i-1].injury??0)&&(!Number.isFinite(e.seconds)||!Number.isFinite(timed[i-1].seconds)||e.seconds===timed[i-1].seconds)))return null;
+  if(timed.some((e,i)=>i&&e.minute===timed[i-1].minute&&(e.injury??0)===(timed[i-1].injury??0)&&(!Number.isFinite(e.seconds)||!Number.isFinite(timed[i-1].seconds)||e.seconds===timed[i-1].seconds)&&(!Number.isSafeInteger(e.sequence)||!Number.isSafeInteger(timed[i-1].sequence))))return null;
   if(/^(?:no goal|none|no more goals)$/i.test(label)||key==='none')return goal?'LOST':'WON';
   const cleanLabel=label.replace(/\s*(?:st|nd|rd|th)?\s*(?:match|mins?\.?|minutes?\.?)?$/i,'').trim();
   const interval=cleanLabel.match(/^(\d+)\s*[-–]\s*(\d+)(?:\s*(?:minutes?|min))?$/i)??key.match(/^(\d+)-(\d+)$/);

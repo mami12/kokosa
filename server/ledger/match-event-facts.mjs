@@ -22,6 +22,7 @@ create table if not exists app_match_event_fact (
  team text not null check (team in ('home','away')),
  minute integer not null check (minute between 0 and 130),
  seconds numeric(12,3),
+ sequence integer,
  player_id text,
  player_name text,
  card_color text check(card_color in ('yellow','red') or card_color is null),
@@ -39,6 +40,7 @@ create table if not exists app_match_event_fact (
  observed_at timestamptz not null default now(),
  primary key(match_id,provider,provider_event_id,kind)
 );
+alter table app_match_event_fact add column if not exists sequence integer;
 alter table app_match_event_fact add column if not exists card_color text;
 alter table app_match_event_fact add column if not exists own_goal boolean;
 alter table app_match_event_fact add column if not exists aiscore_player_id text;
@@ -131,10 +133,10 @@ export async function persistVerifiedEventFacts(matchId, frame, execute, observe
   const signature=crypto.createHash('sha256').update(JSON.stringify({
    kind,home:counts.home,away:counts.away,ended:frame.ended===true,
    colorVerified:kind==='card'&&frame.cardColorsVerified===true,
-   events:relevant.map(e=>[String(e.id),e.team,e.minute,e.seconds??null,e.cardColor??null,e.ownGoal??null,e.playerId??null,e.player??null])
+   events:relevant.map(e=>[String(e.id),e.team,e.minute,e.seconds??null,e.sequence??null,e.cardColor??null,e.ownGoal??null,e.playerId??null,e.player??null])
      .sort((a,b)=>a[0].localeCompare(b[0]))
   })).digest('hex');
-  const facts=relevant.map(e=>({id:String(e.id),team:e.team,minute:e.minute,seconds:e.seconds??null,
+  const facts=relevant.map(e=>({id:String(e.id),team:e.team,minute:e.minute,seconds:e.seconds??null,sequence:Number.isSafeInteger(e.sequence)?e.sequence:null,
    playerId:e.playerId==null?null:String(e.playerId),
    playerName:typeof e.player==='string'?e.player:null,
    ownGoal:typeof e.ownGoal==='boolean'?e.ownGoal:null,
@@ -149,15 +151,15 @@ export async function persistVerifiedEventFacts(matchId, frame, execute, observe
      where match_id=$1 and provider='zizobet' and kind=$2 and active=true
      and not(provider_event_id=any($3::text[]))`,[matchId,kind,identifiers]);
   if(facts.length)await execute(`insert into app_match_event_fact
-    (match_id,provider,provider_event_id,kind,team,minute,seconds,player_id,
+    (match_id,provider,provider_event_id,kind,team,minute,seconds,sequence,player_id,
      player_name,card_color,own_goal,phase,active)
-    select $1,'zizobet',f.id,$2,f.team,f.minute,f.seconds,f.player_id,
+    select $1,'zizobet',f.id,$2,f.team,f.minute,f.seconds,f.sequence,f.player_id,
      f.player_name,f.card_color,f.own_goal,f.phase,true
     from jsonb_to_recordset($3::jsonb)
-     as f(id text,team text,minute integer,seconds numeric,player_id text,
+     as f(id text,team text,minute integer,seconds numeric,sequence integer,player_id text,
        player_name text,card_color text,own_goal boolean,phase text)
     on conflict(match_id,provider,provider_event_id,kind) do update
-    set team=excluded.team,minute=excluded.minute,seconds=excluded.seconds,
+    set team=excluded.team,minute=excluded.minute,seconds=excluded.seconds,sequence=excluded.sequence,
         player_id=excluded.player_id,player_name=excluded.player_name,
         card_color=excluded.card_color,own_goal=excluded.own_goal,
         aiscore_verified=case when app_match_event_fact.team=excluded.team
@@ -205,7 +207,7 @@ export async function persistVerifiedEventFacts(matchId, frame, execute, observe
           then app_match_event_fact.supplemental_actor_provider else null end,
         phase=excluded.phase,active=true,observed_at=now()`,
    [matchId,kind,JSON.stringify(facts.map(f=>({
-    id:f.id,team:f.team,minute:f.minute,seconds:f.seconds,player_id:f.playerId,
+    id:f.id,team:f.team,minute:f.minute,seconds:f.seconds,sequence:f.sequence,player_id:f.playerId,
     player_name:f.playerName,card_color:f.cardColor,own_goal:f.ownGoal,phase:f.phase})))]);
   }
   await execute(`insert into app_match_event_coverage
@@ -578,9 +580,9 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
    where f.match_id=$1 and f.provider=$16::text and f.kind=$2 and f.active
  ), ordered as (
    select raw_events.*,
-     row_number() over(order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as ordinal,
-     row_number() over(partition by team order by phase_order,coalesce(seconds,minute*60),minute,provider_event_id) as team_ordinal,
-     count(*) over(partition by phase_order,coalesce(seconds,minute*60)) as same_time
+     row_number() over(order by phase_order,coalesce(seconds,minute*60),minute,coalesce(sequence,2147483647),provider_event_id) as ordinal,
+     row_number() over(partition by team order by phase_order,coalesce(seconds,minute*60),minute,coalesce(sequence,2147483647),provider_event_id) as team_ordinal,
+     case when sequence is not null then 1 else count(*) over(partition by phase_order,coalesce(seconds,minute*60)) end as same_time
    from raw_events
  ), normal_ordered as (
    select * from ordered where normal_time

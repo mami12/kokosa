@@ -53,6 +53,28 @@ const db=new PGlite();
 try{
  await db.exec(LEDGER_SQL);
  const run=(sql,params=[])=>db.query(sql,params);
+
+ // Repeated provider IDs at the same clock are distinct ordered incidents.
+ const sequenceMatch=7199977;
+ const sequenceFrame=normalizeLiveFrame({
+  Match:{Score:'0:0',MatchTimeExtended:'47:00',EventStatus:40,MatchStatusID:40,
+   CornersTeam1:2,CornersTeam2:0,YellowCardsTeam1:0,YellowCardsTeam2:0,
+   RedCardsTeam1:0,RedCardsTeam2:0},
+  TimeLines:[
+   {id:'same-clock-corner',type:'corner_kick',team:1,gt:'46',clk:'46:12'},
+   {id:'same-clock-corner',type:'corner_kick',team:1,gt:'46',clk:'46:12'}
+  ]
+ });
+ assert.deepEqual(sequenceFrame.events.filter(event=>event.type==='corner').map(event=>event.sequence),[1,2]);
+ await persistVerifiedEventFacts(sequenceMatch,sequenceFrame,run,new Date('2026-11-25T11:00:00.000Z'));
+ const persistedSequence=(await run(`select provider_event_id,sequence
+  from app_match_event_fact where match_id=$1 and kind='corner' and active=true
+  order by sequence`,[sequenceMatch])).rows;
+ assert.deepEqual(persistedSequence,[
+  {provider_event_id:'same-clock-corner',sequence:1},
+  {provider_event_id:'same-clock-corner#000002',sequence:2}
+ ],'Database stores both repeated-ID incidents and their provider chronology');
+
  const matchId=7199981,now=new Date();
  const finalImmediateId=matchId+50,finalObservedAt=new Date('2026-11-25T12:00:00.000Z');
  const finalFrame=normalizeLiveFrame({

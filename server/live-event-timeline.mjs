@@ -1,9 +1,11 @@
 import {classifyZizobetCardEvents} from './zizobet/card-events.mjs';
+import {zizobetEventIdentities} from './zizobet/event-identity.mjs';
 
 /** Display only provider-timed incidents; reception time is never an event minute. */
 export function providerTimeline(matchId,rows,match={}){
  if(!Array.isArray(rows))return undefined;
  const events=new Map();
+ const identities=zizobetEventIdentities(rows);
  const cardEvents=classifyZizobetCardEvents(rows,match);
  for(const [index,row] of rows.entries()){
   if(row.cancelled||row.canceled||row.disabled||row.isConfirmed===false||/cancelled|canceled|voided/i.test(String(row.status??''))){
@@ -41,10 +43,11 @@ export function providerTimeline(matchId,rows,match={}){
     value&&typeof value==='object'?String(value.name??value.fullName??value.full_name??'').trim():'';
   const player=[row.pl,row.player,row.player_name,row.playerName,row.actor]
     .map(playerName).find(Boolean)??'';
-  const id=String(row.id??[type,minute,added,team,row.pl??row.player??''].join('|'));
-  events.set(id,{id,matchId:String(matchId),type,minute,addedMinute:added,minuteLabel:added?minute+'+'+added:String(minute),team,text,...(player?{player}:{})});
+  const identity=identities[index];
+  const id=identity.id;
+  events.set(id,{id,sequence:identity.sequence,matchId:String(matchId),type,minute,addedMinute:added,minuteLabel:added?minute+'+'+added:String(minute),team,text,...(player?{player}:{})});
  }
- return [...events.values()].sort((a,b)=>a.minute-b.minute||a.addedMinute-b.addedMinute||a.id.localeCompare(b.id));
+ return [...events.values()].sort((a,b)=>a.minute-b.minute||a.addedMinute-b.addedMinute||a.sequence-b.sequence);
 }
 
 /** Reuse only player labels for the exact same provider incident.
