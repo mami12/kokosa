@@ -725,8 +725,11 @@ export function gradeLiveContract(contract,evidence={}, {ended=false,scopeEnded=
  // Never use the combined match total for a home/away-only selection.
  // A color-qualified card also requires an independently verified colored
  // chronology; the regular LIVE scoreboard cannot establish yellow vs red.
- const count=contract.cardColor?null:number(contract.side?
-   evidence.teams?.[event]?.[contract.side]:eventCount(evidence.counts,event));
+ const colorPair=contract.cardColor?evidence.teams?.[contract.cardColor+'Card']:null;
+ const count=contract.cardColor?
+  (evidence.cardColorsVerified===true&&colorPair?
+   number(contract.side?colorPair[contract.side]:number(colorPair.home)+number(colorPair.away)):null):
+  number(contract.side?evidence.teams?.[event]?.[contract.side]:eventCount(evidence.counts,event));
  if(contract.kind==='team-total-goals'){
   const side=contract.side;
   if(!['home','away'].includes(side)||!['over','under'].includes(contract.choice))return null;
