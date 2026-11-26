@@ -8,12 +8,15 @@ import {providerTimeline,inheritEventPlayers} from './live-event-timeline.mjs';
 
 // Keep checking the native event list briefly after FT: providers can publish
 // stoppage-time incidents or timeline corrections after their first final frame.
-const POST_FINAL_HISTORY_GRACE_MS=Math.max(5*60_000,Number(process.env.ZIZO_POST_FINAL_HISTORY_GRACE_MS)||45*60_000);
+const POST_FINAL_HISTORY_GRACE_MS=Math.max(10*60_000,Number(process.env.ZIZO_POST_FINAL_HISTORY_GRACE_MS)||45*60_000);
 
 /** A final header may carry MatchStatusID=40 while the detail endpoint omits
  * EventStatus. Missing status must not discard a valid post-FT timeline poll.
  * An explicit non-final status still blocks a stale detail response.
  */
+export function isFinalZizobetMatch(match){
+ return Number(match?.EventStatus??match?.MatchStatusID)===40;
+}
 export function shouldProcessFinalHistoryDetail(entryStatus,match){
  if(entryStatus!=='ended')return true;
  const raw=match?.EventStatus??match?.MatchStatusID;
@@ -299,7 +302,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
     // Intersect it with the global dictionary before admitting IDs to admin.
     if(Array.isArray(data.gmk)&&rememberFootballLiveMarkets(data.gmk))archiveMarketDefinitions();
     if(!shouldProcessFinalHistoryDetail(entry.row.status,data.Match))return;
-    const game={...entry.raw,...data.Match,...(Array.isArray(data.TimeLines)?{TimeLines:data.TimeLines}:{})},row={...entry.row,service:'LIVE',status:entry.row.status==='ended'||Number(game.EventStatus)===40?'ended':'live'};
+    const game={...entry.raw,...data.Match,...(Array.isArray(data.TimeLines)?{TimeLines:data.TimeLines}:{})},row={...entry.row,service:'LIVE',status:entry.row.status==='ended'||isFinalZizobetMatch(game)?'ended':'live'};
     // One upstream response has one observation time, even when it feeds
     // both the all-match archive and the ticket recovery reader.
     const sampledAt=new Date();
@@ -314,7 +317,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
       archiveFactsPersisted=Array.isArray(recorded?.verifiedKinds)&&
        recorded.verifiedKinds.length>0;
       const interval=Math.max(30000,Number(process.env.ZIZO_HISTORY_REFRESH_MS)||60000);
-      const ended=Number(data.Match.EventStatus??data.Match.MatchStatusID)===40;
+      const ended=row.status==='ended'||isFinalZizobetMatch(data.Match);
       if(ended&&!historyFtStartedAt.has(Number(id)))historyFtStartedAt.set(Number(id),now());
       // Keep the first ten minutes after FT on a 30-second retry cadence:
       // late 90+ corners/cards and provider timeline corrections commonly land
