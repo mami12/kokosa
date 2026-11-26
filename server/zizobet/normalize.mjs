@@ -300,9 +300,8 @@ export function oddsOf(row,quotes,meta,live,open=true,diagnostics){
   const nativeOutcomeId=q.id??q.oid??q.outcomeId??q.outcome_id??q.selectionId??q.selection_id;
   if(nativeOutcomeId==null||String(nativeOutcomeId).trim()===''){note('missingOutcomeId');continue;}
   const measuredWidth=[...(widths.get(id)??[])].sort((a,b)=>b[1]-a[1]||a[0]-b[0])[0]?.[0];
-  // Keep the exact provider title if a dynamic placeholder cannot be expanded.
-  // Its native parameters are still frozen and the ticket is held for review
-  // rather than making the quoted offer vanish from the market list.
+  // Preserve ordinary static provider titles. Dynamic templates that still
+  // contain unresolved placeholders are rejected below rather than shown literally.
   const competitors={competitor1:row.home,competitor2:row.away};
   const resolvedName=resolveMarketTitle(live&&id===18639?'Correct score [{score}]':rawName,q,{intervalWidth:measuredWidth,competitors});
   // An unresolved provider template is not a usable display/settlement contract.
