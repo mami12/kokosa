@@ -36,6 +36,15 @@ assert.equal(isCurrentSettlementCheckQuote(market,{...fresh,decided:true},now),f
 assert.equal(isCurrentSettlementCheckQuote(market,{...fresh,odds:1},now),false,
  'an invalid price is excluded');
 
+assert.ok(marketCategories('Total Corners - 1st Half').includes('intervals'),
+ 'first-half corner markets are discoverable under Intervals as well as Corners');
+assert.ok(marketCategories('Total Goals - 2nd Half').includes('intervals'),
+ 'second-half goal markets are discoverable under Intervals as well as Goals');
+assert.ok(marketCategories('Total Cards - 1st Period').includes('intervals'),
+ 'period-specific football markets are discoverable under Intervals');
+assert.deepEqual(marketCategories('Unclassified allowed market'),['other'],
+ 'unclassified allowed markets remain visible under Other');
+
 const ordinalWindow={name:'Who scores goal 1 in minutes 46-60 (15-minute interval)',period:0};
 const liveMatch=overrides=>({
  service:'LIVE',status:'LIVE',score_at:'2026-11-21T15:43:00.000Z',
