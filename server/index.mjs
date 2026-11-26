@@ -32,7 +32,7 @@ import {pool as financialDatabase} from './db.mjs';
 import {withDatabaseRequest} from './database-request-context.mjs';
 import {createFinancialResetRouter} from './ledger/financial-reset.mjs';
 import { settleAll, voidUnresolved } from './ledger/settler.mjs';
-import { isFinished, archiveFinishedMatch } from './ledger/results.mjs';
+import { isFinished, archiveFinishedMatch, captureFinishedMatches } from './ledger/results.mjs';
 import { createPendingResultTracker } from './pending-results.mjs';
 import {
   getMatches, getMatchById, getLeagues, getCounts, applyMatchInfo, knownMatchIds,
@@ -188,6 +188,7 @@ let settleTimer = null;
 let supplementalTimer = null;
 let pendingLiveMonitor = null;
 let settlementBusy = false;
+let settlementRerunReason = null;
 let lastUnresolvedCheck = 0;
 // De-duplicate repeated full-time frames after durable result persistence.
 const archivedTerminalMatches = new Set();
@@ -266,13 +267,28 @@ let lastDeletedHistoryCleanup = 0;
 let lastUnbetEvidenceCleanup = 0;
 const settlementHealth = {lastAttemptAt:null,lastSuccessAt:null,lastError:null,lastResult:null};
 async function runSettlement(why = 'periodic') {
-  if (shuttingDown || !ledgerReady || settlementBusy) return null;
+  if (shuttingDown || !ledgerReady) return null;
+  if(settlementBusy){if(why!=='periodic')settlementRerunReason=why;return null;}
   settlementBusy = true;
   settlementHealth.lastAttemptAt = new Date().toISOString();
   try {
     trackBackground(statsProviders.tick().catch(()=>{}));
-    // Optional read-only football enrichment: only mapped primary matches
-    // with pending bets and available upstream market names are eligible.
+    // Archive any finished Zizobet snapshots first, including restart recovery.
+    // Otherwise a newly discovered FT result would not yet exist in the ledger
+    // query used by warmFinalPending and could be graded before fallback data.
+    try { await captureFinishedMatches(); }
+    catch(error) { console.warn('[settle] pre-recovery result capture:',error.message); }
+    // Finished pending fixtures get a dedicated, awaited final-data pass.
+    // Do not grade them in the same cycle before FotMob/API-Football/SportAPI/
+    // GoalAPI/BSD/WorldCup26 (and confirmed AiScore data) have had a chance to
+    // fill missing, fixture-matched statistics and allowed event chronology.
+    try { await statsProviders.warmFinalPending(); }
+    catch(error) { console.warn('[stats] final settlement recovery:',error.message); }
+    // AiScore is a last-resort aggregate-stat fallback after configured providers.
+    // Await confirmed fixture recovery before grading this settlement cycle.
+    try { await footballInformation.warmFinalPending(); }
+    catch(error) { console.warn('[aiscore] final settlement recovery:',error.message); }
+    // Optional read-only football enrichment remains independent of prices/offers.
     trackBackground(footballInformation.tick().catch(error=>console.warn('[football information] tick:',error.message)));
     const out = await settleAll();
     settlementHealth.lastSuccessAt = new Date().toISOString();
@@ -315,6 +331,9 @@ async function runSettlement(why = 'periodic') {
     try { await pendingResults.refresh(); }
     catch(error) { console.error('[settle] pending result subscriptions could not refresh:',error.message); }
     settlementBusy = false;
+    const rerun=settlementRerunReason;
+    settlementRerunReason=null;
+    if(rerun&&!shuttingDown)queueMicrotask(()=>void runSettlement(rerun));
   }
 }
 
@@ -1129,6 +1148,11 @@ async function boot() {
           statsProviders.observeMatch(row);
           footballInformation.observeMatch(row);
         }
+      },
+      onHistoryConfirmed:info=>{
+        if(!ledgerReady||shuttingDown)return;
+        const kinds=Array.isArray(info?.kinds)?info.kinds.join(','):'event';
+        trackBackground(runSettlement(`confirmed Zizobet ${kinds} history for ${info?.matchId??'match'}`));
       },
       onMarketDefinitions:definitions=>{
         if(!ledgerReady||config.sportsProvider!=='zizobet')return;

@@ -1186,8 +1186,11 @@ export async function gradeStoredEventContract(line,result,{execute}={}){
  // timeline may stand in for a missing/incomplete Zizobet chronology only after
  // it is validated against this fixture's final score and any available FT counters.
  const historicalGoalKinds=new Set([
-  'sequence','window','interval-leader','race','player-goal',
-  'player-ordinal-goal','player-goal-special'
+  // Supported non-player goal chronology contracts. Player markets remain
+  // excluded by the offer policy and are never enabled by this fallback.
+  'sequence','window','interval-result','interval-leader','window-total',
+  'window-first-event','last-event','nth-time','team-nth-time','lead-up','race',
+  'half-first-event','half-last-event','half-race','half-next-event'
  ]);
  if(!result||!c||typeof execute!=='function'||
     !(['corner','card'].includes(c.event)||

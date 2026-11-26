@@ -83,6 +83,7 @@ export const FINISHED_RESULT_INSERT = `
       'shots',coalesce(app_match_result.statistics->'shots','{}'::jsonb)||coalesce(excluded.statistics->'shots','{}'::jsonb),
       'shotsOnTarget',coalesce(app_match_result.statistics->'shotsOnTarget','{}'::jsonb)||coalesce(excluded.statistics->'shotsOnTarget','{}'::jsonb),
       'fouls',coalesce(app_match_result.statistics->'fouls','{}'::jsonb)||coalesce(excluded.statistics->'fouls','{}'::jsonb),
+      'offsides',coalesce(app_match_result.statistics->'offsides','{}'::jsonb)||coalesce(excluded.statistics->'offsides','{}'::jsonb),
       'corners',coalesce(app_match_result.statistics->'corners','{}'::jsonb)||coalesce(excluded.statistics->'corners','{}'::jsonb),
       'yellow',coalesce(app_match_result.statistics->'yellow','{}'::jsonb)||coalesce(excluded.statistics->'yellow','{}'::jsonb),
       'red',coalesce(app_match_result.statistics->'red','{}'::jsonb)||coalesce(excluded.statistics->'red','{}'::jsonb),
@@ -203,6 +204,28 @@ export async function captureFinishedMatches() {
 }
 
 let evidenceWarningAt=0;
+/** Derive 2H aggregate counters only from the same verified Zizobet source
+ * that supplied the confirmed HT snapshot. A secondary FT value minus a
+ * primary HT value is not a valid period statistic.
+ */
+export function deriveVerifiedSecondHalfStatistics(result,resolved,firstHalf){
+ const secondHalf={};
+ if(String(result?.source??'').toUpperCase()!=='ZIZOBET')return secondHalf;
+ for(const field of ['shots','shotsOnTarget','fouls','offsides','corners','yellow','red','cards']){
+  const sources=resolved?._settlementSources?.[field];
+  const sameSource=Array.isArray(sources)&&sources.length===1&&
+   String(sources[0]).toUpperCase()==='ZIZOBET';
+  const full=sameSource?resolved.statistics?.[field]:null,half=firstHalf?.[field];
+  if(full&&half&&['home','away'].every(side=>
+    Number.isSafeInteger(Number(full[side]))&&Number.isSafeInteger(Number(half[side]))&&
+    Number(full[side])>=Number(half[side]))){
+   secondHalf[field]={home:Number(full.home)-Number(half.home),
+    away:Number(full.away)-Number(half.away)};
+  }
+ }
+ return secondHalf;
+}
+
 export async function getResult(matchId,{execute=query,readEvidence=loadEventEvidence,onEvidenceError}={}) {
   const res = await execute('select * from app_match_result where match_id = $1', [Number(matchId)]);
   const result=res.rows[0];if(!result)return null;
@@ -220,7 +243,7 @@ export async function getResult(matchId,{execute=query,readEvidence=loadEventEvi
   }else if(source!=='ZIZOBET'&&source!=='ADMIN')return null;
   const review=(await execute('select payload from app_stat_review where match_id=$1',[Number(matchId)])).rows[0]?.payload;
   result.statistics_review=review??null;
-  result.statistics_review_pending=process.env.STATS_PROVIDERS_ENABLED==='true'&&!review;
+  result.statistics_review_pending=process.env.STATS_PROVIDERS_ENABLED!=='false'&&!review;
   // The resolver uses secondary consensus only when the corresponding
   // Zizobet statistic is absent; Zizobet values and the final score stay primary.
   // Optional timeline storage must not stop ordinary result/statistics tickets.
@@ -229,7 +252,22 @@ export async function getResult(matchId,{execute=query,readEvidence=loadEventEvi
     if(onEvidenceError)onEvidenceError(error);
     else if(Date.now()-evidenceWarningAt>60000){evidenceWarningAt=Date.now();console.warn('[settle] optional event evidence unavailable; event selections remain pending');}
   }
-  return resolveSettlementStatistics(result);
+  const resolved=resolveSettlementStatistics(result);
+  // HT aggregate counters are archived separately from the final scoreboard.
+  // Derive second-half counts only when both independently recorded periods
+  // are available and the final cumulative counter is not below the HT count.
+  let firstHalf={};
+  try{
+    const half=(await execute("select statistics from app_match_half_result where match_id=$1 and source='ZIZOBET' and confirmed_at is not null",[Number(matchId)])).rows[0];
+    const value=half?.statistics;
+    firstHalf=typeof value==='string'?JSON.parse(value||'{}'):(value??{});
+  }catch{}
+  const secondHalf=deriveVerifiedSecondHalfStatistics(result,resolved,firstHalf);
+  const periods={...(resolved.statistics?.periods??{})};
+  if(Object.keys(firstHalf).length)periods.firstHalf=firstHalf;
+  if(Object.keys(secondHalf).length)periods.secondHalf=secondHalf;
+  if(Object.keys(periods).length)resolved.statistics={...resolved.statistics,periods};
+  return resolved;
 }
 
 /** manual result (admin "settle" button): stores the score the admin entered */
@@ -298,7 +336,7 @@ export async function pendingSettlementReview(limit = 100) {
     const storedBase=recorded.get(String(row.match_id));
     const review=reviews.get(String(row.match_id))??null;
     const stored=storedBase?resolveSettlementStatistics({...storedBase,statistics_review:review,
-      statistics_review_pending:process.env.STATS_PROVIDERS_ENABLED==='true'&&!review}):null;
+      statistics_review_pending:process.env.STATS_PROVIDERS_ENABLED!=='false'&&!review}):null;
     const current = await getMatchById(Number(row.match_id));
     const kickoff = current?.start_at ? new Date(current.start_at).toISOString() : null;
     const timestamp = new Date(row.oldest_ticket_at).getTime();
@@ -309,7 +347,7 @@ export async function pendingSettlementReview(limit = 100) {
       eventMarketRequirement({name}) ||
       (/\b(?:first|1st)\s*half\b/i.test(name) &&
         (stored.half_home_score == null || stored.half_away_score == null)) ||
-      (isStatisticMarket({market_name:name}) && (statisticsNeedReview({market_name:name},stored)||!hasStatisticEvidence({market_name:name},stored))) ||
+      (isStatisticMarket({market_name:name}) && ((String(stored.source??'').toUpperCase()!=='ZIZOBET'&&statisticsNeedReview({market_name:name},stored))||!hasStatisticEvidence({market_name:name},stored))) ||
       (/\bcorners?\b/i.test(name) && (stored.corners_home == null || stored.corners_away == null)) ||
       (/\bcards?\b|booking/i.test(name) && (stored.cards_home == null || stored.cards_away == null)) ||
       /early\s*payout/i.test(name));

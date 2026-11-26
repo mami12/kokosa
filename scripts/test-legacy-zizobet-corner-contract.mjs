@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {recoverLegacyZizobetCornerContract} from '../server/ledger/legacy-zizobet-corner-contract.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
+import {nativeZizobetContractRow} from '../server/ledger/native-zizobet-contract.mjs';
+import {liveContract} from '../server/ledger/live-contract-rules.mjs';
 
 const legacy=(nativeMarketName,nativeOutcomeName,providerPeriod=0,line='')=>({
  id:'00000000-0000-4000-8000-000000000099',
@@ -57,6 +59,37 @@ assert.deepEqual(
   threshold:recoverLegacyZizobetCornerContract(away)?.threshold},
  {kind:'under',event:'corner',side:'away',threshold:5.5});
 
+const heldNextCorner=legacy('Who takes the [corner!] corner','1',0,'');
+heldNextCorner.accepted_contract.settlementHold='NATIVE_PARAMETERS_UNMAPPED';
+heldNextCorner.market_key='zz901@eyJwMyI6Mn0';
+heldNextCorner.accepted_contract.providerMarketKey='zz901@eyJwMyI6Mn0';
+heldNextCorner.accepted_contract.nativeParameters={p3:2};
+const heldAccepted=heldNextCorner.accepted_contract;
+const decodedHeldCorner=nativeZizobetContractRow({
+ provider_id:heldAccepted.sourceProviderId,
+ market_key:heldAccepted.providerMarketKey,
+ market_name:heldAccepted.providerMarketName,
+ outcome_key:heldAccepted.providerOutcomeKey,
+ outcome_name:heldAccepted.nativeOutcomeName,
+ line:heldAccepted.line,
+ period:heldAccepted.providerPeriod,
+ native_market_id:heldAccepted.nativeMarketId,
+ native_outcome_id:heldAccepted.nativeOutcomeId,
+ native_market_name:heldAccepted.nativeMarketName,
+ native_outcome_name:heldAccepted.nativeOutcomeName,
+ native_parameters:heldAccepted.nativeParameters
+});
+assert.equal(decodedHeldCorner.market_name,'Who takes the 2 corner',
+ 'Native market title decodes the frozen corner ordinal p3');
+assert.deepEqual(liveContract({...heldNextCorner,...decodedHeldCorner,
+ outcome_name:heldAccepted.nativeOutcomeName,outcome_key:heldAccepted.providerOutcomeKey,
+ line:heldAccepted.line,period:heldAccepted.providerPeriod}),{
+ version:1,kind:'sequence',event:'corner',target:2,side:'home',noneOffered:false
+},'Decoded historical corner title and outcome form a valid sequence contract');
+const recoveredNextCorner=recoverLegacyZizobetCornerContract(heldNextCorner);
+assert.deepEqual(recoveredNextCorner,{version:1,kind:'sequence',event:'corner',target:2,side:'home',noneOffered:false},
+ 'A historical parser-migration hold recovers the ordinal from its accepted native p3 value');
+
 const awayHalf=legacy('2nd half - Awayteam total corners (1.5)','Over',2,'1.5');
 assert.deepEqual(
  {kind:recoverLegacyZizobetCornerContract(awayHalf)?.kind,
@@ -105,7 +138,7 @@ const result={home_score:1,away_score:0,corners_home:10,corners_away:3,
 const execute=async(sql,args)=>{
  if(sql.startsWith('with covered as'))return {rows:[{
   home:10,away:3,total:13,count_home:10,count_away:3,
-  normal_home:10,normal_away:3,
+  normal_home:10,normal_away:3,nth_team:'home',nth_same_time:1,
   through_minute:90,complete:true,open_recovery_gap:false,
   observed_at:'2026-11-18T22:00:00Z',confirmed_at:'2026-11-18T22:00:00Z',
   second_poll_at:'2026-11-18T22:00:00Z',phase_ambiguous:false
@@ -124,4 +157,7 @@ for(const [source,expected] of [
  assert.equal(await gradeStoredEventContract({...source,live_contract:contract},result,{execute}),expected,
   'Legacy native corner ticket must grade from the complete accepted provider chronology: '+source.accepted_contract.nativeMarketName);
 }
-console.log('PASS legacy Zizobet Most Corners, highest-scoring half and team/half corner recovery');
+const heldNextCornerStatus=await gradeStoredEventContract({...heldNextCorner,live_contract:recoveredNextCorner},result,{execute});
+assert.equal(heldNextCornerStatus,'WON',
+ 'The recovered historical 2nd corner ticket settles from the verified complete timeline');
+console.log('PASS legacy Zizobet Most Corners, team/half totals and recovered Who takes the Nth corner');

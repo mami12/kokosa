@@ -39,20 +39,21 @@ assert.equal(liveQuote[0].outcomeName,'Under');
 assert.equal(liveQuote[0].price,1.93);
 assert.equal(liveQuote[0].line,'7.5');
 
+
 const minuteTotal=oddsOf({match_id:67},[
  {mid:912,id:16,market_name:'1 minute - total from {from} to {to} (0.5)',
   position_name:'Over',p1:16,p2:16,h:0.5,odds:12.5}
 ],emptyMeta(),false,true);
-assert.equal(minuteTotal.length,1,'the generic one-minute total resolves from quote-native p1/p2');
+assert.equal(minuteTotal.length,1);
 assert.equal(minuteTotal[0].marketName,'Total 0.5 goals in minutes 16-16 (1-minute interval)');
 assert.equal(minuteTotal[0].line,'0.5');
-assert.ok(!/[{}]/.test(minuteTotal[0].marketName),'ticket/admin labels must not retain {from}/{to} placeholders');
+assert.ok(!/[{}]/.test(minuteTotal[0].marketName));
 
 const unresolvedMinuteTotal=oddsOf({match_id:68},[
  {mid:913,id:17,market_name:'1 minute - total from {from} to {to} (0.5)',
   position_name:'Over',h:0.5,odds:12.5}
 ],emptyMeta(),false,true);
-assert.equal(unresolvedMinuteTotal.length,0,'an interval market without its p1/p2 values is not published with a broken template');
+assert.equal(unresolvedMinuteTotal.length,0);
 
 for(const [id,name,extra] of [
  [914,'Scoring Type',{}],
@@ -78,7 +79,7 @@ for(const [line,id] of [['0.25',922],['0.75',923]]){
 const normalTotal=oddsOf({match_id:71},[
  {mid:924,id:1024,market_name:'Total Goals',position_name:'Over',h:0.5,odds:1.95}
 ],emptyMeta(),false,true);
-assert.equal(normalTotal.length,1,'supported .5 totals remain published');
+assert.equal(normalTotal.length,1);
 
 const unlabelled=oddsOf({match_id:64},[
  {mid:909,id:13,pos:1,coef:1.9}
@@ -89,5 +90,15 @@ const excluded=oddsOf({match_id:65},[
  {market_id:910,outcome_id:14,market_name:'Total Shots',position_name:'Over',odds:1.9}
 ],emptyMeta(),false,true);
 assert.equal(excluded.length,0,'explicitly excluded shot markets must remain hidden');
+
+for(const [marketId,marketName] of [[912,'Total Yellow Cards'],[913,'Total Red Cards']]){
+ const card=oddsOf({match_id:67},[
+  {mid:marketId,id:marketId+100,market_name:marketName,position_name:'Over',
+   h:0.5,v:1.9,visible:1,lock:0}
+ ],emptyMeta(),true,true);
+ assert.equal(card.length,1,marketName+' must survive the initial native Zizobet offer filter');
+ assert.equal(card[0].marketName,marketName);
+ assert.equal(card[0].nativeMarketId,String(marketId));
+}
 
 console.log('PASS Zizobet quote-native metadata fallback, ID/price/line aliases, raw quote retention and exclusions');

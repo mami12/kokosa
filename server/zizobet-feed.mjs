@@ -8,13 +8,46 @@ import {providerTimeline,inheritEventPlayers} from './live-event-timeline.mjs';
 
 // Keep checking the native event list briefly after FT: providers can publish
 // stoppage-time incidents or timeline corrections after their first final frame.
-const POST_FINAL_HISTORY_GRACE_MS=Math.max(5*60_000,Number(process.env.ZIZO_POST_FINAL_HISTORY_GRACE_MS)||45*60_000);
+const POST_FINAL_HISTORY_GRACE_MS=Math.max(10*60_000,Number(process.env.ZIZO_POST_FINAL_HISTORY_GRACE_MS)||45*60_000);
+
+/** A final header may carry MatchStatusID=40 while the detail endpoint omits
+ * EventStatus. Missing status must not discard a valid post-FT timeline poll.
+ * An explicit non-final status still blocks a stale detail response.
+ */
+export function isFinalZizobetMatch(match){
+ return Number(match?.EventStatus??match?.MatchStatusID)===40;
+}
+export function shouldProcessFinalHistoryDetail(entryStatus,match){
+ if(entryStatus!=='ended')return true;
+ const raw=match?.EventStatus??match?.MatchStatusID;
+ if(raw==null||String(raw).trim()==='')return true;
+ const status=Number(raw);
+ return !Number.isFinite(status)||status===40;
+}
+
+/** Keep polling frequently while providers publish late stoppage-time events.
+ * After ten minutes, back off without ending the post-FT recovery window.
+ */
+export function postFinalHistoryRetryDelay(elapsedMs,intervalMs=60000,attempts=1){
+ const interval=Math.max(30000,Number(intervalMs)||60000);
+ const elapsed=Math.max(0,Number(elapsedMs)||0);
+ if(elapsed>=POST_FINAL_HISTORY_GRACE_MS)return Math.max(300000,interval*5);
+ const count=Math.max(1,Math.floor(Number(attempts)||1));
+ if(count<=10)return 6000;
+ if(count<=20)return 15000;
+ if(count<=40)return 30000;
+ return interval;
+}
+export function newlyConfirmedHistoryKinds(previous=[],current=[]){
+ const before=new Set(Array.isArray(previous)?previous:[]);
+ return [...new Set(Array.isArray(current)?current:[])].filter(kind=>!before.has(kind));
+}
 export {isZizoId};
-export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDefinitions=()=>{},onFixtureDiscovered=()=>{},selectRows=r=>r,getWatchedIds=()=>[],request=get,connectMqtt=startMqtt,autoStart=true,now=()=>Date.now(),transitionGraceMs=120000,retentionMs=21600000,historyEnabled=autoStart,archiveHistory=archiveZizobetMatchHistory}={}){
+export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDefinitions=()=>{},onFixtureDiscovered=()=>{},onHistoryConfirmed=()=>{},selectRows=r=>r,getWatchedIds=()=>[],request=get,connectMqtt=startMqtt,autoStart=true,now=()=>Date.now(),transitionGraceMs=120000,retentionMs=21600000,historyEnabled=autoStart,archiveHistory=archiveZizobetMatchHistory}={}){
  const meta={teams:new Map(),regions:new Map(),champs:new Map(),liveMarkets:new Map(),preMarkets:new Map(),positions:new Map(),statuses:new Map()};
  const footballLiveMarkets=new Map();
  const state={provider:'ZIZOBET',transport:'MQTT cache invalidations + HTTP snapshots',running:false,cycles:0,syncedAt:null,lastError:null,received:0,kept:0,paused:false,pauses:0,resumes:0};
- const games=new Map(),quotes=new Map(),focused=new Map(),focusAttemptAt=new Map(),inflight=new Map(),dirty=new Set(),versions=new Map(),fullObserved=new Map(),watchedSnapshotAt=new Map(),transitions=new Map(),historyPollAt=new Map(),historyFtStartedAt=new Map(),historyFtAttempts=new Map(),headerEventSignals=new Map(),eventRefreshIds=new Set();let stopped=false,work=Promise.resolve(),mqtt,catalogAt=0,revision=0;
+ const games=new Map(),quotes=new Map(),focused=new Map(),focusAttemptAt=new Map(),inflight=new Map(),dirty=new Set(),versions=new Map(),fullObserved=new Map(),watchedSnapshotAt=new Map(),transitions=new Map(),historyPollAt=new Map(),historyFtStartedAt=new Map(),historyFtAttempts=new Map(),historyConfirmedKinds=new Map(),headerEventSignals=new Map(),eventRefreshIds=new Set();let stopped=false,work=Promise.resolve(),mqtt,catalogAt=0,revision=0;
  const queue=fn=>{const p=work.then(()=>stopped||state.paused?undefined:fn());work=p.catch(e=>{state.lastError=e.message;});return p;};
  const headerEventSignal=(row,game)=>{
   const info=infoOf(row,game,meta),signal={};
@@ -277,12 +310,20 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
     // A full quote grid belongs to this already-verified football fixture.
     // Intersect it with the global dictionary before admitting IDs to admin.
     if(Array.isArray(data.gmk)&&rememberFootballLiveMarkets(data.gmk))archiveMarketDefinitions();
-    if(entry.row.status==='ended'&&Number(data.Match.EventStatus)!==40)return;
-    const game={...entry.raw,...data.Match,...(Array.isArray(data.TimeLines)?{TimeLines:data.TimeLines}:{})},row={...entry.row,service:'LIVE',status:entry.row.status==='ended'||Number(game.EventStatus)===40?'ended':'live'};
+    if(!shouldProcessFinalHistoryDetail(entry.row.status,data.Match))return;
+    const game={...entry.raw,...data.Match,...(Array.isArray(data.TimeLines)?{TimeLines:data.TimeLines}:{})},row={...entry.row,service:'LIVE',status:entry.row.status==='ended'||isFinalZizobetMatch(game)?'ended':'live'};
     // One upstream response has one observation time, even when it feeds
     // both the all-match archive and the ticket recovery reader.
     const sampledAt=new Date();
     let archiveFactsPersisted=false;
+    const ended=row.status==='ended'||isFinalZizobetMatch(data.Match);
+    let finishedAttempts=0,finalAge=0;
+    if(historyEnabled&&ended){
+     if(!historyFtStartedAt.has(Number(id)))historyFtStartedAt.set(Number(id),now());
+     finishedAttempts=(historyFtAttempts.get(Number(id))??0)+1;
+     historyFtAttempts.set(Number(id),finishedAttempts);
+     finalAge=now()-(historyFtStartedAt.get(Number(id))??now());
+    }
     // The independently retained sports archive covers EVERY live fixture,
     // not only fixtures with accepted bets. Never persist gmk/odds.
     if(historyEnabled){
@@ -290,23 +331,26 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
       const recorded=await archiveHistory(row.match_id,{Match:data.Match,
        ...(Array.isArray(data.TimeLines)?{TimeLines:data.TimeLines}:{})},row,
        {observedAt:sampledAt});
-      archiveFactsPersisted=Array.isArray(recorded?.verifiedKinds)&&
-       recorded.verifiedKinds.length>0;
+      archiveFactsPersisted=Array.isArray(recorded?.verifiedKinds)&&recorded.verifiedKinds.length>0;
+      const confirmed=Array.isArray(recorded?.confirmedKinds)?recorded.confirmedKinds:[];
+      const previousConfirmed=historyConfirmedKinds.get(Number(id))??[];
+      const newlyConfirmed=newlyConfirmedHistoryKinds(previousConfirmed,confirmed);
+      historyConfirmedKinds.set(Number(id),confirmed);
+      if(newlyConfirmed.length&&needsTicketEvidence){
+       try{Promise.resolve(onHistoryConfirmed({matchId:Number(id),kinds:newlyConfirmed,observedAt:sampledAt}))
+        .catch(error=>console.warn('[zizobet] confirmed history callback',row.match_id,error?.message));}
+       catch(error){console.warn('[zizobet] confirmed history callback',row.match_id,error?.message);}
+      }
       const interval=Math.max(30000,Number(process.env.ZIZO_HISTORY_REFRESH_MS)||60000);
-      const ended=Number(data.Match.EventStatus??data.Match.MatchStatusID)===40;
-      if(ended&&!historyFtStartedAt.has(Number(id)))historyFtStartedAt.set(Number(id),now());
-      // At FT retry incomplete provider timelines at a slower pace rather
-      // than declaring that all missing incidents were archived.
-      // Recheck the first FT snapshot quickly to establish two independent
-      // observations, then slow down if native data remains incomplete.
-      const finishedAttempts=(historyFtAttempts.get(Number(id))??0)+(ended?1:0);
-      if(ended)historyFtAttempts.set(Number(id),finishedAttempts);
       historyPollAt.set(Number(id),now()+(ended?
-        (finishedAttempts<=3?Math.max(30000,interval):Math.max(300000,interval*5)):interval));
-      // A bounded post-FT recovery window is tracked from the first final
-      // observation, even when one event kind never reconciles. Expiry stops
-      // polling only; it never turns missing evidence into a settlement.
-     }catch(error){console.warn('[zizobet] match history',row.match_id,error?.message);}
+       postFinalHistoryRetryDelay(finalAge,interval,finishedAttempts):interval));
+     }catch(error){
+      if(ended){
+       const interval=Math.max(30000,Number(process.env.ZIZO_HISTORY_REFRESH_MS)||60000);
+       historyPollAt.set(Number(id),now()+postFinalHistoryRetryDelay(finalAge,interval,finishedAttempts));
+      }
+      console.warn('[zizobet] match history',row.match_id,error?.message);
+     }
     }
     if(autoStart&&(full||needsTicketEvidence))
      void collectEventEvidence(row,{...data,Match:game},{
@@ -363,7 +407,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
     if(!ids.has(id)){ids.add(id);historyOnlyIds.add(id);}
    }
    if(historyPollAt.size>10000)for(const id of historyPollAt.keys())if(!games.has(id)){
-    historyPollAt.delete(id);historyFtStartedAt.delete(id);historyFtAttempts.delete(id);
+    historyPollAt.delete(id);historyFtStartedAt.delete(id);historyFtAttempts.delete(id);historyConfirmedKinds.delete(id);
    }
   }
   for(const[id,t]of transitions){if(now()-t.at>=retentionMs){transitions.delete(id);continue;}if(t.next<=now())ids.add(id);}

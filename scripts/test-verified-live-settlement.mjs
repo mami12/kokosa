@@ -125,6 +125,34 @@ assert.equal(verifiedSecondLiveDecision(numberedRow(
  goalInBand,numberedFrame(1,0,11),numberedFrame(1,0,12)),{now}),null,
  'A goal first observed after minute 10 is not attributed to minute 6-10');
 
+// First-half race/next-goal markets can settle before HT, but the
+// match-wide counters stop being a safe half-only source at minute 45.
+const halfCornerFrame=(h,a,clock)=>({
+ source:'zizobet',clock,teams:{corner:{home:h,away:a}},
+ counts:{corner:h+a},events:[],coverage:{},ended:false
+});
+const halfRace={version:1,kind:'half-race',event:'corner',half:1,target:2,
+ side:'home',baseline:{home:0,away:0}};
+assert.equal(verifiedSecondLiveDecision(numberedRow(
+ halfRace,halfCornerFrame(2,1,43),halfCornerFrame(2,1,44)),{now}),'WON',
+ 'First-half Race to 2 Corners settles once one team reaches two');
+assert.equal(verifiedSecondLiveDecision(numberedRow(
+ halfRace,halfCornerFrame(2,1,43),halfCornerFrame(2,1,45)),{now}),'WON',
+ 'A proven first-half race remains valid when the second poll arrives at HT with unchanged counters');
+assert.equal(verifiedSecondLiveDecision(numberedRow(
+ {...halfRace,half:2},halfCornerFrame(2,1,43),halfCornerFrame(2,1,44)),{now}),null,
+ 'Second-half Race to X cannot use whole-match counters as a half baseline');
+const halfNext={version:1,kind:'half-next-event',event:'goal',half:1,target:1,
+ side:'home',baseline:{home:0,away:0}};
+assert.equal(verifiedSecondLiveDecision(numberedRow(
+ halfNext,numberedFrame(1,0,41),numberedFrame(1,0,44)),{now}),'WON',
+ 'First-half Next Goal settles as soon as the unique next goal is confirmed');
+assert.equal(verifiedSecondLiveDecision(numberedRow(
+ halfNext,numberedFrame(1,0,41),numberedFrame(1,0,45)),{now}),'WON',
+ 'A first-half next goal remains proven when the second poll lands at HT');
+assert.equal(verifiedSecondLiveDecision(numberedRow(
+ halfNext,numberedFrame(0,1,41),numberedFrame(0,1,44),'LOST'),{now}),'LOST',
+ 'The wrong team loses the first-half Next Goal selection');
 const player={version:1,kind:'player-goal',event:'goal',playerName:'Alice',choice:true};
 const playerRow={...row,live_contract:player,proposed_status:'WON',
  payload:{contract:player,frame,frameAt:row.payload.frameAt},provider_frame:frame};
@@ -197,6 +225,98 @@ assert.equal(verifiedSecondLiveDecision(timedProof(
 assert.equal(verifiedSecondLiveDecision(timedProof(
  timeWindow,frameFor('goal',1,0),frameFor('goal',0,1)),{now}),null,
  'A provider team correction between independent polls must not pay');
+
+
+ // Full-match totals now settle at the first irreversible milestone.
+ // Over wins and Under loses only after the count passes the quoted line.
+ const totalsFrame=(event,home,away,clock=64,extra={})=>({
+  source:'zizobet',clock,counts:{[event]:home+away},
+  teams:{[event]:{home,away},...(extra.teams??{})},
+  cardColorsVerified:extra.cardColorsVerified===true,
+  events:[],coverage:{},ended:false
+ });
+ // First-half totals use the same live milestone rule before HT.
+ const halfCornerOver={version:1,kind:'half-total',event:'corner',half:1,
+  choice:'over',threshold:2.5};
+ const halfTotalCornerStartFrame=halfCornerFrame(2,1,42);
+ assert.equal(primaryLiveDecision(halfCornerOver,halfTotalCornerStartFrame),'WON',
+  'First-half corners Over 2.5 is irreversible at three corners');
+ assert.equal(verifiedSecondLiveDecision(timedProof(halfCornerOver,
+  halfTotalCornerStartFrame,halfCornerFrame(3,1,43)) ,{now}),'WON',
+  'First-half Over settles before HT even if another corner arrives during confirmation');
+ assert.equal(primaryLiveDecision({...halfCornerOver,half:2},
+  halfCornerFrame(2,1,70)),null,
+  'Second-half corner totals never use the match-wide 1H+2H count');
+
+ const firstHalfGoals={version:1,kind:'period-goal-total',event:'goal',half:1,
+  selection:'over',target:0.5};
+ const firstHalfGoalFrame=totalsFrame('goal',1,0,23);
+ assert.equal(primaryLiveDecision(firstHalfGoals,firstHalfGoalFrame),'WON',
+  'First-half goals Over 0.5 wins on the first goal');
+ assert.equal(verifiedSecondLiveDecision(timedProof(firstHalfGoals,
+  firstHalfGoalFrame,totalsFrame('goal',2,0,47)) ,{now}),'WON',
+  'A proved first-half goal total remains settled when the second poll is in 2H');
+
+ const halfYellow={version:1,kind:'half-total',event:'card',half:1,
+  cardColor:'yellow',choice:'over',threshold:1.5};
+ const halfYellowFrame={source:'zizobet',clock:38,teams:{
+  card:{home:2,away:0},yellowCard:{home:2,away:0},redCard:{home:0,away:0}},
+  counts:{card:2},cardColorsVerified:true,events:[],coverage:{},ended:false};
+ assert.equal(verifiedSecondLiveDecision(timedProof(halfYellow,
+  halfYellowFrame,halfYellowFrame),{now}),'WON',
+  'First-half yellow totals settle early only with reconciled card colours');
+ assert.equal(primaryLiveDecision(halfYellow,
+  {...halfYellowFrame,cardColorsVerified:false}),null,
+  'Unverified yellow/red counts cannot settle early');
+
+ const cornerOver={version:1,kind:'over',event:'corner',threshold:2.5};
+ const cornerOverFrame=totalsFrame('corner',2,1);
+ const cornerOverRow=timedProof(cornerOver,cornerOverFrame,cornerOverFrame);
+ assert.equal(primaryLiveDecision(cornerOver,cornerOverFrame),'WON',
+  'Total Corners Over 2.5 becomes irreversible at three corners');
+ assert.equal(verifiedSecondLiveDecision(cornerOverRow,{now}),'WON',
+  'Total Corners Over 2.5 settles after the second agreeing Zizobet observation');
+ assert.equal(verifiedSecondLiveDecision(timedProof(cornerOver,
+  cornerOverFrame,totalsFrame('corner',3,1,65)) ,{now}),'WON',
+  'Additional corners between confirmation polls do not delay an already irreversible Over win');
+ const cornerUnder={...cornerOver,kind:'under'};
+ assert.equal(verifiedSecondLiveDecision(timedProof(cornerUnder,cornerOverFrame,
+  cornerOverFrame,'LOST'),{now}),'LOST',
+  'Total Corners Under 2.5 loses as soon as the third corner is confirmed');
+ assert.equal(primaryLiveDecision(cornerOver,totalsFrame('corner',1,1)),null,
+  'Over remains pending before the threshold is crossed');
+ const exactCorners={version:1,kind:'exact',event:'corner',target:2};
+ assert.equal(verifiedSecondLiveDecision(timedProof(exactCorners,cornerOverFrame,
+  cornerOverFrame,'LOST'),{now}),'LOST',
+  'An exact-two-corners selection loses immediately when a third arrives');
+ const rangeCorners={version:1,kind:'range',event:'corner',min:1,max:2};
+ assert.equal(verifiedSecondLiveDecision(timedProof(rangeCorners,cornerOverFrame,
+  cornerOverFrame,'LOST'),{now}),'LOST',
+  'A corner range loses as soon as the upper bound is exceeded');
+ const atLeastCorners={version:1,kind:'atLeast',event:'corner',target:3};
+ assert.equal(verifiedSecondLiveDecision(timedProof(atLeastCorners,cornerOverFrame,
+  cornerOverFrame,'WON'),{now}),'WON',
+  'At-least corner totals win at the threshold');
+ const teamGoals={version:1,kind:'team-total-goals',event:'goal',side:'home',
+  choice:'over',threshold:0.5};
+ const teamGoalFrame=totalsFrame('goal',1,0);
+ assert.equal(verifiedSecondLiveDecision(timedProof(teamGoals,teamGoalFrame,
+  teamGoalFrame,'WON'),{now}),'WON',
+  'Home team goals over 0.5 wins as soon as the first home goal is confirmed');
+
+ // Yellow/red totals require the Zizobet event timeline to reconcile colours.
+ const yellowOver={version:1,kind:'over',event:'card',cardColor:'yellow',threshold:1.5};
+ const yellowFrame={
+  source:'zizobet',clock:70,counts:{card:3},
+  teams:{card:{home:2,away:1},yellowCard:{home:2,away:0},redCard:{home:0,away:1}},
+  cardColorsVerified:true,events:[],coverage:{},ended:false
+ };
+ assert.equal(primaryLiveDecision(yellowOver,yellowFrame),'WON',
+  'Yellow-card totals use reconciled yellow counters, not all cards combined');
+ assert.equal(verifiedSecondLiveDecision(timedProof(yellowOver,yellowFrame,
+  yellowFrame,'WON'),{now}),'WON');
+ assert.equal(primaryLiveDecision(yellowOver,{...yellowFrame,cardColorsVerified:false}),null,
+  'Unverified card colours cannot trigger an early payout');
 
 const calls=[];
 const runQuery=async(sql)=>{assert.match(sql,/app_live_settlement_preview/);return {rows:[row,

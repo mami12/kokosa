@@ -19,6 +19,7 @@ import { getResult, captureFinishedMatches, unsettledMatchIds } from './results.
 import {captureHalfTimeResults} from './halftime-results.mjs';
 import { chargeManagerCommission, refundManagerCommission } from './manager-finance.mjs';
 import { isResultBttsMarket, parseResultBttsOutcome, gradeResultBtts } from './result-btts.mjs';
+import {isOrTotalMarket,parseOrTotalSelection,gradeOrTotalSelection} from './or-total-combinations.mjs';
 import { isResultTotalMarket, isTotalBttsMarket, isFirstHalfResultBtts, parseResultTotal, parseTotalBtts, gradeMixedTotal,
   isWinnerTotalMarket, isTeamNotToLoseTotalMarket, isBttsTotalAndMarket,
   parseWinnerTotal, parseTeamNotToLoseTotal, parseBttsTotal,
@@ -30,7 +31,7 @@ import {isMultiscoresMarket,gradeMultiscores,isMatchbetFirstGoalMarket,gradeMatc
 import {isQualificationMarket,gradeQualification} from './qualification.mjs';
 import { systemColumnPayout } from './system-columns.mjs';
 import { eventMarketRequirement } from './event-market-policy.mjs';
-import { isStatisticMarket, hasStatisticEvidence, gradeStatisticLine } from './statistic-markets.mjs';
+import { isStatisticMarket, statisticMarketContract, hasStatisticEvidence, gradeStatisticLine } from './statistic-markets.mjs';
 import {goalTotalContract} from './goal-total-contract.mjs';
 import {isScoringPropMarket,gradeScoringPropMarket} from './scoring-props.mjs';
 import {isParityLikeMarket,gradeParityMarket} from './parity-markets.mjs';
@@ -63,6 +64,13 @@ const legacyHandicapResult=(line,result)=>{
 };
 
 const round = (n) => Number(Number(n).toFixed(2));
+const needsSecondaryStatisticReview=(line,result)=>{
+ const source=String(result?.source??'').toUpperCase();
+ // Zizobet is the settlement authority. Secondary-feed disagreement or a
+ // missing secondary comparison must never veto its recorded final counters.
+ if(source==='ZIZOBET'||source==='ADMIN'||(source==='FEED'&&result?._zizobetVerified===true))return false;
+ return statisticsNeedReview(line,result);
+};
 /**
  * Never downgrade a correlated provider offer to one familiar constituent.
  * An unknown "A AND B" is PENDING unless its entire compound contract
@@ -114,6 +122,25 @@ export function gradeHeldNativeCombo(line,result){
  const rawPeriod=Number(saved.providerPeriod??0);
  if(![0,1,2].includes(rawPeriod)||
     (line.period!=null&&Number(line.period)!==rawPeriod))return null;
+ const frozen={
+  market_name:saved.providerMarketName,
+  outcome_name:saved.providerOutcomeName,
+  outcome_key:saved.providerOutcomeKey,
+  line:String(saved.line??''),period:rawPeriod,
+  accepted_contract:saved
+ };
+ // The accepted Zizobet title plus its frozen line and Yes/No selection
+ // are sufficient for this explicitly unmapped full-time OR-total family.
+ if(reason==='NATIVE_PARAMETERS_UNMAPPED'||reason==='NATIVE_FINAL_RULE_UNMAPPED'){
+  const orSelection=parseOrTotalSelection(frozen);
+  if(orSelection)return gradeOrTotalSelection(orSelection,result?.home_score,result?.away_score);
+  // Older catalog versions did not classify Cornerbet or some native corner totals.
+  if(/corner/i.test(String(frozen.market_name??''))){
+   const repaired={...line,...frozen,accepted_contract:{...saved,settlementHold:null}};
+   const status=gradeLine(repaired,result);
+   if(['WON','LOST','VOID'].includes(status))return status;
+  }
+ }
  if(reason==='NATIVE_PARAMETERS_UNMAPPED'){
   if(!saved.nativeMarketName||!saved.providerMarketKey||saved.nativeMarketId==null)return null;
   let decoded;
@@ -135,13 +162,6 @@ export function gradeHeldNativeCombo(line,result){
   const status=gradeLine(repaired,result);
   return ['WON','LOST','VOID'].includes(status)?status:null;
  }
- const frozen={
-  market_name:saved.providerMarketName,
-  outcome_name:saved.providerOutcomeName,
-  outcome_key:saved.providerOutcomeKey,
-  line:String(saved.line??''),period:rawPeriod,
-  accepted_contract:saved
- };
  const contract=parseHalfCombination(frozen,{
   home:saved.homeTeamName??result?.home_team,
   away:saved.awayTeamName??result?.away_team
@@ -541,7 +561,7 @@ export function classify(marketName = '') {
   if (isMultiscoresMarket(marketName)) return 'MULTISCORES';
   if (isMatchbetFirstGoalMarket(marketName)) return 'MATCHBET_FIRST_GOAL';
   if (isQualificationMarket(marketName)) return 'TO_QUALIFY';
-  if (/\b(?:win|wins|draw)\s+or\s+(?:both\s+teams?\s+(?:to\s+)?score|total\s+goals?\s+(?:over|under))\b/i.test(marketName)) return 'CHANCE_MIX';
+  if (isOrTotalMarket(marketName) || /\b(?:win|wins|draw)\s+or\s+(?:both\s+teams?\s+(?:to\s+)?score|total\s+goals?\s+(?:over|under))\b/i.test(marketName)) return 'CHANCE_MIX';
   const s = String(marketName).toLowerCase();
   if (isHtFtMarket(marketName)) return 'HT_FT';
   // Bare 3way is a normal 1X2 market. Full Time 1UP/2UP/3UP are
@@ -556,7 +576,7 @@ export function classify(marketName = '') {
   if (/^(?:home|away)\s+team\s+no\s+bet\s*$/i.test(s.trim())) return 'DNB';
   if (/clean sheet/i.test(s)) return 'CLEAN_SHEET';
   if (/total goals?\s*\(?(?:exact|bands)\)?|exact goals|multigoals|number of goals|exact corners|corners?\s*\(?(?:exact|bands)\)?/i.test(s)) return 'BANDS_EXACT';
-  if (/corner.*(?:result|winner|1x2)|(?:result|winner|1x2).*corner|^(?:most|more)\s+corners?$/i.test(s.trim())) return 'CORNER_1X2';
+  if (/corner.*(?:result|winner|1x2)|(?:result|winner|1x2).*corner|^(?:most|more)\s+corners?$/i.test(s.trim()) || /^(?:corner\s*bet|cornerbet)$/i.test(s.trim())) return 'CORNER_1X2';
   if (/corner/.test(s)) return 'CORNERS';
   if (/\bcards?\b|booking|yellow|red/.test(s)) return 'CARDS';
   if (/both teams to score|\bbtts\b|goal[\s/]*no\s*goal|gol[\s/]*pa\s*gol/i.test(s)) return 'BTTS';
@@ -615,13 +635,20 @@ const normalizedTeamLabel=value=>String(value??'').normalize('NFD')
  * race, first/next and half markets never enter this path.
  */
 function gradeFinalTeamCornerMarket(line,result){
- const period=Number(line?.period??line?.accepted_contract?.providerPeriod??0);
- if(period!==0)return undefined;
- const contract=parseTeamCountMarket({...line,period:0});
+ const period=scorePeriodOf(line);
+ if(period===null)return undefined;
+ const marketName=String(line?.market_name??line?.marketName??'')
+  .replace(/^(?:(?:first|1st|second|2nd)\s*half|1h|2h)\s*[-: ]*/i,'');
+ const contract=parseTeamCountMarket({...line,market_name:marketName,period:0});
  if(!contract||contract.event!=='corner')return undefined;
  const source=String(result?.source??'').toUpperCase();
  if(source&&!['ZIZOBET','ADMIN','FEED'].includes(source))return null;
- const home=scoreValue(result?.corners_home),away=scoreValue(result?.corners_away);
+ let statistics=result?.statistics;
+ if(typeof statistics==='string'){try{statistics=JSON.parse(statistics);}catch{statistics={};}}
+ const periodKey=period===1?'firstHalf':period===2?'secondHalf':'fullTime';
+ const values=period===0?null:statistics?.periods?.[periodKey]?.corners;
+ const home=scoreValue(period===0?result?.corners_home:values?.home);
+ const away=scoreValue(period===0?result?.corners_away:values?.away);
  const count=contract.side==='home'?home:contract.side==='away'?away:null;
  if(count===null)return null;
  const decide=value=>value?'WON':'LOST';
@@ -742,11 +769,67 @@ const periodScores=(line,result)=>{
  return period===1?{home:hh,away:ha}:{home:home-hh,away:away-ha};
 };
 
+/**
+ * Plain aggregate corner totals are settled from the counters for their own
+ * completed period: HT, 2H, or FT. They do not depend on event-timeline
+ * confirmation. Interval, race, next-corner and other event-order contracts
+ * remain excluded by cornerTotalContract.
+ */
+function fullTimeAggregateCornerContract(line={}){
+ const period=scorePeriodOf(line);
+ if(period===null)return null;
+ const marketName=String(line?.market_name??line?.marketName??'').replace(/^(?:(?:first|1st|second|2nd)\s*half|1h|2h)\s*[-: ]*/i,'');
+ const contract=cornerTotalContract({...line,market_name:marketName},{
+  home_team:line?.home_team,away_team:line?.away_team
+ });
+ if(!contract)return null;
+ const key=String(line?.outcome_key??'').trim().toLowerCase();
+ const name=String(line?.outcome_name??'').trim().toLowerCase();
+ const over=key==='over'||/^over(?:\s|$)/.test(name);
+ const under=key==='under'||/^under(?:\s|$)/.test(name);
+ if(over===under)return null;
+ return {...contract,over,period};
+}
+function gradeFinalAggregateCornerTotal(line,result){
+ const contract=fullTimeAggregateCornerContract(line);
+ if(!contract)return undefined;
+ const source=String(result?.source??'').toUpperCase();
+ if(!['ZIZOBET','ADMIN'].includes(source)&&
+    !(source==='FEED'&&result?._zizobetVerified===true))return null;
+ let statistics=result?.statistics;
+ if(typeof statistics==='string'){try{statistics=JSON.parse(statistics);}catch{statistics={};}}
+ const periodKey=contract.period===1?'firstHalf':contract.period===2?'secondHalf':'fullTime';
+ const periodCorners=statistics?.periods?.[periodKey]?.corners;
+ const home=scoreValue(contract.period===0?(result?.corners_home??statistics?.corners?.home):periodCorners?.home);
+ const away=scoreValue(contract.period===0?(result?.corners_away??statistics?.corners?.away):periodCorners?.away);
+ const count=contract.scope==='home'?home:contract.scope==='away'?away:
+  home===null||away===null?null:home+away;
+ const threshold=num(line?.line)??num(contract.line);
+ if(count===null||threshold===null||!Number.isFinite(threshold)||
+    threshold<0||!Number.isInteger(threshold*2))return null;
+ if(Number.isInteger(threshold)&&count===threshold)return 'VOID';
+ return contract.over?(count>threshold?'WON':'LOST'):(count<threshold?'WON':'LOST');
+}
+
 
 /** A known final score is not enough to grade first-half/corner/card props.
  * Keep those lines pending for more authoritative feed evidence instead of
  * inventing a win/loss or immediately refunding a valid winning proposition.
  */
+/** Only supported aggregate statistic contracts bypass the event-fact grader.
+ * Interval/race/sequence card markets share words with aggregate card totals,
+ * but require their frozen chronological contract instead.
+ */
+export function isAggregateStatisticSettlement(line,result){
+ const statistic=statisticMarketContract(line);
+ // Aggregate paths are used only when their exact full-time/period counters
+ // are present. Otherwise a supported frozen event contract gets a chance to
+ // use a complete, reconciled provider timeline instead of staying pending.
+ if(statistic?.supported&&hasStatisticEvidence(line,result))return true;
+ return ['WON','LOST','VOID'].includes(gradeFinalAggregateCornerTotal(line,result))||
+  ['WON','LOST','VOID'].includes(gradeFinalTeamCornerMarket(line,result));
+}
+
 export function hasRequiredSettlementEvidence(line, result) {
   if(String(result?.source??'').toUpperCase()==='FEED'&&settlementStatisticFields(line).length&&!result?._zizobetVerified)return false;
   // A native quote awaiting rule review must never be graded by a
@@ -754,11 +837,14 @@ export function hasRequiredSettlementEvidence(line, result) {
   if(line?.accepted_contract?.settlementHold)
     return gradeHeldNativeCombo(line,result)!==null;
   line=withFrozenPeriod(line);
+  const aggregateCornerStatus=gradeFinalAggregateCornerTotal(line,result);
+  if(aggregateCornerStatus!==undefined)
+    return ['WON','LOST','VOID'].includes(aggregateCornerStatus);
   if(/^full[\s.-]*time[\s:.-]*(?:1up|2up|3up)$/i.test(String(line.market_name??'').trim()))
     return hasRequiredSettlementEvidence({...line,market_name:'Full Time Result',live_contract:null},result);
   if (!result||scoreValue(result.home_score)===null||scoreValue(result.away_score)===null)return false;
   // Conflicts block only selections whose settlement depends on that statistic.
-  if(statisticsNeedReview(line,result))return false;
+  if(needsSecondaryStatisticReview(line,result))return false;
   // Aggregate team-stat contracts use their own final statistic evidence;
   // do not route yellow/red cards through the legacy generic CARDS family.
   if(isStatisticMarket(line))return hasStatisticEvidence(line,result);
@@ -813,6 +899,7 @@ export function hasRequiredSettlementEvidence(line, result) {
     if (!Number.isSafeInteger(h)||h<0||!Number.isSafeInteger(a)||a<0) return false;
   }
   const family = goalTotalContract(line,result)?'TOTAL':classify(marketName);
+  if(isOrTotalMarket(marketName))return parseOrTotalSelection(line)!==null;
   if(family==='DNB'&&!plainDnb(marketName))return false;
 
   if (family === 'REST_OF_MATCH') {
@@ -870,7 +957,9 @@ export function gradeLine(line, result) {
   if(line?.accepted_contract?.settlementHold)
     return gradeHeldNativeCombo(line,result);
   line=withFrozenPeriod(line);
-  if(statisticsNeedReview(line,result))return null;
+  const aggregateCornerStatus=gradeFinalAggregateCornerTotal(line,result);
+  if(aggregateCornerStatus!==undefined)return aggregateCornerStatus;
+  if(needsSecondaryStatisticReview(line,result))return null;
   if(isWinningMethodMarket(line?.market_name))return gradeWinningMethod(line,result);
   const cornerResult=gradeFinalTeamCornerMarket(line,result);
   if(cornerResult!==undefined)return cornerResult;
@@ -1185,6 +1274,8 @@ export function gradeLine(line, result) {
     }
 
     case 'CHANCE_MIX': {
+      if(isOrTotalMarket(line.market_name))
+        return gradeOrTotalSelection(parseOrTotalSelection(line),home,away);
       const isDrawBtts = /\bdraw\s+or\s+both\s+teams?\s+(?:to\s+)?score\b/i.test(line.market_name);
       if (isDrawBtts) {
         const won = (home === away) || (home > 0 && away > 0);
@@ -1531,21 +1622,27 @@ export function settledOddsFor(line,result,status){
  return period&&period.home===period.away?1:null;
 }
 /**
- * First-half-only score contracts may settle on verified HT independently of
- * the full-time result. No corner/card/player-event or HT/FT proposition
- * may use the synthetic HT-only score context.
+ * First-half score and aggregate-stat contracts settle at the recorded HT
+ * transition. Event-order, player and HT/FT propositions keep their own rules.
  */
 export function firstHalfScoreOnly(line){
- if(!line||Array.isArray(line.builder_legs)||needsEvents(line))return false;
+ if(!line||Array.isArray(line.builder_legs))return false;
  line=withFrozenPeriod(line);
  const name=String(line.market_name??''),lower=name.toLowerCase();
  const period=scorePeriodOf(line);
  if(period!==1)return false;
+ const statContract=statisticMarketContract(line);
+ const halfMarketName=name.replace(/^(?:(?:first|1st|second|2nd)\s*half|1h|2h)\s*[-: ]*/i,'');
+ const halfTeamCorner=parseTeamCountMarket({...line,market_name:halfMarketName,period:0});
+ const aggregateHalfStatistic=(isStatisticMarket(line)&&statContract?.supported)||
+  fullTimeAggregateCornerContract(line)?.period===1||halfTeamCorner?.event==='corner';
+ if(needsEvents(line)&&!aggregateHalfStatistic)return false;
  if(/\b(?:both halves|either half|each half|second half|2nd half|full time|rest of match|extra time)\b/i.test(name)||
     /\b(?:ht\s*\/\s*ft|halftime\s*\/\s*fulltime|half.?time\s*\/\s*full.?time)\b/i.test(name))
   return false;
- if(/\b(?:corners?|kornera?|cards?|bookings?|kartona?|fouls?|faulle?|shots?|goditj|players?|lojtare?|offsides?)\b/i.test(name))return false;
- if(isHtFtMarket(name)||isStatisticMarket(line)||isHalfExactMarketFamily(line))return false;
+ if(/\b(?:corners?|kornera?|cards?|bookings?|kartona?|fouls?|faulle?|shots?|goditj|players?|lojtare?|offsides?)\b/i.test(name)&&!aggregateHalfStatistic)return false;
+ if(isHtFtMarket(name)||isHalfExactMarketFamily(line))return false;
+ if(aggregateHalfStatistic)return true;
  const saved=line.live_contract;
  if(saved){
   if(saved.kind==='period-goal-total')
@@ -1578,10 +1675,13 @@ export function gradeAtVerifiedHalfTime(line,half){
  const home=scoreValue(half.half_home_score),away=scoreValue(half.half_away_score);
  if(home===null||away===null)return null;
  line=withFrozenPeriod(line);
- // Deliberately synthetic, scoped ONLY to the vetted 1H subset above.
- // This result never enters app_match_result or a FT audit.
- const result={home_team:half.home_team,away_team:half.away_team,
-  home_score:home,away_score:away,half_home_score:home,half_away_score:away};
+ // Synthetic HT-only context for the vetted score and aggregate-stat subset.
+ // It never enters app_match_result or a full-time audit.
+ const halfStatistics=typeof half.statistics==='string'?JSON.parse(half.statistics||'{}'):(half.statistics??{});
+ const result={source:'ZIZOBET',home_team:half.home_team,away_team:half.away_team,
+  home_score:home,away_score:away,half_home_score:home,half_away_score:away,
+  corners_home:halfStatistics.corners?.home??null,corners_away:halfStatistics.corners?.away??null,
+  statistics:{...halfStatistics,periods:{firstHalf:halfStatistics}}};
  let status;
  if(line.live_contract?.kind==='period-goal-total')
   status=gradePeriodGoalTotal(line.live_contract,result);
@@ -1605,7 +1705,7 @@ export async function settleVerifiedHalftimes({
  runQuery=query,update=updatePendingLine,recalc=recalcTicket
 }={}){
  const rows=await nextHalfTimeLines(runQuery,[
-  'select l.*,t.placed_at,h.home_team,h.away_team,h.half_home_score,h.half_away_score,h.confirmed_at,h.first_seen_at',
+  'select l.*,t.placed_at,h.home_team,h.away_team,h.half_home_score,h.half_away_score,h.statistics,h.confirmed_at,h.first_seen_at',
   'from app_ticket_line l',
   'join app_ticket t on t.id=l.ticket_id',
   'join app_match_half_result h on h.match_id=l.match_id',
@@ -1830,21 +1930,29 @@ export async function settleMatch(matchId) {
       unresolved.push({line,result});
       continue;
     }
+    // Recover old native corner contracts from the immutable accepted quote
+    // before the generic hold guard. Only known parser-migration holds qualify.
+    const recoveredCornerContract=!line.live_contract?
+      recoverLegacyZizobetCornerContract(line):null;
     if(line?.accepted_contract?.settlementHold&&
-       gradeHeldNativeCombo(line,result)===null){
+       gradeHeldNativeCombo(line,result)===null&&!recoveredCornerContract){
       unresolved.push({line,result});
       continue;
     }
     let status=null;
-    // Old Zizobet corner tickets may predate a native parser. Rebuild only
-    // from the immutable accepted ZIZOBET quote; never from AAMS or display text.
-    const recoveredCornerContract=!line.live_contract?
-      recoverLegacyZizobetCornerContract(line):null;
+    const accepted=recoveredCornerContract&&typeof line.accepted_contract==='string'
+      ?JSON.parse(line.accepted_contract):line.accepted_contract;
     const settlementLine=recoveredCornerContract?
-      {...line,live_contract:recoveredCornerContract}:line;
+      {...line,live_contract:recoveredCornerContract,
+       accepted_contract:{...accepted,settlementHold:null}}:line;
     // A frozen event contract is graded against PostgreSQL provider facts,
     // never parsed from a translated/displayed name at settlement time.
-    if(settlementLine.live_contract&&SUPPORTED_FACT_KINDS.has(settlementLine.live_contract.kind)){
+    // Simple full-time corner Over/Under quotes use the final aggregate
+    // counters, never a recovered event-timeline contract.
+    const aggregateCornerTotal=!!fullTimeAggregateCornerContract(settlementLine);
+    const aggregateStatistic=isAggregateStatisticSettlement(settlementLine,result);
+    if(!aggregateStatistic&&settlementLine.live_contract&&
+       SUPPORTED_FACT_KINDS.has(settlementLine.live_contract.kind)){
       status=await gradeStoredEventContract(settlementLine,result,{execute:query});
     }
     if(!['WON','LOST','VOID'].includes(status)&&hasRequiredSettlementEvidence(settlementLine,result)){
@@ -1890,10 +1998,10 @@ export async function settleMatch(matchId) {
  */
 export async function settleVerifiedEventFacts({
   runQuery=query, grade=gradeStoredEventContract, update=updatePendingLine,
-  recalc=recalcTicket, limit=120
+  recalc=recalcTicket, limit=120,matchId=null
 }={}){
  const cap=Math.max(1,Math.min(300,Number(limit)||120));
- const rows=await nextPrimaryEventLines(runQuery,`select l.* from app_ticket_line l
+ const selectSql=`select l.* from app_ticket_line l
    join app_ticket t on t.id=l.ticket_id
    where l.status='PENDING' and t.status='PENDING'
      and l.live_contract is not null
@@ -1907,7 +2015,11 @@ export async function settleVerifiedEventFacts({
              and exists(select 1 from app_match_result mr where mr.match_id=l.match_id
                and mr.source in ('ZIZOBET','ADMIN','RECOVERY')
                and mr.home_score is not null and mr.away_score is not null))
-         ))`,cap);
+         ))`;
+ const scopedMatchId=matchId==null?null:Number(matchId);
+ const rows=scopedMatchId==null
+  ?await nextPrimaryEventLines(runQuery,selectSql,cap)
+  :(await runQuery(selectSql+` and l.match_id=$1::bigint order by l.id limit $2`,[scopedMatchId,cap])).rows;
  if(!rows.length)return {examined:0,graded:0,closed:[]};
  const ids=[...new Set(rows.map(l=>l.match_id))];
  const finals=(await runQuery("select match_id,home_score,away_score,corners_home,corners_away,cards_home,cards_away,source from app_match_result where source in ('ZIZOBET','ADMIN','RECOVERY') and home_score is not null and away_score is not null and match_id=any($1::bigint[])",[ids])).rows;
@@ -1935,7 +2047,7 @@ export async function settleVerifiedEventFacts({
  * full-time result. Every other live market remains on the existing final
  * result path; missing evidence means PENDING rather than a guessed answer.
  */
-export async function settleClosedCornerWindows({runQuery=query,loadEvidence=loadEventEvidence,update=updatePendingLine,recalc=recalcTicket}={}){
+export async function settleClosedCornerWindows({runQuery=query,loadEvidence=loadEventEvidence,update=updatePendingLine,recalc=recalcTicket,matchId=null}={}){
  const {rows}=await runQuery(`select l.* from app_ticket_line l
    join app_ticket t on t.id=l.ticket_id
    where l.status='PENDING' and t.status='PENDING'
@@ -1944,8 +2056,9 @@ export async function settleClosedCornerWindows({runQuery=query,loadEvidence=loa
      and l.live_contract is null
      and coalesce(l.accepted_contract->>'settlementHold','')=''
      and not exists(select 1 from app_settlement_override o where o.line_id=l.id)
-   order by l.match_id,l.id`);
- const cache=new Map(),proposals=[];
+     and ($1::bigint is null or l.match_id=$1)
+   order by l.match_id,l.id`,[matchId==null?null:Number(matchId)]);
+  const cache=new Map(),proposals=[];
  for(const line of rows){
   if(isPlayerOfferMarket(line))continue;
   const id=String(line.match_id);
@@ -1960,6 +2073,33 @@ export async function settleClosedCornerWindows({runQuery=query,loadEvidence=loa
  const graded=changed.length,tickets=[...new Set(changed.map(row=>row.ticket_id))];
  const closed=(await mapLimit(tickets,4,recalc)).filter(Boolean);
  return {graded,closed};
+}
+
+/** Run irreversible live-settlement checks immediately after a watched
+ * Zizobet frame is durably stored. Scope every query to that fixture.
+ */
+export async function settleLiveMatchMilestones(matchId){
+ const id=Number(matchId);
+ if(!Number.isSafeInteger(id)||id<=0)
+  return {matchId:null,events:0,windows:0,previews:0,graded:0,closed:0};
+ let events={examined:0,graded:0,closed:[]};
+ let windows={graded:0,closed:[]};
+ let previews={examined:0,proposed:0,held:0};
+ let live={enabled:false,examined:0,graded:0,closed:[]};
+ try{events=await settleVerifiedEventFacts({matchId:id});}
+ catch(error){console.error('[settle] immediate event facts failed for',id,error.message);}
+ try{windows=await settleClosedCornerWindows({matchId:id});}
+ catch(error){console.error('[settle] immediate corner windows failed for',id,error.message);}
+ try{previews=await createLiveSettlementPreviews({matchId:id});}
+ catch(error){console.error('[settle] immediate live preview failed for',id,error.message);}
+ try{live=await settleVerifiedLiveProposals({
+  matchId:id,updateLine:updatePendingLine,closeTicket:recalcTicket,
+  enabled:process.env.LIVE_VERIFIED_AUTO_SETTLEMENT_ENABLED!=='false'
+ });}
+ catch(error){console.error('[settle] immediate verified live settlement failed for',id,error.message);}
+ return {matchId:String(id),events:events.graded,windows:windows.graded,
+  previews:previews.proposed,graded:events.graded+windows.graded+live.graded,
+  closed:events.closed.length+windows.closed.length+live.closed.length};
 }
 
 /** Line grading commits before ticket payment. A crash or transient database

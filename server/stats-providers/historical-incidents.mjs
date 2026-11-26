@@ -34,7 +34,7 @@ const idOf=(event,type,team,minute,color,index,injury=0)=>{
    event?.player?.name??event?.player_name??event?.nameStr??'';
  return ['unkeyed',type,team??'',minute,injury,actor,color??'',event?.detail??''].join('|');
 };
-const map=(entries,adapt)=>{
+const map=(entries,adapt,{emptyListsAreComplete=false}={})=>{
  const corner=[],card=[];
  for(let i=0;i<entries.length;i++){
   const row=adapt(entries[i],i);
@@ -42,8 +42,10 @@ const map=(entries,adapt)=>{
   if(row.type==='corner')corner.push(row);
   if(row.type==='card')card.push(row);
  }
+ const completeEmpty=emptyListsAreComplete&&Array.isArray(entries);
  return {cornerEvents:corner,cardEvents:card,
-  cornerTimelineAvailable:corner.length>0,cardTimelineAvailable:card.length>0};
+  cornerTimelineAvailable:corner.length>0||completeEmpty,
+  cardTimelineAvailable:card.length>0||completeEmpty};
 };
 /** Optional actor identity is provenance, not proof of participation or
  * culpability. Never replace a missing player with the team or an assist.
@@ -77,7 +79,7 @@ export function fotMobTimedIncidents(rawEvents){
   const minute=minuteOf(e.time),injury=addedOf(e.time);
   const detail=e.card??e.cardType??e.detail??'';
   return make(e,index,type,team,minute,injury,type==='card'?colorOf(detail):null,detail);
- });
+ },{emptyListsAreComplete:true});
 }
 
 /** API-Football fixture event rows; corners are not assumed to be supplied. */

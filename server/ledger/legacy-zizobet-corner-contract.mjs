@@ -12,7 +12,9 @@ export function recoverLegacyZizobetCornerContract(line){
  if(typeof accepted==='string'){
   try{accepted=JSON.parse(accepted);}catch{return null;}
  }
- if(!accepted||typeof accepted!=='object'||accepted.settlementHold)return null;
+ if(!accepted||typeof accepted!=='object')return null;
+ const hold=String(accepted.settlementHold??'');
+ if(hold&&!['NATIVE_PARAMETERS_UNMAPPED','NATIVE_FINAL_RULE_UNMAPPED'].includes(hold))return null;
  if(String(accepted.sourceProviderId??'').toUpperCase()!=='ZIZOBET')return null;
  const nativeName=String(accepted.nativeMarketName??'').trim();
  if(!nativeName||!/\b(?:corner|corners|corner kicks|kornera)\b/i.test(nativeName))return null;

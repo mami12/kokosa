@@ -66,7 +66,11 @@ const teamIdentity=s=>{
   if(academy&&['academy','akademie','youth'].includes(token))return false;
   return true;
  });
- const core=tokens.join(' ');
+ let core=tokens.join(' ');
+ // Providers disagree on the Inter Milan display label:
+ // "Inter Milan", "Internazionale Milano" and "Inter FC" are the same club.
+ // Collapse only this exact senior-club identity; never match Inter Miami/Turku.
+ if(core==='inter milan')core='inter';
  return core.length>=3?{core,category:categoryParts.sort().join('|')}:null;
 };
 /** Human-readable standardized comparison key, not a provider or database ID. */

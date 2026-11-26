@@ -66,6 +66,11 @@ assert.equal(liveContract(rangeAwayCorners)?.kind,'window-total');
 const numberedGoal=nativeZizobetContractRow(offer(9024,
  'Who scores goal number in minutes time range (10-minute interval)',
  {p1:21,p2:30,p3:2},'','1'));
+const numberedCorner=nativeZizobetContractRow(offer(9025,
+ 'Who takes the [corner!] corner',{p3:4},'','1'));
+assert.equal(numberedCorner.market_name,'Who takes the 4 corner');
+assert.equal(liveContract(numberedCorner)?.kind,'sequence',
+ 'The native [corner!] token uses p3 to freeze the ordinal corner selection');
 assert.equal(numberedGoal.market_name,'Who scores goal 2 in minutes 21-30 (10-minute interval)');
 assert.equal(liveContract(numberedGoal)?.kind,'nth-time');
 

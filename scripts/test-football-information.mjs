@@ -2,7 +2,7 @@ import './fixtures/isolated-casino-env.mjs';
 import assert from 'node:assert/strict';
 import {
  marketInformationNeeds,selectedInformationEndpoints,missingSupplementalNeeds,describeJsonStructure,
- parseAiScoreFinalStatistics,
+ parseAiScoreFinalStatistics,aiscoreFixtureMatches,
  requestFootballInformation,canonicalHttpError,isFootballFixture,
  setFootballInformationMapping,inspectFootballInformation,
  createFootballInformationCollector,FOOTBALL_INFORMATION_SQL
@@ -17,36 +17,39 @@ assert.equal(isFootballFixture({sport_id:2}),false);
 assert.equal(isFootballFixture({}),false);
 
 const goal=marketInformationNeeds([{market_name:'Next Goal (Goal 2)'},{market_name:'Player to Score a Goal'}]);
-assert.deepEqual(goal,['player'],'Only missing player identity qualifies; Next Goal belongs to PRIMARY');
+assert.deepEqual(goal,[],'Player props and event-order markets are not aggregate AiScore settlement needs');
 const corners=marketInformationNeeds([{market_name:'Race to 7 Corners'},
  {market_name:'Race to 6 Goals'},{market_name:'Goal in minutes 10-20'},
  {market_name:'Total Fouls'},{market_name:'Red Cards'},{market_name:'Shots on Target'}]);
-assert.deepEqual(corners,['fouls','red','shotsOnTarget'],'Only aggregate statistic dependencies are selected; race/interval event markets remain Zizobet-only');
+assert.deepEqual(corners,['red'],'Only supported full-match card/corner aggregates qualify; fouls and shots are excluded');
+assert.deepEqual(marketInformationNeeds([{market_name:'Total Corners'},{market_name:'Total Cards'},{market_name:'Yellow Cards'}]),['corners','cards','yellow']);
 assert.deepEqual(marketInformationNeeds([{market_name:'Full Time Result'}]),[]);
 const map={aiscore_id:'j374oi0xz04sgqo',thesports01_id:'4578950',mapping_status:'ADMIN_SUPPLIED_UNVERIFIED'};
 assert.deepEqual(selectedInformationEndpoints(map,[]),[]);
-const endpoints=selectedInformationEndpoints(map,goal);
+const endpoints=selectedInformationEndpoints(map,['player']);
 assert.ok(endpoints.some(x=>x.url.includes('/match/s?match_id=j374oi0xz04sgqo')));
 assert.ok(endpoints.some(x=>x.url.includes('/match/mlive?')));
 assert.ok(endpoints.every(x=>!x.url.includes('/match/team_stats')));
 assert.ok(endpoints.every(x=>!x.url.includes('/odds_list')));
 assert.ok(endpoints.every(x=>!x.url.includes('/user/info')));
 assert.ok(endpoints.every(x=>!x.url.includes('/chat/')));
-const statEndpoints=selectedInformationEndpoints(map,['shotsOnTarget']);
+const statEndpoints=selectedInformationEndpoints(map,['corners']);
 assert.deepEqual(statEndpoints.map(x=>x.key),['aiscore:match','aiscore:mlive'],
- 'AiScore is a fallback only for a named missing statistic after the other final providers have run');
+ 'AiScore is a fallback only for a supported missing aggregate after the other final providers have run');
+assert.deepEqual(selectedInformationEndpoints(map,['shotsOnTarget','fouls']),[],
+ 'Unsupported shots and fouls can never trigger AiScore settlement requests');
 assert.deepEqual(missingSupplementalNeeds(['shotsOnTarget','fouls'],{
  statistics:{shotsOnTarget:{home:5,away:2},fouls:{home:10,away:12}},providersEnabled:true
 }),[],'Zizobet has all facts, no backup call');
-assert.deepEqual(missingSupplementalNeeds(['fouls'],{
+assert.deepEqual(missingSupplementalNeeds(['fouls','shots','shotsOnTarget'],{
  statistics:{},providersEnabled:true
-}),[],'Wait for the configured statistics providers to complete their final attempt');
+}),[],'Unsupported stats are ignored and never become AiScore settlement requests');
 assert.deepEqual(missingSupplementalNeeds(['fouls'],{
  statistics:{},review:{complete:true,attempted:['bsd','sportapi','goalapi'],consensus:{}},providersEnabled:true
-}),['fouls'],'Missing stats after configured provider attempts: AiScore becomes eligible');
+}),[],'Unsupported statistics stay outside the settlement evidence contract');
 assert.deepEqual(missingSupplementalNeeds(['fouls'],{
  statistics:{},review:{complete:true,attempted:['bsd'],consensus:{fouls:{home:3,away:0}}},providersEnabled:true
-}),[],'Another final provider supplied fouls; AiScore is unnecessary');
+}),[],'Unsupported fouls do not enter the AiScore recovery path even when present in legacy tickets');
 assert.deepEqual(missingSupplementalNeeds(['player','timeline'],{
  primaryEvents:{events:[{type:'goal',player:'Test scorer'}]}
 }),['player','timeline'],'A scorer string without own-goal evidence is still ambiguous');
@@ -87,7 +90,8 @@ assert.deepEqual(aiFinal?.values.corners,{home:5,away:3});
 assert.deepEqual(aiFinal?.values.yellow,{home:2,away:1});
 assert.deepEqual(aiFinal?.values.red,{home:1,away:0});
 assert.deepEqual(aiFinal?.values.cards,{home:3,away:1});
-assert.deepEqual(aiFinal?.values.shotsOnTarget,{home:4,away:2});
+assert.equal(Object.hasOwn(aiFinal?.values??{},'shotsOnTarget'),false,
+ 'unsupported shots-on-target facts are not included in AiScore settlement evidence');
 assert.equal(parseAiScoreFinalStatistics({...verifiedAiPayload,data:{match:{...verifiedAiPayload.data.match,status:'LIVE'}}},'j374oi0xz04sgqo',ledgerMatch),null,
  'a live or not explicitly finished AiScore response is never final settlement evidence');
 assert.equal(parseAiScoreFinalStatistics(verifiedAiPayload,'wrong-id',ledgerMatch),null,
@@ -96,6 +100,24 @@ assert.equal(parseAiScoreFinalStatistics(verifiedAiPayload,'j374oi0xz04sgqo',{..
  'a mismatch in either team blocks AiScore settlement data');
 assert.equal(parseAiScoreFinalStatistics(verifiedAiPayload,'j374oi0xz04sgqo',{...ledgerMatch,start_at:'2026-11-06T21:00:00.000Z'}),null,
  'a kickoff mismatch blocks AiScore settlement data');
+
+// AiScore team aliases use the same strict club identity as FotMob matching.
+const interMatch={match_id:102,sport_id:1,home:'Inter Milan',away:'Cagliari Calcio',
+ start_at:'2026-11-06T16:00:00.000Z'};
+const interAiPayload={data:{match:{
+ id:'j374oi0xz04sgqo',
+ home_team:{name:'Inter FC',stats:{corners:7,yellowCards:2,redCards:0}},
+ away_team:{name:'Cagliari',stats:{corners:4,yellowCards:3,redCards:0}},
+ start_at:'2026-11-06T16:00:00.000Z',status:'FT'
+}}};
+assert.equal(aiscoreFixtureMatches(interAiPayload,'j374oi0xz04sgqo',interMatch),true,
+ 'Inter Milan (Zizobet) must match Inter FC (AiScore)');
+assert.deepEqual(parseAiScoreFinalStatistics(interAiPayload,'j374oi0xz04sgqo',interMatch)?.values.corners,
+ {home:7,away:4},
+ 'AiScore final statistics can fill the Inter fixture only after the strict ID/name/kickoff check');
+assert.equal(aiscoreFixtureMatches(interAiPayload,'j374oi0xz04sgqo',
+ {...interMatch,home:'Inter Miami'}),false,
+ 'Inter Miami must not be treated as Inter Milan');
 
 const mapSql=[];
 const mapped=await setFootballInformationMapping({
@@ -126,7 +148,8 @@ const db=async(sql,params)=>{
 };
 const result=await inspectFootballInformation(101,{
  runQuery:db,loadMatch:async()=>ledgerMatch,now:()=>Date.parse('2026-11-06T16:30:00Z'),
- request:async url=>{fetchedUrls.push(url);return response({data:{events:[{type:'goal',minute:14,team:'home'}]}});}
+ request:async url=>{fetchedUrls.push(url);return response({data:{events:[{type:'goal',minute:14,team:'home'}]}});},
+ needsOverride:['player']
 });
 assert.equal(result.matchId,101);
 assert.equal(result.mappingStatus,'ADMIN_SUPPLIED_UNVERIFIED');

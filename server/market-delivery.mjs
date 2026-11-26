@@ -1,7 +1,7 @@
 import {isSameGameComboLine} from './ledger/combo-policy.mjs';
 import {marketIsEnabled} from './market-catalog.mjs';
 import {isExcludedOfferMarket} from './market-policy.mjs';
-export const CATEGORIES=['all','Popular','Goals','Mixed','Corners','Halves','Other'];
+export const CATEGORIES=['all','Popular','Goals','Mixed','Corners','Cards','Halves','Other'];
 export function deliveryCategory(m={}){
  const n=String(m.name??'').toLowerCase(),type=String(m.marketType??'').toLowerCase();
  if(isSameGameComboLine({name:n})||/\b(?:outcome|double chance)\s+(?:and|&|\+)\s+(?:both|total)/i.test(n)||/will win (?:and|&) score exact/i.test(n))return 'Mixed';
@@ -14,7 +14,7 @@ export function deliveryCategory(m={}){
  if(type==='over_under'||/\bgoals?\b|\btotal\b|over\s*\/?\s*under|both teams|btts|correct score|odd\s*\/\s*even/.test(n))return 'Goals';
  return 'Other';
 }
-export const offeredMarket=(m,match)=>!['Cards','Players'].includes(deliveryCategory(m))&&!isExcludedOfferMarket(m)&&marketIsEnabled(m,match);
+export const offeredMarket=(m,match)=>deliveryCategory(m)!=='Players'&&!isExcludedOfferMarket(m)&&marketIsEnabled(m,match);
 export function detailProjection(match,category='all',page){
  const markets=(match.markets??[]).filter(m=>offeredMarket(m,match)),sets=Object.fromEntries(CATEGORIES.map(c=>[c,new Set()]));
  for(const m of markets){const key=[m.extId??m.key,m.name,m.period??0].join('|');sets.all.add(key);sets[deliveryCategory(m)].add(key);}

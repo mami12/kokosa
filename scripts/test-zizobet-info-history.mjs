@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {providerTimeline} from '../server/live-event-timeline.mjs';
 import {normalizeLiveFrame} from '../server/ledger/live-observation-store.mjs';
+import {projectZizobetHistory} from '../server/ledger/zizobet-match-history.mjs';
+import {isFinalZizobetMatch,shouldProcessFinalHistoryDetail,postFinalHistoryRetryDelay,newlyConfirmedHistoryKinds} from '../server/zizobet-feed.mjs';
 import {infoOf,oddsOf,resolveMarketTitle} from '../server/zizobet/normalize.mjs';
 import {providerResultPair,teamStatisticsFromRow} from '../server/match-statistics.mjs';
 
@@ -51,6 +53,60 @@ const noClockFinal=normalizeLiveFrame({Match:cornerGame,TimeLines:endedTimeline}
 assert.equal(noClockFinal.clock,130,'An authoritative FT result closes event coverage without a clock');
 assert.equal(noClockFinal.coverage.cornerThrough,130,
  'RESULT_CORNERFT reconciles the complete final corner timeline when the clock is omitted');
+
+// Stoppage-time incidents are still part of regular-time settlement. This
+// reproduces the reported 15 -> 17 corner case: two incidents arrive at 91' and 94'.
+const lateTimeline=[
+ ...Array.from({length:15},(_,i)=>({
+  id:'pre-late-'+i,type:'corner_kick',team:i<8?1:2,gt:String(5+i*5)
+ })),
+ {id:'corner-91',type:'corner_kick',team:1,gt:'90',clk:'91:20'},
+ {id:'corner-94',type:'corner_kick',team:2,gt:'90+4',clk:'94:06'}
+];
+const shownLate=providerTimeline('late-match',lateTimeline);
+assert.equal(shownLate.length,17,'All 17 corners must remain in the displayed history');
+assert.deepEqual(shownLate.slice(-2).map(e=>[e.minute,e.addedMinute,e.minuteLabel]),[
+ [90,1,'90+1'],[90,4,'90+4']
+],'Display timeline retains base minute, added minute and full stoppage-time label separately');
+const lateMatch={MatchStatusID:40,Score:'1:0',CornersTeam1:8,CornersTeam2:7,
+ RESULT_CORNERFT:'9:8'};
+const lateData={Match:lateMatch,TimeLines:lateTimeline};
+const lateFrame=normalizeLiveFrame(lateData);
+assert.equal(lateFrame.ended,true,'MatchStatusID=40 is sufficient FT evidence');
+assert.deepEqual(lateFrame.teams.corner,{home:9,away:8},
+ 'Use the final 17-corner provider counter, not the stale pre-90 counter');
+assert.equal(lateFrame.events.filter(e=>e.type==='corner').length,17);
+assert.equal(lateFrame.coverage.cornerThrough,130,
+ 'A reconciled final timeline covers stoppage time even when no final clock is supplied');
+const lateHistory=projectZizobetHistory(8099,lateData,{home:'Inter',away:'Opponent'});
+assert.ok(lateHistory.verifiedKinds.includes('corner'),
+ 'The 15+2 chronology reconciles and becomes verified Zizobet corner facts');
+assert.equal(lateHistory.events.at(-2).minute,91);
+assert.equal(lateHistory.events.at(-1).minute,94);
+
+// A header can mark FT via MatchStatusID while the detailed endpoint omits
+// EventStatus. That detail must be archived rather than silently discarded.
+assert.equal(isFinalZizobetMatch({MatchStatusID:40}),true,
+ 'MatchStatusID alone marks the fixture ended for scheduling and display');
+assert.equal(isFinalZizobetMatch({EventStatus:40}),true);
+assert.equal(isFinalZizobetMatch({MatchStatusID:30}),false);
+assert.equal(shouldProcessFinalHistoryDetail('ended',{MatchStatusID:40}),true);
+assert.equal(shouldProcessFinalHistoryDetail('ended',{EventStatus:40}),true);
+assert.equal(shouldProcessFinalHistoryDetail('ended',{}),true,
+ 'An omitted status on the detail response is not proof that timeline data is stale');
+assert.equal(shouldProcessFinalHistoryDetail('ended',{EventStatus:30,MatchStatusID:40}),false,
+ 'An explicit non-final detail status is still rejected');
+assert.equal(postFinalHistoryRetryDelay(2*60_000,60_000,1),6_000);
+assert.equal(postFinalHistoryRetryDelay(2*60_000,60_000,10),6_000);
+assert.equal(postFinalHistoryRetryDelay(2*60_000,60_000,11),15_000);
+assert.equal(postFinalHistoryRetryDelay(2*60_000,60_000,20),15_000);
+assert.equal(postFinalHistoryRetryDelay(2*60_000,60_000,21),30_000);
+assert.equal(postFinalHistoryRetryDelay(2*60_000,60_000,40),30_000);
+assert.equal(postFinalHistoryRetryDelay(2*60_000,60_000,41),60_000);
+assert.equal(postFinalHistoryRetryDelay(50*60_000,60_000,41),300_000);
+assert.deepEqual(newlyConfirmedHistoryKinds([],['corner','goal']),['corner','goal']);
+assert.deepEqual(newlyConfirmedHistoryKinds(['corner'],['corner','goal']),['goal']);
+assert.deepEqual(newlyConfirmedHistoryKinds(['corner','goal'],['corner','goal']),[]);
 
 const ui=readFileSync(new URL('../web/src/components/Tracker/PitchTracker.tsx',import.meta.url),'utf8');
 const css=readFileSync(new URL('../web/src/styles/zshop.css',import.meta.url),'utf8');

@@ -725,8 +725,11 @@ export function gradeLiveContract(contract,evidence={}, {ended=false,scopeEnded=
  // Never use the combined match total for a home/away-only selection.
  // A color-qualified card also requires an independently verified colored
  // chronology; the regular LIVE scoreboard cannot establish yellow vs red.
- const count=contract.cardColor?null:number(contract.side?
-   evidence.teams?.[event]?.[contract.side]:eventCount(evidence.counts,event));
+ const colorPair=contract.cardColor?evidence.teams?.[contract.cardColor+'Card']:null;
+ const count=contract.cardColor?
+  (evidence.cardColorsVerified===true&&colorPair?
+   number(contract.side?colorPair[contract.side]:number(colorPair.home)+number(colorPair.away)):null):
+  number(contract.side?evidence.teams?.[event]?.[contract.side]:eventCount(evidence.counts,event));
  if(contract.kind==='team-total-goals'){
   const side=contract.side;
   if(!['home','away'].includes(side)||!['over','under'].includes(contract.choice))return null;
@@ -830,7 +833,7 @@ export function gradeLiveContract(contract,evidence={}, {ended=false,scopeEnded=
  * shadow decisions until the provider's live results have been validated.
  */
 export function gradeFromAcceptedCounters(contract,frame={}){
- if(!contract||!['sequence','race','window','window-total','nth-time'].includes(contract.kind))return null;
+ if(!contract||!['sequence','race','half-race','half-next-event','half-total','period-goal-total','window','window-total','nth-time'].includes(contract.kind))return null;
  const timed=['window','window-total','nth-time'].includes(contract.kind);
  // A timed bet placed during an interval is about incidents AFTER purchase.
  // Its accepted cumulative counters are frozen in entryBaseline. A later
@@ -883,12 +886,51 @@ export function gradeFromAcceptedCounters(contract,frame={}){
      count>contract.target)return 'LOST';
   return null;
  }
+ if(['half-total','period-goal-total'].includes(contract.kind)){
+  // The match-wide counters are exact first-half counters only while 1H
+  // remains open. Second-half totals require their own period evidence.
+  if(contract.half!==1||!Number.isFinite(Number(frame.clock))||Number(frame.clock)>=45)
+   return null;
+  const colorPair=contract.cardColor?frame.teams?.[contract.cardColor+'Card']:null;
+  if(contract.cardColor&&
+     (contract.event!=='card'||frame.cardColorsVerified!==true||!colorPair))return null;
+  const pair=colorPair??frame.teams?.[contract.event];
+  const home=nonNeg(pair?.home),away=nonNeg(pair?.away);
+  if(home===null||away===null)return null;
+  const count=contract.side==='home'?home:contract.side==='away'?away:home+away;
+  if(contract.kind==='half-total'){
+   if(!Number.isFinite(contract.threshold)||!['over','under'].includes(contract.choice))return null;
+   return count>contract.threshold?
+    (contract.choice==='over'?'WON':'LOST'):null;
+  }
+  const selection=contract.selection,target=Number(contract.target);
+  if(selection==='over'||selection==='under'){
+   if(!Number.isFinite(target))return null;
+   return count>target?(selection==='over'?'WON':'LOST'):null;
+  }
+  if(selection==='atLeast')return Number.isSafeInteger(target)&&count>=target?'WON':null;
+  if(selection==='exact')return Number.isSafeInteger(target)&&count>target?'LOST':null;
+  if(selection==='range')return Number.isSafeInteger(contract.max)&&count>contract.max?'LOST':null;
+  return null;
+ }
  const base=contract.baseline,latest=frame.teams?.[contract.event];
  const bh=nonNeg(base?.home),ba=nonNeg(base?.away),
   h=nonNeg(latest?.home),a=nonNeg(latest?.away);
  if([bh,ba,h,a].some(v=>v===null)||h<bh||a<ba)return null;
  const deltaHome=h-bh,deltaAway=a-ba,delta=deltaHome+deltaAway;
  const end=frame.ended===true;
+ const halfScoped=['half-race','half-next-event'].includes(contract.kind);
+ // Match-wide running counters equal 1H counters only before the half-time
+ // boundary. Never borrow them to settle a 2H contract or a 45+ ambiguity.
+ if(halfScoped&&(contract.half!==1||!Number.isFinite(Number(frame.clock))||
+    Number(frame.clock)>=45))return null;
+ if(contract.kind==='half-next-event'){
+  if(contract.event!=='goal'||!Number.isSafeInteger(contract.target)||
+     contract.target!==bh+ba+1||delta!==1)return null;
+  const scoringSide=deltaHome===1?'home':deltaAway===1?'away':null;
+  if(!scoringSide)return null;
+  return contract.side===scoringSide?'WON':'LOST';
+ }
  if(contract.kind==='sequence'){
   if(contract.target!==bh+ba+1)return null;
   if(delta===1){
@@ -898,7 +940,7 @@ export function gradeFromAcceptedCounters(contract,frame={}){
   if(delta===0&&end)return contract.noneOffered===true?(contract.side==='none'?'WON':'LOST'):'VOID';
   return null;
  }
- if(bh>=contract.target||ba>=contract.target)return null;
+ if(!['race','half-race'].includes(contract.kind)||bh>=contract.target||ba>=contract.target)return null;
  const homeReached=h>=contract.target,awayReached=a>=contract.target;
  if(contract.side==='none'){
   if(homeReached||awayReached)return 'LOST';

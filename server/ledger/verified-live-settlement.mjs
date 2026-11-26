@@ -30,6 +30,7 @@ left join app_live_event_cursor c on c.match_id=l.match_id
 where t.status='PENDING' and l.status='PENDING'
   and l.live_contract is not null
   and not exists(select 1 from app_settlement_override o where o.line_id=l.id)
+  and ($2::bigint is null or l.match_id=$2)
 order by p.updated_at,p.line_id limit $1
 `;
 
@@ -55,80 +56,89 @@ export function primaryLiveDecision(contract,frame){
 }
 
 /** Return a financial-grade decision only after a separate later provider poll. */
-export function verifiedSecondLiveDecision(row,{now=Date.now()}={}){
+export function verifiedSecondLiveDecision(row,{now=Date.now}={}){
  if(row?.open_recovery_gap===true||!row||isPlayerOfferMarket(row))return null;
  const old=obj(row.payload),contract=obj(row.live_contract),current=obj(row.provider_frame);
  const oldFrame=old?.frame;
  if(!contract||!oldFrame||!current||!old?.contract||
     JSON.stringify(contract)!==JSON.stringify(old.contract)||
     oldFrame.source!=='zizobet'||current.source!=='zizobet')return null;
- // Prove ONLY irreversible outcomes by comparing accepted counters with
- // TWO independent primary observations. Sequence/race uses whole-match
- // counters. An interval uses its own purchase baseline and must still be
- // running in BOTH frames. Player identity and a final UNDER/NO win cannot
- // be decided by a scoreboard delta.
- const timed=['window','window-total','nth-time'].includes(contract.kind);
- if(!['sequence','race','window','window-total','nth-time'].includes(contract.kind)||
-    !(timed?['goal','corner','card','foul']:['goal','corner','card']).includes(contract.event))return null;
- const base=timed?contract.entryBaseline:contract.baseline;
- if(!base||!['home','away'].every(side=>
-    Number.isSafeInteger(base[side])&&base[side]>=0))return null;
- if(timed&&(!Number.isFinite(contract.entryClockMinute)||
-    !Number.isFinite(contract.from)||!Number.isFinite(contract.to)||
-    contract.entryClockMinute<contract.from||
-    contract.entryClockMinute>=contract.to+1||contract.cardColor!=null))return null;
+
+ const timedKinds=['window','window-total','nth-time'].includes(contract.kind);
+ const timed=timedKinds&&contract.entryBaseline!=null;
+ // A LIVE timed quote must carry its frozen acceptance counters. Without them,
+ // the old timeline could contain an incident from before the purchase.
+ if(timedKinds&&!timed)return null;
+ const baselineDriven=timed||['sequence','race','half-race','half-next-event'].includes(contract.kind);
+ const firstHalfTotal=['half-total','period-goal-total'].includes(contract.kind)&&contract.half===1;
+ const supported=['sequence','race','half-race','half-next-event','half-total','period-goal-total','window','window-total','nth-time','interval-result',
+  'over','under','exact','range','atLeast','team-total-goals'];
+ if(!supported.includes(contract.kind)||!(timed?['goal','corner','card','foul']:['goal','corner','card']).includes(contract.event))return null;
+ if(baselineDriven){
+  const base=timed?contract.entryBaseline:contract.baseline;
+  if(!base||!['home','away'].every(side=>Number.isSafeInteger(base[side])&&base[side]>=0))return null;
+ }
+ if(timed&&(!Number.isFinite(contract.entryClockMinute)||!Number.isFinite(contract.from)||
+    !Number.isFinite(contract.to)||contract.entryClockMinute<contract.from||
+    contract.entryClockMinute>=contract.to+1))return null;
+
  const placed=millis(row.placed_at),first=millis(old.frameAt);
  const stored=millis(row.preview_at),latest=millis(row.frame_at),second=millis(row.second_seen_at);
  if(![placed,first,stored,latest,second,now].every(Number.isFinite))return null;
- // The first observation must follow the actual purchase. The second poll
- // must be later than the stored proposal, even if the returned JSON is equal.
- if(first<placed||stored<first||latest<first||latest>second||
-    second<stored+5000||second>now+5000||now-second>60000||
-    now-stored>300000||now-latest>300000)return null;
- // If Zizobet reassigns or corrects an incident between the two polls,
- // both snapshots might still have the same TOTAL even though its identity
- // changed. Never make a financial write from an unsettled correction.
- const firstTeamCounts=oldFrame.teams?.[contract.event];
- const secondTeamCounts=current.teams?.[contract.event];
- if(!['home','away'].every(side=>
-    Number.isSafeInteger(firstTeamCounts?.[side])&&
-    Number.isSafeInteger(secondTeamCounts?.[side])&&
-    firstTeamCounts[side]===secondTeamCounts[side]))return null;
- if(!Number.isFinite(oldFrame.clock)||!Number.isFinite(current.clock)||
-    current.clock<oldFrame.clock)return null;
- // A full provider timeline may corroborate the counters, but without
- // that timeline ONLY an unambiguous delta from the frozen purchase state
- // may authorize a financial write. Partial lists cannot choose the winner.
+ if(first<placed||stored<first||latest<first||latest>second||second<stored+5000||
+    second>now+5000||now-second>60000||now-stored>300000||now-latest>300000)return null;
+
+ const pairValid=pair=>pair&&['home','away'].every(side=>Number.isSafeInteger(pair[side])&&pair[side]>=0);
+ const countersConsistent=(before,after)=>{
+  if(!pairValid(before)||!pairValid(after))return false;
+  return ['home','away'].every(side=>baselineDriven?
+   before[side]===after[side]:after[side]>=before[side]);
+ };
+ if(contract.cardColor!=null){
+  if(contract.event!=='card'||!['yellow','red'].includes(contract.cardColor)||
+     oldFrame.cardColorsVerified!==true||current.cardColorsVerified!==true)return null;
+  const field=contract.cardColor+'Card';
+  if(!countersConsistent(oldFrame.teams?.[field],current.teams?.[field]))return null;
+ }else if(!countersConsistent(oldFrame.teams?.[contract.event],current.teams?.[contract.event]))return null;
+ if(!Number.isFinite(oldFrame.clock)||!Number.isFinite(current.clock)||current.clock<oldFrame.clock)return null;
+ const halfScoped=['half-race','half-next-event'].includes(contract.kind);
+ if(halfScoped&&(contract.half!==1||oldFrame.clock>=45))return null;
+ if(firstHalfTotal&&oldFrame.clock>=45)return null;
+
+ const firstDecision=primaryLiveDecision(contract,oldFrame);
+ const secondDecision=primaryLiveDecision(contract,current);
+ if(!['WON','LOST'].includes(firstDecision)||firstDecision!==row.proposed_status)return null;
+ if(!baselineDriven){
+  if(firstHalfTotal&&Number(current.clock)>=45)return firstDecision===row.proposed_status?firstDecision:null;
+  return secondDecision===firstDecision?firstDecision:null;
+ }
+
  const firstDelta=gradeFromAcceptedCounters(contract,oldFrame);
  const secondDelta=gradeFromAcceptedCounters(contract,current);
- if(!firstDelta||!['WON','LOST'].includes(firstDelta))return null;
- // The interval may end between two provider observations. If an earlier
- // in-window snapshot already proved an irreversible event, the second
- // observation still confirms it when both team totals are unchanged.
- // Never infer which minute a NEW post-window delta belongs to.
+ if(!['WON','LOST'].includes(firstDelta))return null;
  const crossedTimedEnd=timed&&Number(current.clock)>Number(contract.to);
- if(crossedTimedEnd){
-  if(!Number.isFinite(Number(contract.to))||secondDelta!==null)return null;
- }else if(secondDelta!==firstDelta)return null;
- const firstDecision=primaryLiveDecision(contract,oldFrame);
- const secondDecision=crossedTimedEnd?firstDelta:primaryLiveDecision(contract,current);
- return firstDecision===firstDelta&&secondDecision===firstDelta&&
-    firstDelta===row.proposed_status?firstDelta:null;
+ const crossedHalfEnd=halfScoped&&Number(current.clock)>=45;
+ if(crossedTimedEnd||crossedHalfEnd){
+  if(secondDelta!==null)return null;
+  return firstDecision===firstDelta?firstDelta:null;
+ }
+ if(secondDelta!==firstDelta||secondDecision!==firstDelta)return null;
+ return firstDelta;
 }
-
 /**
  * Controlled real writes. A failed/retried wallet update remains exactly-once via
  * the existing row-locked settlement transaction.
  */
 export async function settleVerifiedLiveProposals({
  runQuery=query,updateLine,closeTicket,enabled=process.env.LIVE_VERIFIED_AUTO_SETTLEMENT_ENABLED!=='false',
- now=Date.now,limit=400
+ now=Date.now,limit=400,matchId=null
 }={}){
  if(!enabled)return {enabled:false,examined:0,graded:0,closed:[]};
  if(typeof updateLine!=='function'||typeof closeTicket!=='function')
    throw new Error('Settlement writers required');
  const cap=Math.max(1,Math.min(1000,Math.trunc(Number(limit)||400)));
- const {rows}=await runQuery(VERIFIED_LIVE_PROPOSALS_SQL,[cap]);
+ const scopedMatchId=matchId==null?null:Number(matchId);
+ const {rows}=await runQuery(VERIFIED_LIVE_PROPOSALS_SQL,[cap,scopedMatchId]);
  const ticketIds=new Set();
  let graded=0;
  for(const row of rows){

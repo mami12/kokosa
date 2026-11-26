@@ -147,6 +147,38 @@ export function frozenLiveContract(line,match={},at=Date.now()){
      !phase||finished||(contract.half===1&&firstEnded))
    throw fail('Periudha e marketit nuk është e hapur ose ora LIVE nuk është e konfirmuar.');
  }
+ // Do not accept a first-half total after its irreversible condition has
+ // already been reached. Only use counters that were freshly observed at quote
+ // acceptance; the provider may already have suspended stale offers.
+ if(live&&contract.half===1&&['half-total','period-goal-total'].includes(contract.kind)){
+  const clockAt=time(match.clock_at),scoreAt=time(match.score_at);
+  const phase=norm(match.feed_status??match.phase??'');
+  const closed=/^(?:ht|half time|halftime|break time|2h|2nd half|second half|ft|full time|finished|ended|cancelled|abandoned)\b/.test(phase);
+  if(clock===null||clock>=45||clockAt===null||at-clockAt>45000||
+     contract.kind==='period-goal-total'&&(scoreAt===null||at-scoreAt>90000)||closed)
+   throw fail('Tregu i pjesës së parë nuk është më i hapur ose rezultati LIVE nuk është i konfirmuar.');
+  let pair=null;
+  if(contract.kind==='period-goal-total')pair=primaryLiveCounters(match,'goal',{at});
+  else if(contract.event==='corner')pair=primaryLiveCounters(match,'corner',{at});
+  else if(contract.event==='card'&&!contract.cardColor)pair=primaryLiveCounters(match,'card',{at});
+  else if(contract.event==='card'&&contract.cardColor&&primaryLiveCounters(match,'card',{at})){
+   const field=contract.cardColor;
+   const h=safe(teams.home?.[field]),a=safe(teams.away?.[field]);
+   if(h!==null&&a!==null)pair={home:h,away:a};
+  }
+  if(pair){
+   const count=contract.side==='home'?pair.home:
+    contract.side==='away'?pair.away:pair.home+pair.away;
+   const alreadyDecided=contract.kind==='half-total'
+    ?count>contract.threshold
+    :contract.selection==='over'||contract.selection==='under'?count>Number(contract.target)
+    :contract.selection==='atLeast'?count>=Number(contract.target)
+    :contract.selection==='exact'?count>Number(contract.target)
+    :contract.selection==='range'?count>Number(contract.max):false;
+   if(alreadyDecided)throw Object.assign(new Error('Kushti i tregut të pjesës së parë është arritur tashmë.'),{
+    status:400,code:'MARKET_DECIDED'});
+  }
+ }
  // During FIRST HALF, match-wide cumulative counters ARE also the
  // first-half counters. Race-to-X stays open until either side reaches X;
  // the first-half LAST outcome stays open until the official HT event.

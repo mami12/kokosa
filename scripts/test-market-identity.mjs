@@ -151,7 +151,9 @@ assert.equal(ui.marketDisplayTitle(mk('Yellow cards. Total'), 'al'), 'Totali i k
 assert.equal(ui.marketDisplayTitle(mk('Total Corners', '9.5'), 'al', true), 'Totali i goditjeve këndore (9.5)');
 assert.equal(ui.marketCategoryOf(mk('Corners. Double chance')), 'corners');
 assert.equal(ui.marketCategoryOf(mk('Corners. Result', '', 0, '1X2')), 'corners');
-assert.equal(ui.marketCategoryOf(mk('Yellow cards. Result')), 'other');
+assert.equal(ui.marketCategoryOf(mk('Yellow cards. Result')), 'cards');
+assert.equal(ui.marketCategoryLabel('cards','en'),'Cards');
+assert.equal(ui.marketCategoryLabel('cards','al'),'Kartona');
 assert.equal(ui.marketCategoryOf(mk('Correct score')), 'goals');
 assert.equal(ui.marketCategoryOf(mk('Result and total')), 'mixed');
 assert.equal(ui.marketSelectionLabel('Over 9.5', 'al'), 'Lart 9.5');
