@@ -8,7 +8,7 @@ type Row={key:string;name:string;enabled:boolean;manualEnabled?:boolean;blockedB
 const marketScope=(row:Row):'prematch'|'live'|'generic'=>row.key.startsWith('zizobet:prematch:')||/^\s*\[prematch\]/i.test(row.name)?'prematch':row.key.startsWith('zizobet:live:')||/^\s*\[live\]/i.test(row.name)?'live':'generic';
 type CategoryPolicy={category:string;enabled:boolean};
 type Scope={country:string;league:string;categories:string[];families:string[]};
-const categories:Record<string,[string,string]>={all:['Të gjitha','All'],totals:['Totale','Totals'],intervals:['Intervale','Intervals'],results:['Rezultate','Results'],goals:['Gola','Goals'],corners:['Kënde','Corners'],cards:['Kartonë','Cards'],fouls:['Faulle','Fouls'],shots:['Goditje','Shots'],players:['Lojtarë','Players'],combos:['Kombinime','Combos'],other:['Të tjera','Other']};
+const categories:Record<string,[string,string]>={all:['Të gjitha','All'],totals:['Totale','Totals'],intervals:['Intervale','Intervals'],results:['Rezultate','Results'],goals:['Gola','Goals'],corners:['Kënde','Corners'],cards:['Kartonë','Cards'],shots:['Goditje','Shots'],combos:['Kombinime','Combos'],other:['Të tjera','Other']};
 export default function MarketCatalog({evidenceOnly=false}:{evidenceOnly?:boolean}={}){
  const{lang}=useLanguage(),tr=(sq:string,en:string)=>lang==='en'?en:sq;
  const[rows,setRows]=useState<Row[]>([]),[policies,setPolicies]=useState<CategoryPolicy[]>([]),[category,setCategory]=useState('all'),[scopeFilter,setScopeFilter]=useState<'all'|'prematch'|'live'>('all'),[search,setSearch]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[notice,setNotice]=useState(''),[selected,setSelected]=useState<Set<string>>(new Set());
