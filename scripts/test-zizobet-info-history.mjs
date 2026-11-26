@@ -65,9 +65,9 @@ const lateTimeline=[
 ];
 const shownLate=providerTimeline('late-match',lateTimeline);
 assert.equal(shownLate.length,17,'All 17 corners must remain in the displayed history');
-assert.deepEqual(shownLate.slice(-2).map(e=>[e.minute,e.minuteLabel]),[
- [91,'90+1'],[94,'90+4']
-],'gt=90 with a later clk and explicit 90+4 must retain stoppage time');
+assert.deepEqual(shownLate.slice(-2).map(e=>[e.minute,e.addedMinute,e.minuteLabel]),[
+ [90,1,'90+1'],[90,4,'90+4']
+],'Display timeline retains base minute, added minute and full stoppage-time label separately');
 const lateMatch={MatchStatusID:40,Score:'1:0',CornersTeam1:8,CornersTeam2:7,
  RESULT_CORNERFT:'9:8'};
 const lateData={Match:lateMatch,TimeLines:lateTimeline};
