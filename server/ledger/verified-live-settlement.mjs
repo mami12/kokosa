@@ -70,7 +70,8 @@ export function verifiedSecondLiveDecision(row,{now=Date.now}={}){
  // the old timeline could contain an incident from before the purchase.
  if(timedKinds&&!timed)return null;
  const baselineDriven=timed||['sequence','race','half-race','half-next-event'].includes(contract.kind);
- const supported=['sequence','race','half-race','half-next-event','window','window-total','nth-time','interval-result',
+ const firstHalfTotal=['half-total','period-goal-total'].includes(contract.kind)&&contract.half===1;
+ const supported=['sequence','race','half-race','half-next-event','half-total','period-goal-total','window','window-total','nth-time','interval-result',
   'over','under','exact','range','atLeast','team-total-goals'];
  if(!supported.includes(contract.kind)||!(timed?['goal','corner','card','foul']:['goal','corner','card']).includes(contract.event))return null;
  if(baselineDriven){
@@ -102,11 +103,15 @@ export function verifiedSecondLiveDecision(row,{now=Date.now}={}){
  if(!Number.isFinite(oldFrame.clock)||!Number.isFinite(current.clock)||current.clock<oldFrame.clock)return null;
  const halfScoped=['half-race','half-next-event'].includes(contract.kind);
  if(halfScoped&&(contract.half!==1||oldFrame.clock>=45))return null;
+ if(firstHalfTotal&&oldFrame.clock>=45)return null;
 
  const firstDecision=primaryLiveDecision(contract,oldFrame);
  const secondDecision=primaryLiveDecision(contract,current);
  if(!['WON','LOST'].includes(firstDecision)||firstDecision!==row.proposed_status)return null;
- if(!baselineDriven)return secondDecision===firstDecision?firstDecision:null;
+ if(!baselineDriven){
+  if(firstHalfTotal&&Number(current.clock)>=45)return firstDecision===row.proposed_status?firstDecision:null;
+  return secondDecision===firstDecision?firstDecision:null;
+ }
 
  const firstDelta=gradeFromAcceptedCounters(contract,oldFrame);
  const secondDelta=gradeFromAcceptedCounters(contract,current);
