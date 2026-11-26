@@ -10,6 +10,18 @@ import {providerTimeline,inheritEventPlayers} from './live-event-timeline.mjs';
 // stoppage-time incidents or timeline corrections after their first final frame.
 const POST_FINAL_HISTORY_GRACE_MS=Math.max(10*60_000,Number(process.env.ZIZO_POST_FINAL_HISTORY_GRACE_MS)||45*60_000);
 
+/** Keep the all-match archive moving through large live slates. The old
+ * four-match batch could take several minutes to reach the tail of the board.
+ */
+export function historyRefreshIntervalMs(value=process.env.ZIZO_HISTORY_REFRESH_MS){
+ const configured=Number(value);
+ return Math.max(15000,Number.isFinite(configured)&&configured>0?configured:30000);
+}
+export function historyPollBatchSize(value=process.env.ZIZO_HISTORY_PER_FLUSH){
+ const configured=Number(value);
+ return Math.max(1,Math.min(32,Number.isFinite(configured)&&configured>0?Math.floor(configured):24));
+}
+
 /** A final header may carry MatchStatusID=40 while the detail endpoint omits
  * EventStatus. Missing status must not discard a valid post-FT timeline poll.
  * An explicit non-final status still blocks a stale detail response.
@@ -341,12 +353,12 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
         .catch(error=>console.warn('[zizobet] confirmed history callback',row.match_id,error?.message));}
        catch(error){console.warn('[zizobet] confirmed history callback',row.match_id,error?.message);}
       }
-      const interval=Math.max(30000,Number(process.env.ZIZO_HISTORY_REFRESH_MS)||60000);
+      const interval=historyRefreshIntervalMs();
       historyPollAt.set(Number(id),now()+(ended?
        postFinalHistoryRetryDelay(finalAge,interval,finishedAttempts):interval));
      }catch(error){
       if(ended){
-       const interval=Math.max(30000,Number(process.env.ZIZO_HISTORY_REFRESH_MS)||60000);
+       const interval=historyRefreshIntervalMs();
        historyPollAt.set(Number(id),now()+postFinalHistoryRetryDelay(finalAge,interval,finishedAttempts));
       }
       console.warn('[zizobet] match history',row.match_id,error?.message);
@@ -394,8 +406,8 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   // An archive-only request never fetches/parses the full market grid for storage.
   const historyOnlyIds=new Set(urgentTimelineIds);
   if(historyEnabled){
-   const interval=Math.max(30000,Number(process.env.ZIZO_HISTORY_REFRESH_MS)||60000);
-   const batch=Math.max(1,Math.min(8,Number(process.env.ZIZO_HISTORY_PER_FLUSH)||4));
+   const interval=historyRefreshIntervalMs();
+   const batch=historyPollBatchSize();
    const due=[...games.entries()].filter(([id,e])=>e.live&&
     (e.row.status!=='ended'||
      now()-(historyFtStartedAt.get(id)??now())<POST_FINAL_HISTORY_GRACE_MS)&&
@@ -416,7 +428,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   const batches=[];for(let i=0;i<board.length;i+=80)batches.push(board.slice(i,i+80));
   const loaded=await Promise.allSettled(batches.map(refreshPrematchBoard));for(let i=0;i<loaded.length;i++)if(loaded[i].status==='rejected'){pendingPre.push(...batches[i]);state.lastError=loaded[i].reason?.message??'Prematch board refresh failed';}
 
-    const batchSize=Math.min(20,Math.max(1,Number(process.env.ZIZO_SNAPSHOT_CONCURRENCY)||8)),all=[...ids];for(let i=0;i<all.length;i+=batchSize){if(stopped||state.paused)break;const batch=all.slice(i,i+batchSize),results=await Promise.allSettled(batch.map(id=>refresh(id,{probeLive:transitions.has(id)||watched.has(id),historyOnly:historyOnlyIds.has(id)})));for(let j=0;j<results.length;j++)if(results[j].status==='rejected'){state.lastError=results[j].reason?.message??'Snapshot refresh failed';if(historyOnlyIds.has(batch[j]))historyPollAt.set(batch[j],now()+3000);const t=transitions.get(batch[j]);if(t){t.failures++;t.next=now()+Math.min(300000,15000*2**Math.min(t.failures-1,5));}}}
+    const batchSize=Math.min(20,Math.max(1,Number(process.env.ZIZO_SNAPSHOT_CONCURRENCY)||12)),all=[...ids];for(let i=0;i<all.length;i+=batchSize){if(stopped||state.paused)break;const batch=all.slice(i,i+batchSize),results=await Promise.allSettled(batch.map(id=>refresh(id,{probeLive:transitions.has(id)||watched.has(id),historyOnly:historyOnlyIds.has(id)})));for(let j=0;j<results.length;j++)if(results[j].status==='rejected'){state.lastError=results[j].reason?.message??'Snapshot refresh failed';if(historyOnlyIds.has(batch[j]))historyPollAt.set(batch[j],now()+3000);const t=transitions.get(batch[j]);if(t){t.failures++;t.next=now()+Math.min(300000,15000*2**Math.min(t.failures-1,5));}}}
  }catch(e){state.lastError=e.message;}finally{flushing=false;}}
  async function tick(){if(stopped||state.paused||state.running)return;state.running=true;state.lastError=null;try{if(!catalogAt||now()-catalogAt>600000)try{await metadata();}catch(e){state.lastError=e.message;}for(const run of[liveList,prematchList]){if(stopped||state.paused)break;try{await run();}catch(e){state.lastError=e.message;}}if(!stopped&&!state.paused)await flush();}catch(e){state.lastError=e.message;}finally{state.running=false;}}
  mqtt=connectMqtt({onInvalidate:topic=>dirty.add(topic),onStatus:s=>{state.socket=s;onStatus?.({...s,provider:'ZIZOBET'});}});
