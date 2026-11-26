@@ -115,9 +115,26 @@ assert.equal(evidenceQueries,0,'secondary evidence is not written to settlement 
 
 // Offers that the operator does not use are rejected at the global ingest gate.
 for(const name of [
- 'Asian Handicap','Total Fouls','Player Shots On Target',
- 'Anytime Goalscorer','First Goal Scorer','Goalkeeper Saves','Total Tackles','Throw-ins'
+ 'Asian Handicap','Total Fouls','Team fouls','Player Shots On Target',
+ 'Anytime Goalscorer','First Goal Scorer','Goalkeeper Saves','Total Tackles','Throw-ins',
+ 'Scoring Type','{!scorenr} scoring type','Offsides odd/even','First offside',
+ '1 minute - total offsides from {from} to {to} (0.5)',
+ 'Who takes the [corner!] corner','Sending off',
+ '1st team ball possession %','Team ball possession'
 ])assert.equal(isExcludedOfferMarket({market_name:name}),true,name+' must be excluded');
+assert.equal(isExcludedOfferMarket({market_name:'Total Goals',line:'0.25'}),true,
+ 'quarter .25 totals cannot be published');
+assert.equal(isExcludedOfferMarket({market_name:'Total Goals',line:'0.75'}),true,
+ 'quarter .75 totals cannot be published');
+assert.equal(isExcludedOfferMarket({market_name:'Total Corners',line:'1.75'}),true,
+ 'quarter-line corner totals are excluded too');
+assert.equal(isExcludedOfferMarket({market_name:'Total Goals',line:'0.5'}),false,
+ 'ordinary half-goal totals remain available');
+await assert.rejects(
+ ()=>assertMarketEnabled({market_name:'Total Goals',line:'0.25'}),
+ error=>error.code==='MARKET_NOT_OFFERED',
+ 'placement must independently reject quarter totals even with a stale client quote'
+);
 assert.equal(isExcludedOfferMarket({market_name:'Total Goals'}),false);
 assert.equal(isExcludedOfferMarket({market_name:'Total Corners'}),false);
 const zizobetCards={market_key:'zz18639@e30',market_name:'Total Cards'};
@@ -221,6 +238,13 @@ for(const market of ['Home team to score','Away team to win','Manchester United 
 // The admin market catalog must not reintroduce markets removed from the board.
 setCatalogRows([
  {key:'player-market',name:'Anytime Goalscorer',enabled:true},
+ {key:'scoring-type-market',name:'{!scorenr} scoring type',enabled:true},
+ {key:'offside-market',name:'Offsides odd/even',enabled:true},
+ {key:'corner-taker-market',name:'Who takes the [corner!] corner',enabled:true},
+ {key:'sending-off-market',name:'Sending off',enabled:true},
+ {key:'possession-market',name:'1st team ball possession %',enabled:true},
+ {key:'fouls-market',name:'Total Fouls',enabled:true},
+ {key:'quarter-total-market',name:'Total Goals (0.75)',enabled:true},
  {key:'cards-market',name:'Total Cards',enabled:true},
  {key:'handicap-market',name:'Asian Handicap',enabled:true},
  {key:'early-payout-market',name:'Early Payout',enabled:true},
