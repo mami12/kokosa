@@ -99,16 +99,19 @@ export function teamStatisticsFromRow(row){
  const side=(id,key)=>{const raw=(id!=null?map[String(id)]:null)??map[key];return raw?normalizeTeamStatistics(raw):null;};
  return {home:side(homeId,'home'),away:side(awayId,'away')};
 }
-/** New prop settlements require each fact to have been observed with the FT
- * snapshot, rather than an old live count carried forward by an FT-only frame. */
-export function verifiedFinalStatistics(row,{maxAgeMs=120000}={}){
+/** Final cumulative counters remain valid when the last statistics update
+ * happened earlier in the match. Accept observations from the match window
+ * (up to three hours before FT and two minutes after the FT transition), but
+ * never promote an old snapshot from a previous fixture/session. */
+export function verifiedFinalStatistics(row,{maxAgeMs=3*60*60*1000}={}){
  const teams=teamStatisticsFromRow(row),phaseAt=new Date(row?.feed_status_at??row?.score_at).getTime();
  const result={};if(!Number.isFinite(phaseAt))return result;
  for(const field of ['shots','shotsOnTarget','fouls','offsides','corners','yellow','red']){
   const values={};
   for(const side of ['home','away']){
    const team=teams[side],at=new Date(team?._observedAt?.[field]).getTime();
-   if(team?.[field]!=null&&Number.isFinite(at)&&Math.abs(at-phaseAt)<=maxAgeMs)values[side]=team[field];
+   const age=phaseAt-at;
+   if(team?.[field]!=null&&Number.isFinite(at)&&age>=-120000&&age<=maxAgeMs)values[side]=team[field];
   }
   if(Object.keys(values).length)result[field]=values;
  }
