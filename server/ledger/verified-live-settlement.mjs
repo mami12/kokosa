@@ -64,7 +64,11 @@ export function verifiedSecondLiveDecision(row,{now=Date.now}={}){
     JSON.stringify(contract)!==JSON.stringify(old.contract)||
     oldFrame.source!=='zizobet'||current.source!=='zizobet')return null;
 
- const timed=['window','window-total','nth-time'].includes(contract.kind)&&contract.entryBaseline!=null;
+ const timedKinds=['window','window-total','nth-time'].includes(contract.kind);
+ const timed=timedKinds&&contract.entryBaseline!=null;
+ // A LIVE timed quote must carry its frozen acceptance counters. Without them,
+ // the old timeline could contain an incident from before the purchase.
+ if(timedKinds&&!timed)return null;
  const baselineDriven=timed||['sequence','race'].includes(contract.kind);
  const supported=['sequence','race','window','window-total','nth-time','interval-result',
   'over','under','exact','range','atLeast','team-total-goals'];
