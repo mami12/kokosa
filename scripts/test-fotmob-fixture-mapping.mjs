@@ -1,6 +1,6 @@
 import './fixtures/isolated-casino-env.mjs';
 import assert from 'node:assert/strict';
-import {fotMobKickoff,findFotMobFixture} from '../server/stats-providers/match-recovery.mjs';
+import {candidateDateStrings,fetchFotMobDate,fetchFotMobDetails,fotMobKickoff,findFotMobFixture,parseFotMobPayload,fotMobTransportStatus} from '../server/stats-providers/match-recovery.mjs';
 
 const kickoff='2026-11-12T20:00:00.000Z',day='20261112';
 const date={leagues:[{name:'Example League',matches:[
@@ -67,3 +67,59 @@ assert.equal(await findFotMobFixture('Inter Turku','Cagliari',[day],kickoff,
  'Inter Turku must never collapse into Inter Milan');
 
 console.log('PASS safe FotMob match discovery: UTC status time, aliases, home/away, kickoff, ambiguity and missing evidence');
+
+if(process.env.FOTMOB_LIVE_VERIFY==='true'){
+ const days=Math.min(10,Math.max(2,Number(process.env.FOTMOB_LIVE_VERIFY_DAYS)||7));
+ const dates=Array.from({length:days},(_,index)=>{
+  const day=new Date();day.setUTCHours(0,0,0,0);day.setUTCDate(day.getUTCDate()-index);
+  return day.toISOString().slice(0,10).replaceAll('-','');
+ });
+ let selected=null;
+ for(const day of dates){
+  const payload=await fetchFotMobDate(day);
+  if(!Array.isArray(payload?.leagues))continue;
+  for(const league of payload.leagues){
+   for(const match of league.matches??[]){
+    if(match?.id==null||!match?.home?.name||!match?.away?.name||
+       match.status?.finished!==true||fotMobKickoff(match)==null)continue;
+    selected={match,league:league.name??'Unknown league'};
+    break;
+   }
+   if(selected)break;
+  }
+  if(selected)break;
+ }
+ assert.ok(selected,'FotMob live smoke must find at least one finished real fixture');
+ const kickoff=fotMobKickoff(selected.match),kickoffIso=new Date(kickoff).toISOString();
+ const matched=await findFotMobFixture(selected.match.home.name,selected.match.away.name,
+  candidateDateStrings(kickoffIso),kickoffIso);
+ assert.equal(String(matched?.match?.id??''),String(selected.match.id),
+  'Real fixture discovery must resolve the exact same FotMob match ID from ordered team names and UTC kickoff');
+ const details=await fetchFotMobDetails(selected.match.id,{force:true});
+ assert.ok(details&&typeof details==='object','Real FotMob matchDetails must be reachable');
+ const real=parseFotMobPayload(selected.match,details);
+ assert.equal(real.finished,true,'Real matchDetails must confirm full time');
+ assert.ok(Number.isSafeInteger(real.homeScore)&&Number.isSafeInteger(real.awayScore),
+  'Real final score must contain both numeric sides');
+ const eventList=details?.content?.matchFacts?.events?.events;
+ assert.ok(Array.isArray(eventList),'Real FotMob details must expose an incident-list array');
+ const coverage=[
+  ['corners',Number.isInteger(real.cornersHome)&&Number.isInteger(real.cornersAway)],
+  ['cards',Number.isInteger(real.cardsHome)&&Number.isInteger(real.cardsAway)],
+  ['yellow',real.yellowCards!=null],['red',real.redCards!=null],
+  ['shots',real.statistics.shots?.home!=null&&real.statistics.shots?.away!=null],
+  ['shotsOnTarget',real.statistics.shotsOnTarget?.home!=null&&real.statistics.shotsOnTarget?.away!=null],
+  ['fouls',real.statistics.fouls?.home!=null&&real.statistics.fouls?.away!=null],
+  ['possession',real.statistics.possession?.home!=null&&real.statistics.possession?.away!=null]
+ ].filter(([,ok])=>ok).map(([name])=>name);
+ console.log('PASS FOTMOB LIVE '+JSON.stringify({
+  id:String(selected.match.id),league:selected.league,
+  home:selected.match.home.name,away:selected.match.away.name,
+  kickoff:kickoffIso,score:real.homeScore+'-'+real.awayScore,
+  goalEvents:real.goalEvents.length,cornerEvents:real.cornerEvents.length,
+  cardEvents:real.cardEvents.length,statistics:coverage
+ }));
+ const transport=fotMobTransportStatus();
+ assert.equal(transport.paused,false,'FotMob did not rate-limit or block the successful live verification');
+}
+
