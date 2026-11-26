@@ -9,7 +9,7 @@ export function providerTimeline(matchId,rows,match={}){
  const cardEvents=classifyZizobetCardEvents(rows,match);
  for(const [index,row] of rows.entries()){
   if(row.cancelled||row.canceled||row.disabled||row.isConfirmed===false||/cancelled|canceled|voided/i.test(String(row.status??''))){
-   if(row.id!=null)events.delete(String(row.id));
+   events.delete(identities[index].id);
    continue;
   }
   const rawTime=String(row.gt??row.minute??row.time??'').trim();
