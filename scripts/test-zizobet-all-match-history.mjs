@@ -34,8 +34,26 @@ const lateCorners=normalizeLiveFrame({
 assert.deepEqual(lateCorners.events.map(event=>[event.type,event.minute]),
  [['corner',92],['corner',95]],
  'Zizobet corner event types and 92/95-minute incidents enter primary event facts');
+
 assert.equal(lateCorners.coverage.cornerThrough,130,
  'A reconciled FT event list with final 1-1 corner counters covers stoppage time');
+
+// Exact duplicate Zizobet rows can represent two provider-counted incidents.
+// Keep both from normalization through the independent history archive.
+const repeatedCorners=[
+ {id:'inter-45-corner',type:'corner_kick',team:1,gt:'45',clk:'45:00',pl:'Dimarco'},
+ {id:'inter-45-corner',type:'corner_kick',team:1,gt:'45',clk:'45:00',pl:'Dimarco'}
+];
+const repeatedData=game('0:0','47:00',repeatedCorners,{CornersTeam1:2});
+const repeatedFrame=normalizeLiveFrame(repeatedData);
+assert.equal(repeatedFrame.events.filter(event=>event.type==='corner').length,2,
+ 'Both same-ID, same-clock corner rows survive the canonical frame');
+assert.deepEqual(repeatedFrame.events.filter(event=>event.type==='corner').map(event=>event.sequence),[1,2]);
+const repeatedProjection=projectZizobetHistory(8000000000017,repeatedData,fixture);
+assert.equal(repeatedProjection.events.filter(event=>event.kind==='corner').length,2,
+ 'Both same-ID, same-clock corners are projected into match history');
+assert.deepEqual(repeatedProjection.events.filter(event=>event.kind==='corner').map(event=>event.sequence),[1,2]);
+
 const withFoul=projectZizobetHistory(8000000000007,game('1:0','11:00',[g1,
  {id:'foul-1',type:'foul_committed',team:2,gt:11,player:'Defender'}]),fixture);
 assert.equal(withFoul.events.find(e=>e.kind==='foul')?.playerName,'Defender');
@@ -64,6 +82,22 @@ try{
  assert.equal(repeated.reason,'EVIDENCE_REOBSERVED');
  assert.ok(repeated.confirmedKinds.includes('goal'),
   'A second identical provider sample must confirm canonical evidence');
+
+ // The Inter-like duplicate timeline must create two independently keyed
+ // archive rows even though ID, minute, clock and player are all identical.
+ const duplicateMatchId=id+17;
+ const firstDuplicate=await save(duplicateMatchId,repeatedData,fixture);
+ assert.equal(firstDuplicate.eventCount,2);
+ clock+=6000;
+ const secondDuplicate=await save(duplicateMatchId,repeatedData,fixture);
+ assert.ok(secondDuplicate.confirmedKinds.includes('corner'));
+ const duplicateRows=(await pg.query(
+  'select provider_event_id,sequence,minute,detail from app_zizobet_match_incident where match_id=$1 and kind=\'corner\' and active=true order by sequence',
+  [duplicateMatchId])).rows;
+ assert.deepEqual(duplicateRows.map(r=>[r.provider_event_id,r.sequence,r.minute]),[
+  ['inter-45-corner',1,45],['inter-45-corner#000002',2,45]
+ ],'Historical archive persists both repeated-ID incidents and their sequence');
+ assert.deepEqual(duplicateRows.map(r=>r.detail.playerName),['Dimarco','Dimarco']);
  let rows=(await read('select kind,minute,detail,active from app_zizobet_match_incident where match_id=$1')).rows;
  assert.equal(rows.length,1);
  assert.equal(rows[0].detail.playerName,'First Scorer');
