@@ -249,7 +249,7 @@ export function parseFotMobPayload(summary, details = null) {
       value=value.value??value.total??value.displayValue??value.text??value.count;
     if(value==null||value==='')return null;
     const raw=String(value).trim().replace(/%$/,'').replace(',','.');
-    if(!/^-?\\d+(?:\\.\\d+)?$/.test(raw))return null;
+    if(!/^-?\d+(?:\.\d+)?$/.test(raw))return null;
     const number=Number(raw);
     return Number.isFinite(number)&&number>=0?number:null;
   };
