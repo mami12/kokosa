@@ -28,7 +28,7 @@ export function zizobetEventIdentities(rows) {
     const occurrence = (occurrences.get(base) ?? 0) + 1;
     occurrences.set(base, occurrence);
     return {
-      id: occurrence === 1 ? base : base + '#' + occurrence,
+      id: occurrence === 1 ? base : base + '#' + String(occurrence).padStart(6, '0'),
       sequence: index + 1,
       occurrence
     };
