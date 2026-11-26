@@ -100,7 +100,7 @@ const noEventDetails={
    {title:'Yellow Cards',stats:['0','0']},
    {title:'Red Cards',stats:['0','0']}
   ]}
- ]}}}
+ ]}}}}
 };
 const noEvents=parseFotMobPayload(noEventFixture,noEventDetails);
 assert.equal(noEvents.cornerTimelineAvailable,true);
