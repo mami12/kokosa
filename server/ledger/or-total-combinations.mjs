@@ -8,10 +8,11 @@ const fold=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,
  .replace(/\bhome\s*team\b|\bhometeam\b/g,'home team').replace(/\baway\s*team\b|\bawayteam\b/g,'away team')
  .replace(/\s+/g,' ').trim();
 const titleContract=value=>{
- const m=fold(value).match(/^((?:home|away)(?: team)?|draw)\s+(?:wins?|to win)\s+or\s+total(?:\s+goals?)?\s+(over|under)(?:\s+(\d{1,3}(?:[.,]\d+)?))?$/);
+ const m=fold(value).match(/^(?:(home(?: team)?|away(?: team)?)\s+(?:wins?|to win)|(draw))\s+or\s+total(?:\s+goals?)?\s+(over|under)(?:\s+(\d{1,3}(?:[.,]\d+)?))?$/);
  if(!m)return null;
- return {result:m[1].startsWith('home')?'home':m[1].startsWith('away')?'away':'draw',
-  direction:m[2],titleLine:m[3]==null?null:Number(m[3].replace(',','.'))};
+ const side=m[1]?'team':'draw';
+ return {result:side==='draw'?'draw':m[1].startsWith('home')?'home':'away',
+  direction:m[3],titleLine:m[4]==null?null:Number(m[4].replace(',','.'))};
 };
 export const isOrTotalMarket=value=>titleContract(value)!==null;
 const numeric=value=>{if(value==null||String(value).trim()==='')return null;
