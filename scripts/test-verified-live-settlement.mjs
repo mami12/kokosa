@@ -125,6 +125,34 @@ assert.equal(verifiedSecondLiveDecision(numberedRow(
  goalInBand,numberedFrame(1,0,11),numberedFrame(1,0,12)),{now}),null,
  'A goal first observed after minute 10 is not attributed to minute 6-10');
 
+// First-half race/next-goal markets can settle before HT, but the
+// match-wide counters stop being a safe half-only source at minute 45.
+const halfCornerFrame=(h,a,clock)=>({
+ source:'zizobet',clock,teams:{corner:{home:h,away:a}},
+ counts:{corner:h+a},events:[],coverage:{},ended:false
+});
+const halfRace={version:1,kind:'half-race',event:'corner',half:1,target:2,
+ side:'home',baseline:{home:0,away:0}};
+assert.equal(verifiedSecondLiveDecision(numberedRow(
+ halfRace,halfCornerFrame(2,1,43),halfCornerFrame(2,1,44)),{now}),'WON',
+ 'First-half Race to 2 Corners settles once one team reaches two');
+assert.equal(verifiedSecondLiveDecision(numberedRow(
+ halfRace,halfCornerFrame(2,1,43),halfCornerFrame(2,1,45)),{now}),'WON',
+ 'A proven first-half race remains valid when the second poll arrives at HT with unchanged counters');
+assert.equal(verifiedSecondLiveDecision(numberedRow(
+ {...halfRace,half:2},halfCornerFrame(2,1,43),halfCornerFrame(2,1,44)),{now}),null,
+ 'Second-half Race to X cannot use whole-match counters as a half baseline');
+const halfNext={version:1,kind:'half-next-event',event:'goal',half:1,target:1,
+ side:'home',baseline:{home:0,away:0}};
+assert.equal(verifiedSecondLiveDecision(numberedRow(
+ halfNext,numberedFrame(1,0,41),numberedFrame(1,0,44)),{now}),'WON',
+ 'First-half Next Goal settles as soon as the unique next goal is confirmed');
+assert.equal(verifiedSecondLiveDecision(numberedRow(
+ halfNext,numberedFrame(1,0,41),numberedFrame(1,0,45)),{now}),'WON',
+ 'A first-half next goal remains proven when the second poll lands at HT');
+assert.equal(verifiedSecondLiveDecision(numberedRow(
+ halfNext,numberedFrame(0,1,41),numberedFrame(0,1,44),'LOST'),{now}),'LOST',
+ 'The wrong team loses the first-half Next Goal selection');
 const player={version:1,kind:'player-goal',event:'goal',playerName:'Alice',choice:true};
 const playerRow={...row,live_contract:player,proposed_status:'WON',
  payload:{contract:player,frame,frameAt:row.payload.frameAt},provider_frame:frame};
