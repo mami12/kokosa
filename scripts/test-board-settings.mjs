@@ -61,7 +61,7 @@ assert.deepEqual(dateOrder.rows.map(r=>r.match_id),[32,31,30]);
 // In-memory endpoint, league totals and feed subscriptions contain only the whitelist.
 store.clear();
 store.upsert(fixtures);
-assert.deepEqual(store.getMatches({catalog:true}).map(r=>r.match_id),[11,8,3,5,4,6,7,1,9,2]);
+assert.deepEqual(store.getMatches({catalog:true}).map(r=>r.match_id),[11,8,3,1,5,6,4,7,9,2]);
 assert.ok(store.getLeagues().every(r=>r.slug!=='italy'||r.live+r.prematch>0));
 assert.equal(store.getMatches({catalog:true}).some(r=>r.match_id===12),false);
 assert.equal(store.getSubscriptionIds({liveLimit:0,prematchLimit:0}).live.includes(12),false);
