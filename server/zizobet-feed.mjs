@@ -234,7 +234,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
    }
    // LIVE phase evidence outranks an overlapping newer PREMATCH request.
     await publish(r,g,oddsOf(r,g.hprs,meta,true,infoOf(r,g,meta).hasOpenOdds!==false&&r.status!=='ended'),{complete:!hadLive,startedAt:hadLive?startedAt:++revision});}
-   const present=new Set(rows.map(r=>Number(r.raw.nativeId)));for(const[id,e]of games)if(e.live&&!present.has(id)&&e.row.status!=='ended'){
+   const present=new Set((data.Games??[]).filter(g=>Number(g.Sport)===1).map(g=>Number(g.ID)));for(const[id,e]of games)if(e.live&&!present.has(id)&&e.row.status!=='ended'){
     // A missing page is not FT. Retain the subscription and verify directly;
     // only close prices once their authoritative snapshot is no longer fresh.
     if(now()-Math.max(e.seenAt??0,e.verifiedAt??0)>=retentionMs)continue;
@@ -297,7 +297,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
    full=full||focused.get(Number(id))>now();
    if(full)focusAttemptAt.set(Number(id),now());
    let entry=games.get(Number(id)),recovered;
-   if(!entry){recovered=await request(CACHE+'live/gamenew/'+Number(id));if(Number(recovered?.Match?.GameID)!==Number(id))throw Error('Pending result snapshot unavailable');const row=rankCompetitionRow(rowOf(recovered.Match,meta,true));if(!row)throw Error('Pending match is outside the configured competition list');entry=games.get(Number(id))??{row,raw:recovered.Match,live:true};games.set(Number(id),entry);}
+   if(!entry){recovered=await request(CACHE+'live/gamenew/'+Number(id));if(Number(recovered?.Match?.GameID)!==Number(id))throw Error('Pending result snapshot unavailable');const candidate=rowOf(recovered.Match,meta,true),row=rankCompetitionRow(candidate,{allowUnlisted:needsTicketEvidence});if(!row)throw Error('Pending match is outside the configured competition list');entry=games.get(Number(id))??{row,raw:recovered.Match,live:true};games.set(Number(id),entry);}
    if(entry&&!entry.live&&!probeLive&&!full)return refreshPrematchBoard([Number(id)]);
    if(!entry.live&&probeLive){
     const candidate=await request(CACHE+'live/gamenew/'+Number(id));

@@ -149,6 +149,25 @@ export function competitionDecision(tournament = {}, category = {}) {
     : { allowed: false, reason: 'not-configured', country, rank: null, tier: null };
 }
 
+/**
+ * Attach the fixed rank to a provider row. Unlisted fixtures are omitted from
+ * the public board; a watched, already-accepted ticket may retain an unranked
+ * row solely for evidence capture and settlement.
+ */
+export function rankCompetitionRow(row, { allowUnlisted = false } = {}) {
+  if (!row) return null;
+  const categorySlug = row.category_slug ?? row.tournament?.category?.slug ?? '';
+  const tournamentName = row.tournament_name ?? row.tournament?.name ?? '';
+  const decision = competitionDecision(
+    { name: tournamentName, categorySlug },
+    { slug: categorySlug },
+  );
+  if (!decision.allowed) {
+    return allowUnlisted ? { ...row, competition_rank: null } : null;
+  }
+  return { ...row, competition_rank: decision.rank };
+}
+
 export function competitionDisplayOrder(categorySlug, tournamentName) {
   const decision = competitionDecision({ name: tournamentName, categorySlug }, { slug: categorySlug });
   return decision.allowed ? decision.rank : null;

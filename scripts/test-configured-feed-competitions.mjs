@@ -3,6 +3,7 @@ import {rowOf} from '../server/zizobet/normalize.mjs';
 import {isAllowedYbetsMatch} from '../server/ybets-feed.mjs';
 import {normalizeMatch} from '../server/ybets-normalize.mjs';
 import {selectPublishedMatches} from '../server/board-settings.mjs';
+import {rankCompetitionRow} from '../server/football-competitions.mjs';
 
 const meta={
  teams:new Map([[1,{ID:1,Name:'Home FC'}],[2,{ID:2,Name:'Away FC'}]]),
@@ -19,6 +20,9 @@ const zizoPremier=rowOf(zizoGame(10),meta,true);
 const zizoLeagueTwo=rowOf(zizoGame(11),meta,true);
 assert.ok(zizoPremier?.competition_rank!=null,'Zizobet LIVE approved competition gets rank');
 assert.equal(zizoLeagueTwo?.competition_rank,null,'Zizobet LIVE non-approved competition is not published');
+assert.equal(rankCompetitionRow(zizoLeagueTwo),null);
+assert.equal(rankCompetitionRow(zizoLeagueTwo,{allowUnlisted:true}).competition_rank,null,
+ 'an unlisted competition can be retained without a public rank only for an already-watched ticket');
 assert.equal(selectPublishedMatches([zizoLeagueTwo],{prematchLimit:0}).rows.length,0);
 
 const ybetsMatch=(name,slug,status=1)=>({
