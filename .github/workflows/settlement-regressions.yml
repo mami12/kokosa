@@ -7,6 +7,7 @@ on:
       - "server/ledger/**"
       - "server/football-competitions.mjs"
       - "server/upstream.mjs"
+      - "server/zizobet-feed.mjs"
       - "server/match-store.mjs"
       - "server/db.mjs"
       - "server/schema.mjs"
@@ -22,6 +23,7 @@ on:
   pull_request:
     paths:
       - "server/ledger/**"
+      - "server/zizobet-feed.mjs"
       - "server/football-competitions.mjs"
       - "server/upstream.mjs"
       - "server/match-store.mjs"

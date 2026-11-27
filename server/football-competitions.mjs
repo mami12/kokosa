@@ -69,7 +69,7 @@ addRule(["netherlands"], "Eredivisie", [], 1);
 addRule(["netherlands"], "Eerste Divisie", [], 2);
 addRule(["portugal"], "Primeira Liga", ["Liga Portugal","Liga Portugal 1"], 1);
 addRule(["portugal"], "Liga Portugal 2", ["Segunda Liga","Liga Portugal Segunda"], 2);
-addRule(["turkey"], "Süper Lig", ["Super Lig","Super League"], 1);
+addRule(["turkey","turkiye"], "Süper Lig", ["Super Lig","Super League"], 1);
 addRule(["turkey"], "1. Lig", ["1 Lig","1 League"], 2);
 addRule(["belgium"], "Pro League", ["Jupiler Pro League"], 1);
 addRule(["belgium"], "Challenger Pro League", ["First Division B"], 2);
@@ -133,7 +133,7 @@ function nameMatches(name, aliases, allowYear = false) {
     if (name === alias) return true;
     if (!name.startsWith(alias + ' ')) return false;
     const suffix = name.slice(alias.length + 1);
-    return /^group [a-z0-9]+$/.test(suffix) || (allowYear && /^(?:19|20)\d{2}$/.test(suffix));
+    return /^(?:group|girone) [a-z0-9]+$/.test(suffix) || (allowYear && /^(?:19|20)\d{2}$/.test(suffix));
   });
 }
 function countrySlugOf(tournament = {}, category = {}) {
@@ -157,6 +157,12 @@ export function competitionDecision(tournament = {}, category = {}) {
 export function competitionDisplayOrder(categorySlug, tournamentName) {
   const decision = competitionDecision({ name: tournamentName, categorySlug }, { slug: categorySlug });
   return decision.allowed ? decision.rank : null;
+}
+
+export function rankCompetitionRow(row) {
+  if (!row) return null;
+  const rank = competitionDisplayOrder(row.category_slug, row.tournament_name);
+  return rank == null ? null : { ...row, competition_rank: rank };
 }
 
 export function buildCompetitionPolicy(tournaments, categories) {

@@ -2,6 +2,7 @@ import {isBoardOddsRow} from './ledger/board-projection.mjs';
 import {isRetiredPlayerOfferMarket} from './market-policy.mjs';
 import {CACHE,META,get,decode,startMqtt} from './zizobet/transport.mjs';
 import {rowOf,infoOf,oddsOf,isZizoId,OFFSET} from './zizobet/normalize.mjs';
+import {rankCompetitionRow} from './football-competitions.mjs';
 import {collectEventEvidence} from './zizobet/event-collector.mjs';
 import {archiveZizobetMatchHistory} from './ledger/zizobet-match-history.mjs';
 import {providerTimeline,inheritEventPlayers} from './live-event-timeline.mjs';
@@ -214,7 +215,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   if(stopped||state.paused)return;
   for(const t of data.Teams??[])meta.teams.set(Number(t.ID),t);for(const r of data.Regions??[])meta.regions.set(Number(r.ID),r);for(const c of data.Championats??[])meta.champs.set(Number(c.ID),c);for(const m of data.mk??[])meta.liveMarkets.set(Number(m.ID),m);
   let footballDefinitionsChanged=false;
-  const rows=[];await queue(async()=>{for(const g of data.Games){if(Number(g.Sport)!==1)continue;const r=rowOf(g,meta,true);if(!r)continue;
+  const rows=[];await queue(async()=>{for(const g of data.Games){if(Number(g.Sport)!==1)continue;const r=rankCompetitionRow(rowOf(g,meta,true));if(!r)continue;
    // Header quote IDs are tied to this fixture's Sport=1 identity.
    if(rememberFootballLiveMarkets(g.hprs))footballDefinitionsChanged=true;
    const id=Number(g.ID),previous=games.get(id);r.status=Number(g.MatchStatusID)===40?'ended':'live';rows.push(r);
@@ -255,7 +256,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   if(stopped||state.paused)return;
   const raw=[];
   for(const region of Object.values(sport.Regions??{})){meta.regions.set(Number(region.ID),region);for(const champ of Object.values(region.Champs??{})){meta.champs.set(Number(champ.ID),champ);for(const g of Object.values(champ.GameSmallItems??{})){if(Number(g.ID)<=0)continue;raw.push({...g,Region:g.Region??g.region??region.ID,Champ:g.Champ??g.ch??champ.ID,Team1:g.t1,Team2:g.t2});}}}
-  const present=new Set(raw.map(g=>Number(g.ID))),prepared=raw.map(g=>({g,row:rowOf(g,meta,false)})).filter(x=>x.row&&!games.get(Number(x.g.ID))?.live);
+  const present=new Set(raw.map(g=>Number(g.ID))),prepared=raw.map(g=>({g,row:rankCompetitionRow(rowOf(g,meta,false))})).filter(x=>x.row&&!games.get(Number(x.g.ID))?.live);
   // Preflight information from the provider's FULL PREMATCH catalog, not just
   // the fixtures published on the betting board. This callback is lightweight
   // and cannot write odds or cause synchronous external API requests.
@@ -296,7 +297,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
    full=full||focused.get(Number(id))>now();
    if(full)focusAttemptAt.set(Number(id),now());
    let entry=games.get(Number(id)),recovered;
-   if(!entry){recovered=await request(CACHE+'live/gamenew/'+Number(id));if(Number(recovered?.Match?.GameID)!==Number(id))throw Error('Pending result snapshot unavailable');const row=rowOf(recovered.Match,meta,true);if(!row)throw Error('Pending match metadata unavailable');entry=games.get(Number(id))??{row,raw:recovered.Match,live:true};games.set(Number(id),entry);}
+   if(!entry){recovered=await request(CACHE+'live/gamenew/'+Number(id));if(Number(recovered?.Match?.GameID)!==Number(id))throw Error('Pending result snapshot unavailable');const row=rankCompetitionRow(rowOf(recovered.Match,meta,true));if(!row)throw Error('Pending match is outside the configured competition list');entry=games.get(Number(id))??{row,raw:recovered.Match,live:true};games.set(Number(id),entry);}
    if(entry&&!entry.live&&!probeLive&&!full)return refreshPrematchBoard([Number(id)]);
    if(!entry.live&&probeLive){
     const candidate=await request(CACHE+'live/gamenew/'+Number(id));
