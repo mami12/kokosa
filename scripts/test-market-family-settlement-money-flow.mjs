@@ -180,7 +180,7 @@ try{
   if(item.expected==='PENDING')assert.equal(audit,undefined,'Pending quote must not create a settlement audit or wallet credit');
   else{
    assert.equal(audit.status,item.expected,'Audited financial decision: '+item.name);
-   assert.match(String(audit.source).toUpperCase(),/(?:^|\\+)(?:ADMIN|ZIZOBET)(?:\\+|$)/,'Settlement audit source retains explicit primary authority');
+   assert.match(String(audit.source).toUpperCase(),/(?:^|\+)(?:ADMIN|ZIZOBET)(?:\+|$)/,'Settlement audit source retains explicit primary authority');
   }
  }
  const wins=cases.filter(item=>item.expected==='WON').length;
