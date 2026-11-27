@@ -183,8 +183,9 @@ export function rowOf(game,meta,live){
  if(!home||!away)return null;
  const country=meta.regions.get(Number(game.Region??game.region)),champ=meta.champs.get(Number(game.Champ??game.ch));
  if(isSyntheticFootballMatch({home,away,tournament_name:champ?.Name,category_name:country?.Name,category_slug:slug(country?.Name),isEsport:game.IsEsport??game.isEsport,isSimulated:game.IsSimulated??game.isSimulated,isVirtual:game.IsVirtual??game.isVirtual}))return null;
- if(!live&&!competitionDecision({name:champ?.Name},{slug:slug(country?.Name)}).allowed)return null;
- return{match_id:zId(game.ID??game.id),sport_id:18,sport_tag:'football',category_id:Number(country?.ID??game.Region??game.region),category_name:country?.Name,category_slug:slug(country?.Name),tournament_id:Number(champ?.ID??game.Champ??game.ch),tournament_name:champ?.Name,tournament_slug:slug(champ?.Name),home,away,service:live?'LIVE':'PREMATCH',start_at:stamp(game.StartTime??game.st),status:'scheduled',phase:null,is_real:true,is_hot:false,raw:{provider:'ZIZOBET',nativeId:game.ID??game.id,homeTeam:{id:'home'},awayTeam:{id:'away'}}};
+ const categorySlug=slug(country?.Name),competition=competitionDecision({name:champ?.Name,categorySlug},{slug:categorySlug});
+ if(!live&&!competition.allowed)return null;
+ return{match_id:zId(game.ID??game.id),sport_id:18,sport_tag:'football',category_id:Number(country?.ID??game.Region??game.region),category_name:country?.Name,category_slug:categorySlug,tournament_id:Number(champ?.ID??game.Champ??game.ch),tournament_name:champ?.Name,tournament_slug:slug(champ?.Name),competition_rank:competition.allowed?competition.rank:null,home,away,service:live?'LIVE':'PREMATCH',start_at:stamp(game.StartTime??game.st),status:'scheduled',phase:null,is_real:true,is_hot:false,raw:{provider:'ZIZOBET',nativeId:game.ID??game.id,homeTeam:{id:'home'},awayTeam:{id:'away'}}};
 }
 export function infoOf(row,game,meta){
  const status=Number(game.EventStatus??game.MatchStatusID),phase=meta.statuses.get('1_'+status),score=pair(game.Score);

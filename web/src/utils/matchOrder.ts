@@ -1,5 +1,6 @@
 import type { Match } from '../types';
 const ordinal = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
+const competitionRank = (value: unknown) => value == null || !Number.isFinite(Number(value)) ? Number.MAX_SAFE_INTEGER : Number(value);
 const kickoffDay = (value: unknown) => {
   const date = new Date(String(value ?? ''));
   if (!Number.isFinite(date.getTime())) return Number.MAX_SAFE_INTEGER;
@@ -8,10 +9,11 @@ const kickoffDay = (value: unknown) => {
   }).formatToParts(date).map(part => [part.type, part.value]));
   return Number(parts.year + parts.month + parts.day);
 };
-/** LIVE first; PREMATCH competition priority globally, then Tirana kickoff date within each priority. */
+/** LIVE first; the configured competition rank applies inside both LIVE and PREMATCH sections. PREMATCH kickoff dates only break ties within one rank. */
 export function compareMatchDisplay(a: Match, b: Match): number {
   const aLive=a.status==='LIVE', bLive=b.status==='LIVE';
   return Number(bLive) - Number(aLive)
+    || competitionRank(a.competitionRank) - competitionRank(b.competitionRank)
     || (!aLive ? ordinal(a.listingPriority)-ordinal(b.listingPriority) : 0)
     || (!aLive ? kickoffDay(a.startTime) - kickoffDay(b.startTime) : 0)
     || ordinal(a.competitionOrder) - ordinal(b.competitionOrder)

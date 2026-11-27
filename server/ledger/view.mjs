@@ -232,6 +232,7 @@ export function toClientMatch(m) {
     listingPriority:m.listingPriority,
     protectedPrematch:m.protectedPrematch,
     competitionOrder: m.competitionOrder,
+    competitionRank: m.competitionRank ?? null,
     listingStale: m.listingStale === true,
     tournamentId: String(m.tournament?.id ?? m.league?.slug ?? ''),
     homeTeam: m.home,
@@ -290,7 +291,7 @@ export function sportsTree(rawRows = []) {
 
   for (const row of rawRows) {
     const slug = row.category_slug ?? '';
-    if (!slug) continue;
+    if (!slug || row.competition_rank == null) continue;
 
     if (!categories.has(slug)) {
       categories.set(slug, {
@@ -300,13 +301,15 @@ export function sportsTree(rawRows = []) {
         slug,
         countryCode: null,
         sortOrder: categories.size,
+        competitionRank: Number(row.competition_rank),
         tournaments: new Map(),
         count: 0,
       });
     }
 
     const category = categories.get(slug);
-    category.listingPriority=Math.min(category.listingPriority??100,Number(row.listing_priority??100));
+    category.competitionRank = Math.min(category.competitionRank, Number(row.competition_rank));
+    category.listingPriority = Math.min(category.listingPriority ?? 100, Number(row.listing_priority ?? 100));
     category.count++;
     if (row.tournament_name) {
       const key = String(row.tournament_id ?? row.tournament_name);
@@ -317,19 +320,28 @@ export function sportsTree(rawRows = []) {
           name: row.tournament_name,
           slug: row.tournament_slug ?? key,
           sortOrder: category.tournaments.size,
-          protectedPrematch:false,
-          matchCount:0,
+          competitionRank: Number(row.competition_rank),
+          protectedPrematch: false,
+          matchCount: 0,
         });
       }
-      const tour=category.tournaments.get(key);
-      tour.protectedPrematch ||= row.protected_prematch===true;
+      const tour = category.tournaments.get(key);
+      tour.competitionRank = Math.min(tour.competitionRank, Number(row.competition_rank));
+      tour.protectedPrematch ||= row.protected_prematch === true;
       tour.matchCount++;
     }
   }
 
   const list = [...categories.values()]
-    .sort((a, b) => (a.listingPriority??100)-(b.listingPriority??100)||b.count-a.count||a.name.localeCompare(b.name))
-    .map((c) => ({ ...c, tournaments: [...c.tournaments.values()] }));
+    .sort((a, b) => a.competitionRank - b.competitionRank
+      || (a.listingPriority ?? 100) - (b.listingPriority ?? 100)
+      || b.count - a.count
+      || a.name.localeCompare(b.name))
+    .map(category => ({
+      ...category,
+      tournaments: [...category.tournaments.values()]
+        .sort((a, b) => a.competitionRank - b.competitionRank || a.sortOrder - b.sortOrder),
+    }));
 
   return [{ ...FOOTBALL, categories: list }];
 }

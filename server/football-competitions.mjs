@@ -1,134 +1,4 @@
-/** National senior pyramid aliases, indexed by provider category slug.
- * Each semicolon separates a tier; | separates aliases. Empty tiers are allowed.
- * Never infer a country's pyramid from another country's identically named league.
- */
-const pyramids = {
-  england:'Premier League;Championship;League One|League 1',
-  italy:'Serie A;Serie B;Serie C|Lega Pro',
-  germany:'Bundesliga|1 Bundesliga;2nd Bundesliga|2 Bundesliga;3 Liga|3rd Liga',
-  spain:'LaLiga|La Liga|Primera Division;LaLiga2|La Liga 2|Segunda Division;Primera Federacion|Primera RFEF',
-  france:'League 1|Ligue 1;League 2|Ligue 2;League 3|National|Championnat National',
-  scotland:'Premiership;Championship;League One|League 1',
-  portugal:'Primeira Liga|Liga Portugal;Segunda Liga|Liga Portugal 2;Liga 3',
-  netherlands:'Eredivisie;Eerste Divisie;Tweede Divisie',
-  belgium:'Jupiler Pro League|Pro League;Challenger Pro League|First Division B;National Division 1|Division 1 ACFF|Division 1 VV',
-  austria:'Bundesliga;Liga 2|2 Liga;Regionalliga',
-  switzerland:'Super League;Challenge League;Promotion League',
-  turkey:'Super League|Super Lig;1 League|1 Lig;2 League|2 Lig',
-  greece:'Super League|Super League 1;Super League 2;Gamma Ethniki|3rd League',
-  denmark:'Superliga|Superligaen;1st Division|1 Division;2nd Division|2 Division',
-  sweden:'Allsvenskan;Superettan;Division 1|Ettan',
-  norway:'Eliteserien;OBOS Ligaen|1st Division|1 Division;2nd Division|2 Division|PostNord Ligaen',
-  finland:'Veikkausliiga;Ykkosliiga;Ykkonen',
-  iceland:'Urvalsdeild|Besta deild;1 deild|1st Division;2 deild|2nd Division',
-  ireland:'Premier Division;First Division;',
-  'northern-ireland':'Premiership;Championship;Premier Intermediate League',
-  wales:'Cymru Premier|Premier League;Cymru North|Cymru South;Ardal League|Ardal Leagues',
-  poland:'Ekstraklasa;Division 1|1 Liga;Division 2|2 Liga',
-  czechia:'First League|1 Liga;FNL|National League|2 Liga;CFL|MSFL|3 Liga',
-  slovakia:'Nike liga|Super Liga;2 Liga|Second League;3 Liga|Third League',
-  hungary:'NB 1|NB I;NB 2|NB II;NB 3|NB III',
-  romania:'SuperLiga|Liga 1;League 2|Liga 2;League 3|Liga 3',
-  bulgaria:'Parva liga|First League;Vtora liga|Second League;Treta liga|Third League',
-  croatia:'HNL|1 HNL;Prva NL|1 NL;Druga NL|2 NL',
-  serbia:'Super Liga|Superliga;Prva Liga|First League;Srpska Liga|Serbian League',
-  slovenia:'Prva liga|1 SNL;2 SNL|Second League;3 SNL|Third League',
-  'bosnia-herzegovina':'Premier League;First League;Second League',
-  montenegro:'First League;Second League;Third League',
-  albania:'Superliga|Kategoria Superiore;First Division|Kategoria e Pare;Second Division|Kategoria e Dyte',
-  kosovo:'Superliga|Super League;First League|Liga e Pare;Second League|Liga e Dyte',
-  'north-macedonia':'First League;Second League;Third League',
-  cyprus:'First division;Second Division;Third Division',
-  malta:'Premier League;Challenge League;National Amateur League',
-  luxembourg:'National Division;Division of Honour;1 Division',
-  'faroe-islands':'Premier League|Betri deildin;1 deild;2 deild',
-  estonia:'Meistriliiga|Premium Liiga;Esiliiga;Esiliiga B',
-  latvia:'Virsliga;1 Liga|First League;2 Liga|Second League',
-  lithuania:'A League|A Lyga;1 League|I Lyga;II Lyga|2 League',
-  belarus:'Premier League;First League;Second League',
-  ukraine:'Premier League;First League;Second League',
-  russia:'Premier League;First League;Second League A|Second League Division A',
-  moldova:'Super Liga|National Division;Liga 1|Division A;Liga 2|Division B',
-  georgia:'Erovnuli Liga;Erovnuli Liga 2;Liga 3',
-  armenia:'Premier League;First League;',
-  azerbaijan:'Premier League;First Division|I Liga;Second Division|II Liga',
-  kazakhstan:'Premier League;First Division|First League;Second Division|Second League',
-  brazil:'Serie A;Serie B;Serie C',
-  argentina:'Liga Profesional|Primera Division;Primera Nacional;Primera B|Primera B Metropolitana|Federal A|Torneo Federal A',
-  chile:'Primera Division|Liga de Primera;Primera B;Segunda Division|Segunda Division Profesional',
-  uruguay:'Primera Division;Segunda Division;Amateurs Primera Division|Primera Division Amateur',
-  paraguay:'Primera Division|Division Profesional;Segunda Division|Division Intermedia;Primera B|Primera B Nacional',
-  peru:'Primera Division|Liga 1;Segunda Division|Liga 2;Liga 3',
-  ecuador:'LigaPro Primera A|Serie A;LigaPro Primera B|Serie B;Segunda Categoria',
-  colombia:'Primera A;Primera B;',
-  bolivia:'Division Profesional|Primera Division;Copa Simon Bolivar;',
-  venezuela:'Primera Division;Segunda Division;',
-  usa:'MLS|Major League Soccer;USL Championship;USL League One|MLS Next Pro',
-  canada:'Premier League|Canadian Premier League|NSL|Northern Super League;;League1',
-  mexico:'Liga MX;Liga de Expansion MX|Liga de Ascenso;Liga Premier',
-  'costa-rica':'Primera Division;Segunda Division;LINAFA',
-  guatemala:'Liga Nacional|National League;Primera Division;Segunda Division',
-  honduras:'Liga Nacional|National League;Liga de Ascenso;',
-  'el-salvador':'Primera Division;Segunda Division;Tercera Division',
-  nicaragua:'Primera Division;Segunda Division;Tercera Division',
-  panama:'Liga Panamena|LPF;Liga Prom;',
-  jamaica:'Premier League;Championship;',
-  haiti:'Ligue Haitienne|Ligue 1;Division 2;',
-  'dominican-republic':'Liga Dominicana;Liga de Expansion;',
-  japan:'J1 League;J2 League;J3 League',
-  'republic-of-korea':'K League 1|K-League 1;K League 2|K-League 2;K3 League',
-  china:'Super League;League One|China League 1;League Two|China League 2',
-  australia:'A League|A League Men|A League Women;Australian Championship;',
-  'new-zealand':'National League|Premiership;;',
-  india:'Super League|Indian Super League;I League;I League 2|Second Division League',
-  indonesia:'Liga 1|Super League;Liga 2|Championship;Liga 3|Liga Nusantara',
-  thailand:'Thai League 1|Thai League;Thai League 2;Thai League 3',
-  vietnam:'V League 1;V League 2;Second Division',
-  malaysia:'Super League;A1 Semi Pro League;A2 Amateur League',
-  singapore:'Premier League;Football League 1;Football League 2',
-  philippines:'Football League|PFL;;',
-  bangladesh:'Premier League;Championship League;',
-  nepal:'A Division;B Division;C Division',
-  'saudi-arabia':'Professional League|Pro League;First Division;Second Division',
-  qatar:'Stars League;Second Division;',
-  'united-arab-emirates':'Pro League|Professional League;Division 1|First Division;Division 2|Second Division',
-  kuwait:'Premier League;Division 1|First Division;',
-  bahrain:'Premier League;Second Division;',
-  oman:'Professional League|Pro League;First Division;Second Division',
-  iran:'Pro League|Persian Gulf Pro League;First League|Azadegan League;Second Division',
-  iraq:'Stars League|Premier League;Premier Division League;1st Division|First Division',
-  jordan:'Pro League|Professional League;Division 1|First Division;Division 2|Second Division',
-  lebanon:'Premier League;Second Division;Third Division',
-  israel:'Premier League;Liga Leumit|National League;Liga Alef',
-  uzbekistan:'Super League;Pro League;First League',
-  kyrgyzstan:'Premier Liga|Premier League;National League;',
-  tajikistan:'Higher League;First League;Second League',
-  turkmenistan:'Yokary Liga;First League;',
-  egypt:'Premier League;Second Division A;Second Division B',
-  morocco:'Botola Pro|Botola Pro 1;Botola 2;National Amateur',
-  algeria:'Ligue 1;Ligue 2;Inter Regions',
-  tunisia:'Ligue 1;Ligue 2;Ligue 3',
-  libya:'Premier League;First Division;Second Division',
-  'south-africa':'Premiership|Premier League;Championship|First Division;ABC Motsepe League',
-  nigeria:'Premier League|NPFL;National League;Nationwide League One',
-  ghana:'Premier League;Division One;Division Two',
-  kenya:'Premier League;National Super League;Division One',
-  tanzania:'Premier League;Championship;First League',
-  uganda:'Premier League;Big League;Regional League',
-  ethiopia:'Premier League;Higher League;First League',
-  rwanda:'Premier League|National League;Second Division;',
-  senegal:'Ligue 1;Ligue 2;National 1',
-  'ivory-coast':'Ligue 1;Ligue 2;Division 3',
-  cameroon:'Elite One;Elite Two;Regional League',
-  zambia:'Super League;National Division One;Division One',
-  zimbabwe:'Premier League;Division One;Division Two',
-  angola:'Girabola;Gira Angola;',
-  mozambique:'Mocambola;Division 2;',
-  botswana:'Premier League;First Division;',
-  namibia:'Premier League;First Division;Second Division',
-  'sierra-leone':'Premier League;Division One;Division Two',
-};
-
+/** Strict match whitelist and fixed display priority for the football board. */
 export const normalizeCompetition = value => String(value ?? '').normalize('NFD')
   .replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 /** Explicit virtual/video-game football markers, independent of league depth.
@@ -150,26 +20,164 @@ export function isSyntheticFootballMatch(match={}) {
   if(/\((?:v|sim|srl|virtual|replay|replays)\)/i.test(teams))return true;
   return /\b2\s*x\s*(?:[1-9]|1[0-5])\s*(?:min(?:ute)?s?)?\b/i.test([competition,teams].join(' '));
 }
-const tierNames = new Map(Object.entries(pyramids).map(([country, tiers]) => [country,
-  tiers.split(';').slice(0,3).map(tier => tier.split('|').filter(Boolean).map(normalizeCompetition))]));
-const excluded = /\b(?:u\s?\d{2}|under\s?\d{2}|youth|junior|reserves?|reserve league|academy|professional development|premier league 2|future cup|long term|outrights?|singles only|cyber|virtual|esports?battle|replays?|ehighlights|highlights|simulated|short football|fantasy|volta|penalty shootout)\b/;
+
 const syntheticCategory = /^(?:cyber|ereplay|replay|virtual|crypto|computer|vsport|express|special|short-football)/;
-const regions = new Set(['world','international','international-clubs','international-youth','europe','asia','africa','south-america','north-america','central-america','north-and-central-america','oceania','concacaf','conmebol','uefa','afc','caf']);
-const majorThree=new Set(['england','italy','france','spain','germany','portugal']);
-const europeTwo=new Set(['scotland','portugal','netherlands','belgium','austria','switzerland','turkey','greece','denmark','sweden','norway','finland','iceland','ireland','northern-ireland','wales','poland','czechia','slovakia','hungary','romania','bulgaria','croatia','serbia','slovenia','bosnia-herzegovina','montenegro','albania','kosovo','north-macedonia','cyprus','malta','luxembourg','faroe-islands','estonia','latvia','lithuania','belarus','ukraine','moldova','georgia','armenia','azerbaijan']);
-export const isEuropeanFootballCountry=country=>majorThree.has(String(country).toLowerCase())||europeTwo.has(String(country).toLowerCase())||String(country).toLowerCase()==='russia';
-export const competitionTierLimit=country=>isEuropeanFootballCountry(country)?3:1;
+const rules = [];
+function addRule(scope, label, aliases = [], tier = null) {
+  const names = [label, ...aliases].map(normalizeCompetition).filter(Boolean);
+  rules.push({ rank: rules.length + 1, scope: scope === 'global' ? null : new Set(scope.map(normalizeCompetition)), label, names, tier });
+}
+addRule("global", "FIFA World Cup", ["World Cup"], null);
+addRule("global", "FIFA Club World Cup", ["Club World Cup"], null);
+addRule("global", "FIFA U-20 World Cup", ["FIFA U20 World Cup","FIFA U-20 World Cup","U20 World Cup","U-20 World Cup","Under 20 World Cup"], null);
+addRule("global", "FIFA U-17 World Cup", ["FIFA U17 World Cup","FIFA U-17 World Cup","U17 World Cup","U-17 World Cup","Under 17 World Cup"], null);
+addRule("global", "FIFA Women's World Cup", ["FIFA Women World Cup","FIFA Women's World Cup","Women's World Cup","Women World Cup"], null);
+addRule("global", "UEFA Champions League", ["Champions League"], null);
+addRule("global", "UEFA Europa League", ["Europa League"], null);
+addRule("global", "UEFA Conference League", ["Conference League"], null);
+addRule("global", "UEFA Super Cup", ["European Super Cup"], null);
+addRule("global", "UEFA European Championship", ["European Championship","UEFA Euro","Euro"], null);
+addRule("global", "UEFA Nations League", ["Nations League"], null);
+addRule("global", "UEFA U-21 European Championship", ["UEFA U21 European Championship","U21 European Championship","European U21 Championship"], null);
+addRule("global", "UEFA Youth League", [], null);
+addRule("global", "Copa Libertadores", ["CONMEBOL Libertadores"], null);
+addRule("global", "Copa Sudamericana", ["CONMEBOL Sudamericana"], null);
+addRule("global", "Copa América", ["Copa America","CONMEBOL Copa America"], null);
+addRule("global", "CAF Champions League", [], null);
+addRule("global", "CAF Confederation Cup", [], null);
+addRule("global", "Africa Cup of Nations", ["African Cup of Nations","AFCON"], null);
+addRule("global", "AFC Champions League Elite", ["AFC Champions League"], null);
+addRule("global", "AFC Asian Cup", ["Asian Cup"], null);
+addRule("global", "CONCACAF Champions Cup", ["CONCACAF Champions League"], null);
+addRule("global", "Gold Cup", ["CONCACAF Gold Cup"], null);
+addRule(["england"], "Premier League", ["English Premier League"], 1);
+addRule(["england"], "Championship", ["EFL Championship"], 2);
+addRule(["england"], "League One", ["League 1","EFL League One"], 3);
+addRule(["germany"], "Bundesliga", ["1 Bundesliga","1. Bundesliga"], 1);
+addRule(["germany"], "2. Bundesliga", ["2 Bundesliga","2nd Bundesliga"], 2);
+addRule(["germany"], "3. Liga", ["3 Liga","3rd Liga"], 3);
+addRule(["spain"], "LaLiga", ["La Liga","Primera Division"], 1);
+addRule(["spain"], "LaLiga 2", ["LaLiga2","La Liga 2","Segunda Division"], 2);
+addRule(["spain"], "Primera Federación", ["Primera Federacion","Primera RFEF"], 3);
+addRule(["italy"], "Serie A", [], 1);
+addRule(["italy"], "Serie B", [], 2);
+addRule(["italy"], "Serie C", ["Lega Pro"], 3);
+addRule(["france"], "Ligue 1", ["League 1"], 1);
+addRule(["france"], "Ligue 2", ["League 2"], 2);
+addRule(["france"], "Ligue 3", ["League 3","National","Championnat National","National 1"], 3);
+addRule(["netherlands"], "Eredivisie", [], 1);
+addRule(["netherlands"], "Eerste Divisie", [], 2);
+addRule(["portugal"], "Primeira Liga", ["Liga Portugal","Liga Portugal 1"], 1);
+addRule(["portugal"], "Liga Portugal 2", ["Segunda Liga","Liga Portugal Segunda"], 2);
+addRule(["turkey"], "Süper Lig", ["Super Lig","Super League"], 1);
+addRule(["turkey"], "1. Lig", ["1 Lig","1 League"], 2);
+addRule(["belgium"], "Pro League", ["Jupiler Pro League"], 1);
+addRule(["belgium"], "Challenger Pro League", ["First Division B"], 2);
+addRule(["scotland"], "Scottish Premiership", ["Premiership","Scotland Premiership"], 1);
+addRule(["scotland"], "Scottish Championship", ["Championship","Scotland Championship"], 2);
+addRule(["sweden"], "Allsvenskan", [], 1);
+addRule(["sweden"], "Superettan", [], 2);
+addRule(["denmark"], "Superliga", ["Superligaen"], 1);
+addRule(["denmark"], "1. Division", ["1 Division","1st Division"], 2);
+addRule(["norway"], "Eliteserien", [], 1);
+addRule(["norway"], "1. divisjon", ["1 Divisjon","1st Division","OBOS Ligaen"], 2);
+addRule(["austria"], "Bundesliga", [], 1);
+addRule(["austria"], "2. Liga", ["2 Liga","2nd Liga"], 2);
+addRule(["switzerland"], "Super League", [], 1);
+addRule(["switzerland"], "Challenge League", [], 2);
+addRule(["poland"], "Ekstraklasa", [], 1);
+addRule(["poland"], "I liga", ["1 Liga","Division 1"], 2);
+addRule(["greece"], "Super League 1", ["Super League"], 1);
+addRule(["greece"], "Super League 2", [], 2);
+addRule(["croatia"], "SuperSport HNL", ["HNL","1 HNL"], 1);
+addRule(["croatia"], "Prva NL", ["1 NL"], 2);
+addRule(["czechia","czech-republic"], "Chance Liga", ["First League","1 Liga"], 1);
+addRule(["hungary"], "NB I", ["NB 1"], 1);
+addRule(["romania"], "SuperLiga", ["Liga 1"], 1);
+addRule(["serbia"], "SuperLiga", ["Super Liga"], 1);
+addRule(["ukraine"], "Premier League", [], 1);
+addRule(["bulgaria"], "First Professional League", ["Parva Liga","First League"], 1);
+addRule(["slovakia"], "Niké Liga", ["Nike Liga","Super Liga"], 1);
+addRule(["brazil"], "Brasileirão Série A", ["Brasileirao Serie A","Campeonato Brasileiro Serie A","Serie A"], 1);
+addRule(["brazil"], "Brasileirão Série B", ["Brasileirao Serie B","Campeonato Brasileiro Serie B","Serie B"], 2);
+addRule(["argentina"], "Liga Profesional", ["Liga Profesional de Futbol","Primera Division"], 1);
+addRule(["argentina"], "Primera Nacional", [], 2);
+addRule(["mexico"], "Liga MX", [], 1);
+addRule(["mexico"], "Liga de Expansión MX", ["Liga de Expansion MX","Expansion MX","Liga de Ascenso"], 2);
+addRule(["colombia"], "Categoría Primera A", ["Categoria Primera A","Primera A"], 1);
+addRule(["colombia"], "Categoría Primera B", ["Categoria Primera B","Primera B"], 2);
+addRule(["chile"], "Primera División", ["Primera Division","Liga de Primera"], 1);
+addRule(["chile"], "Primera B", [], 2);
+addRule(["uruguay"], "Primera División", ["Primera Division"], 1);
+addRule(["uruguay"], "Segunda División", ["Segunda Division"], 2);
+addRule(["ecuador"], "LigaPro Serie A", ["LigaPro Primera A","Serie A"], 1);
+addRule(["ecuador"], "LigaPro Serie B", ["LigaPro Primera B","Serie B"], 2);
+addRule(["egypt"], "Egyptian Premier League", ["Premier League"], 1);
+addRule(["morocco"], "Botola Pro", ["Botola Pro 1"], 1);
+addRule(["south-africa"], "Premier Division", ["Premiership","Premier League"], 1);
+addRule(["algeria"], "Ligue 1", [], 1);
+addRule(["tunisia"], "Ligue 1", [], 1);
+addRule(["nigeria"], "NPFL", ["Premier League","Nigeria Premier League"], 1);
+addRule(["ghana"], "Ghana Premier League", ["Premier League"], 1);
+addRule(["saudi-arabia"], "Saudi Pro League", ["Professional League","Pro League"], 1);
+addRule(["japan"], "J1 League", [], 1);
+addRule(["republic-of-korea","south-korea","korea-republic"], "K League 1", ["K-League 1"], 1);
+addRule(["china","china-pr"], "Chinese Super League", ["Super League"], 1);
+addRule(["qatar"], "Qatar Stars League", ["Stars League"], 1);
+addRule(["united-arab-emirates","uae"], "UAE Pro League", ["Pro League","Professional League"], 1);
+addRule(["iran"], "Persian Gulf Pro League", ["Pro League"], 1);
+addRule(["australia"], "A-League Men", ["A League Men","A League"], 1);
 
-export function competitionDecision(tournament, category = {}) {
-  const country=String(category.slug??tournament.category?.slug??tournament.categorySlug??'').toLowerCase();
-  const name=normalizeCompetition(tournament.name);
-  if(isSyntheticFootballMatch({tournament,category})||tournament.isEsport||syntheticCategory.test(country))return {allowed:false,reason:'synthetic',country};
-  if(/\b(?:outrights?|long term|singles only)\b/.test(name))return {allowed:false,reason:'not-a-match',country};
-  const tiers=tierNames.get(country)??[];const index=tiers.findIndex(aliases=>aliases.some(alias=>name===alias||name.startsWith(alias+' group ')));
-  return {allowed:true,reason:'all-real-football',country,tier:index<0?null:index+1};
+function nameMatches(name, aliases) {
+  return aliases.some(alias => name === alias || (name.startsWith(alias + ' group ') && /^group [a-z0-9]+$/.test(name.slice(alias.length + 1))));
+}
+function countrySlugOf(tournament = {}, category = {}) {
+  return normalizeCompetition(category.slug ?? tournament.category?.slug ?? tournament.categorySlug ?? '');
+}
+export function competitionDecision(tournament = {}, category = {}) {
+  const country = countrySlugOf(tournament, category);
+  const name = normalizeCompetition(tournament.name ?? tournament.tournament_name ?? tournament.tournamentName ?? '');
+  if (!name) return { allowed: false, reason: 'not-configured', country, rank: null, tier: null };
+  if (isSyntheticFootballMatch({ tournament, category }) || tournament.isEsport === true || syntheticCategory.test(country.replaceAll(' ', '-'))) {
+    return { allowed: false, reason: 'synthetic', country, rank: null, tier: null };
+  }
+  if (/\b(?:outrights?|long term|singles only)\b/.test(name)) {
+    return { allowed: false, reason: 'not-a-match', country, rank: null, tier: null };
+  }
+  const rule = rules.find(item => (!item.scope || item.scope.has(country)) && nameMatches(name, item.names));
+  return rule ? { allowed: true, reason: 'configured', country, rank: rule.rank, tier: rule.tier, competition: rule.label }
+    : { allowed: false, reason: 'not-configured', country, rank: null, tier: null };
 }
 
-/** Compile decisions once per catalog refresh, keyed by provider tournament ID. */
+/**
+ * Attach the fixed rank to a provider row. Unlisted fixtures are omitted from
+ * the public board; a watched, already-accepted ticket may retain an unranked
+ * row solely for evidence capture and settlement.
+ */
+export function rankCompetitionRow(row, { allowUnlisted = false } = {}) {
+  if (!row) return null;
+  const categorySlug = row.category_slug ?? row.tournament?.category?.slug ?? '';
+  const tournamentName = row.tournament_name ?? row.tournament?.name ?? '';
+  const decision = competitionDecision(
+    { name: tournamentName, categorySlug },
+    { slug: categorySlug },
+  );
+  if (!decision.allowed) {
+    return allowUnlisted ? { ...row, competition_rank: null } : null;
+  }
+  return { ...row, competition_rank: decision.rank };
+}
+
+export function competitionDisplayOrder(categorySlug, tournamentName) {
+  const decision = competitionDecision({ name: tournamentName, categorySlug }, { slug: categorySlug });
+  return decision.allowed ? decision.rank : null;
+}
+
 export function buildCompetitionPolicy(tournaments, categories) {
-  return new Map([...tournaments].map(([id,t]) => [id,competitionDecision(t,categories.get(t.categoryId) ?? {slug:t.categorySlug})]));
+  return new Map([...tournaments].map(([id, tournament]) => [
+    id, competitionDecision(tournament, categories.get(tournament.categoryId) ?? { slug: tournament.categorySlug }),
+  ]));
 }
+
+export const isEuropeanFootballCountry = country => rules.some(rule => rule.scope?.has(normalizeCompetition(country)) && rule.tier != null);
+export const competitionTierLimit = country => Math.max(0, ...rules.filter(rule => rule.scope?.has(normalizeCompetition(country))).map(rule => rule.tier ?? 0));

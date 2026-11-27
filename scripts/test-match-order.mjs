@@ -14,7 +14,7 @@ const originalQuery = database.pool.query;
 database.pool.query = (text, params) => sql.query(text, params);
 const row = (id, competition = 1, kickoff = Date.now() - 30 * 60000) => ({
   match_id: id, sport_id: 18, sport_tag: 'football', category_id: competition, category_slug: `league-${competition}`,
-  category_name: `League ${competition}`, tournament_id: competition, tournament_name: `League ${competition}`,
+  category_name: `League ${competition}`, tournament_id: competition, tournament_name: `League ${competition}`, competition_rank: 50,
   home: id === 500 ? 'Juventus' : `Home ${id}`, away: `Away ${id}`, service: 'LIVE', status: 'live',
   start_at: new Date(kickoff), raw: {}, is_real: true, is_hot: false, live_minute: 30, phase: '1H',
 });
@@ -45,6 +45,16 @@ try {
   assert.deepEqual(scheduled.sort(compareMatchDisplay).map(m=>m.id),
     ['today-cl','tomorrow-cl','today-premier','today-championship'],
     'UEFA Champions League has global PREMATCH priority regardless of kickoff date; date then orders fixtures within each priority');
+  const ranked = [
+    { id: 'premier-future', status: 'PREMATCH', startTime: '2026-11-28T20:00:00+01:00', competitionRank: 24, tournamentId: 11 },
+    { id: 'world-cup-today', status: 'PREMATCH', startTime: '2026-11-27T12:00:00+01:00', competitionRank: 1, tournamentId: 12 },
+    { id: 'champions-today', status: 'PREMATCH', startTime: '2026-11-27T18:00:00+01:00', competitionRank: 6, tournamentId: 13 },
+    { id: 'champions-live', status: 'LIVE', startTime: '2026-11-27T17:00:00+01:00', competitionRank: 6, tournamentId: 14 },
+    { id: 'premier-live', status: 'LIVE', startTime: '2026-11-27T18:00:00+01:00', competitionRank: 24, tournamentId: 15 },
+  ];
+  assert.deepEqual(ranked.sort(compareMatchDisplay).map(m => m.id),
+    ['champions-live', 'premier-live', 'world-cup-today', 'champions-today', 'premier-future'],
+    'LIVE remains first, then each section follows the permanent requested competition rank rather than kickoff date');
   const future = Date.now() + 4 * 60000;
   memory.getById(500).score_at = new Date(future); memory.getById(500).home_score = 3; memory.getById(500).away_score = 0;
   memory.expireStale(150, future);

@@ -8,6 +8,19 @@ on:
       - "server/index.mjs"
       - "server/feed-delivery.mjs"
       - "server/zizobet/**"
+      - "server/football-competitions.mjs"
+      - "server/board-settings.mjs"
+      - "server/upstream.mjs"
+      - "server/match-store.mjs"
+      - "server/db.mjs"
+      - "server/schema.mjs"
+      - "server/collector.mjs"
+      - "server/index.mjs"
+      - "server/ybets-feed.mjs"
+      - "server/ybets-normalize.mjs"
+      - "web/src/utils/matchOrder.ts"
+      - "web/src/components/Layout/SportsSidebar.tsx"
+      - "web/src/types/index.ts"
       - "server/match-statistics.mjs"
       - "scripts/test-*.mjs"
       - "package.json"
@@ -22,6 +35,19 @@ on:
       - "server/index.mjs"
       - "server/feed-delivery.mjs"
       - "server/zizobet/**"
+      - "server/football-competitions.mjs"
+      - "server/board-settings.mjs"
+      - "server/upstream.mjs"
+      - "server/match-store.mjs"
+      - "server/db.mjs"
+      - "server/schema.mjs"
+      - "server/collector.mjs"
+      - "server/index.mjs"
+      - "server/ybets-feed.mjs"
+      - "server/ybets-normalize.mjs"
+      - "web/src/utils/matchOrder.ts"
+      - "web/src/components/Layout/SportsSidebar.tsx"
+      - "web/src/types/index.ts"
       - "server/match-statistics.mjs"
       - "scripts/test-*.mjs"
       - "package.json"
@@ -45,7 +71,7 @@ jobs:
       - run: npm run test:settlement-focused
       - run: npm run test:historical-settlement
       - run: npm run test:selection-market
-      - run: node scripts/test-board-settings.mjs && npm run test:match-order
+      - run: node scripts/test-football-competitions.mjs && node scripts/test-configured-feed-competitions.mjs && node scripts/test-board-settings.mjs && npm run test:matches && npm run test:match-order
       - run: node scripts/test-prematch-market-catalog.mjs
       - run: node scripts/test-zizobet-all-match-history.mjs && node scripts/test-provider-timeline-retention.mjs
       - run: npm ci --prefix web

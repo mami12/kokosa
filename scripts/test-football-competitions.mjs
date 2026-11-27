@@ -1,22 +1,51 @@
 import assert from 'node:assert/strict';
-import { competitionDecision, buildCompetitionPolicy, competitionTierLimit, isSyntheticFootballMatch } from '../server/football-competitions.mjs';
-const decide=(country,name)=>competitionDecision({name},{slug:country});
-let cases=0;
-const check=(country,name,allowed,tier)=>{
-  const actual=decide(country,name); assert.equal(actual.allowed,!isSyntheticFootballMatch({tournament:{name},category:{slug:country}})&&!/^cyber/.test(country)&&!/outright|long.term|singles only/i.test(name),`${country}: ${name}`);
-   cases++;
-};
-for(const [country,names] of Object.entries({england:['Premier League','Championship','League One'],italy:['Serie A','Serie B','Serie C. Group A'],germany:['Bundesliga','2nd Bundesliga','3. Liga'],france:['League 1','League 2','National'],spain:['LaLiga','LaLiga2','Primera Federacion'],scotland:['Premiership','Championship','League One'],japan:['J1 League','J2 League','J3 League'],brazil:['Serie A','Serie B','Serie C'],argentina:['Liga Profesional','Primera Nacional','Primera B'],kosovo:['Superliga','First League','Second League'],india:['Super League','I-League','I-League 2'],denmark:['Superliga','1st Division','2nd Division']})) names.forEach((name,index)=>check(country,name,index+1<=competitionTierLimit(country),index+1));
-for(const [country,name] of [['england','League Two'],['england','National League'],['england','National League North'],['england','Isthmian League'],['england','Premier League 2'],['scotland','League Two'],['germany','Regionalliga'],['germany','Oberliga'],['austria','Landesliga'],['argentina','Primera C'],['brazil','Serie D'],['brazil','Carioca. Serie B2'],['india','I-League. Division 3'],['india','Bangalore. Super Division'],['angola','Liga Bantu'],['england','Totally New League'],['unknown-country','Premier League'],['spain','Segunda Division B'],['italy','Serie C2'],['italy','Serie A1']]) check(country,name,false);
-for(const [country,name] of [['world','FIFA World Cup'],['world','FIFA World Cup. Qualification'],['europe','European Championship'],['europe','UEFA Nations League'],['europe','UEFA Champions League'],['europe','UEFA Europa League'],['europe','UEFA Conference League'],['asia','AFC Champions League Two'],['africa','Africa Cup of Nations'],['south-america','Copa Libertadores'],['south-america','Copa Sudamericana'],['world','National teams. Friendlies'],['world','Club Friendlies'],['england','FA Cup'],['england','League Cup'],['germany','DFB Pokal'],['italy','Coppa Italia'],['spain','Copa del Rey'],['france','Coupe de France'],['austria','OFB Cup'],['norway','NM Cup'],['world','FIFA Club World Cup'],['europe','Women. UEFA Champions League'],['mexico','Women. Liga MX']]) check(country,name,true);
-for(const name of ['U19. World Cup','U-21 Premier League','Women U20 Cup','Reserves. Cup','Youth League','UEFA Youth League','Regional Cup','Future Cup','FIFA World Cup 2030. Long-term bets (Singles only)','Club Friendly. U23','Premier League. Reserve League','Virtual Champions League']) check('world',name,false);
-check('cyberfifa','Premier League',false); check('replays','Serie A',false);
-const policy=buildCompetitionPolicy(new Map([[10,{id:10,name:'League One',categoryId:1}],[20,{id:20,name:'League Two',categoryId:1}],[30,{id:30,name:'League Two',categoryId:2}]]),new Map([[1,{slug:'england'}],[2,{slug:'france'}]]));
-assert.equal(policy.get(10).allowed,true);assert.equal(policy.get(20).allowed,true);assert.equal(policy.get(30).allowed,true); cases+=3;
-console.log(`PASS ${cases} competition-policy cases: country tiers, groups, cups, internationals, friendlies, unknowns and exclusions`);
+import { competitionDecision, competitionDisplayOrder, buildCompetitionPolicy } from '../server/football-competitions.mjs';
 
-check('sweden','Division 1',true,3);check('portugal','Liga 3',true,3);check('russia','First League',true,2);check('japan','J2 League',false,2);check('japan','J1 League',true,1);check('sweden','Superettan',true,2);
-for(const country of ['england','kosovo','denmark','russia','sweden'])assert.equal(competitionTierLimit(country),3);
-for(const country of ['japan','brazil','argentina'])assert.equal(competitionTierLimit(country),1);
-for(const name of ['UEFA Champions League','UEFA Europa League','UEFA Conference League','FIFA World Cup','FIFA Club World Cup','Copa Libertadores'])check('england',name,true);
-console.log('PASS updated user policy: every real competition, including youth/women/lower/unknown leagues; only virtuals and non-match offers excluded');
+const requested = [["world","FIFA World Cup"],["world","FIFA Club World Cup"],["world","FIFA U-20 World Cup"],["world","FIFA U-17 World Cup"],["world","FIFA Women's World Cup"],["europe","UEFA Champions League"],["europe","UEFA Europa League"],["europe","UEFA Conference League"],["europe","UEFA Super Cup"],["europe","UEFA European Championship"],["europe","UEFA Nations League"],["europe","UEFA U-21 European Championship"],["europe","UEFA Youth League"],["south-america","Copa Libertadores"],["south-america","Copa Sudamericana"],["south-america","Copa América"],["africa","CAF Champions League"],["africa","CAF Confederation Cup"],["africa","Africa Cup of Nations"],["asia","AFC Champions League Elite"],["asia","AFC Asian Cup"],["north-america","CONCACAF Champions Cup"],["north-america","Gold Cup"],["england","Premier League"],["england","Championship"],["england","League One"],["germany","Bundesliga"],["germany","2. Bundesliga"],["germany","3. Liga"],["spain","LaLiga"],["spain","LaLiga 2"],["spain","Primera Federación"],["italy","Serie A"],["italy","Serie B"],["italy","Serie C"],["france","Ligue 1"],["france","Ligue 2"],["france","Ligue 3"],["netherlands","Eredivisie"],["netherlands","Eerste Divisie"],["portugal","Primeira Liga"],["portugal","Liga Portugal 2"],["turkey","Süper Lig"],["turkey","1. Lig"],["belgium","Pro League"],["belgium","Challenger Pro League"],["scotland","Scottish Premiership"],["scotland","Scottish Championship"],["sweden","Allsvenskan"],["sweden","Superettan"],["denmark","Superliga"],["denmark","1. Division"],["norway","Eliteserien"],["norway","1. divisjon"],["austria","Bundesliga"],["austria","2. Liga"],["switzerland","Super League"],["switzerland","Challenge League"],["poland","Ekstraklasa"],["poland","I liga"],["greece","Super League 1"],["greece","Super League 2"],["croatia","SuperSport HNL"],["croatia","Prva NL"],["czechia","Chance Liga"],["hungary","NB I"],["romania","SuperLiga"],["serbia","SuperLiga"],["ukraine","Premier League"],["bulgaria","First Professional League"],["slovakia","Niké Liga"],["brazil","Brasileirão Série A"],["brazil","Brasileirão Série B"],["argentina","Liga Profesional"],["argentina","Primera Nacional"],["mexico","Liga MX"],["mexico","Liga de Expansión MX"],["colombia","Categoría Primera A"],["colombia","Categoría Primera B"],["chile","Primera División"],["chile","Primera B"],["uruguay","Primera División"],["uruguay","Segunda División"],["ecuador","LigaPro Serie A"],["ecuador","LigaPro Serie B"],["egypt","Egyptian Premier League"],["morocco","Botola Pro"],["south-africa","Premier Division"],["algeria","Ligue 1"],["tunisia","Ligue 1"],["nigeria","NPFL"],["ghana","Ghana Premier League"],["saudi-arabia","Saudi Pro League"],["japan","J1 League"],["republic-of-korea","K League 1"],["china","Chinese Super League"],["qatar","Qatar Stars League"],["united-arab-emirates","UAE Pro League"],["iran","Persian Gulf Pro League"],["australia","A-League Men"]];
+assert.equal(requested.length, 100, 'the configured list contains the complete 100 requested competitions');
+requested.forEach(([country, name], index) => {
+  const decision = competitionDecision({ name }, { slug: country });
+  assert.equal(decision.allowed, true, `${country}: ${name} must be allowed`);
+  assert.equal(decision.rank, index + 1, `${country}: ${name} must keep the exact supplied order`);
+  assert.equal(competitionDisplayOrder(country, name), index + 1);
+});
+
+const aliases = [
+  ['england','League 1','League One'], ['germany','2nd Bundesliga','2. Bundesliga'],
+  ['germany','3 Liga','3. Liga'], ['spain','Segunda Division','LaLiga 2'],
+  ['france','National','Ligue 3'], ['italy','Lega Pro','Serie C'],
+  ['turkey','Super Lig','Süper Lig'], ['turkey','1 League','1. Lig'],
+  ['poland','1 Liga','I liga'], ['croatia','HNL','SuperSport HNL'],
+  ['brazil','Serie A','Brasileirão Série A'], ['argentina','Primera Division','Liga Profesional'],
+  ['south-africa','Premiership','Premier Division'], ['nigeria','Premier League','NPFL'],
+  ['republic-of-korea','K-League 1','K League 1'], ['united-arab-emirates','Pro League','UAE Pro League'],
+  ['australia','A League','A-League Men'],
+];
+for (const [country, alias, canonical] of aliases) {
+  assert.equal(competitionDisplayOrder(country, alias), competitionDisplayOrder(country, canonical), `${country}: ${alias} is a provider alias`);
+}
+
+const denied = [
+  ['england','League Two'], ['england','National League'], ['germany','Regionalliga'],
+  ['spain','Segunda División B'], ['italy','Serie D'], ['france','Ligue 4'],
+  ['netherlands','Tweede Divisie'], ['portugal','Liga 3'], ['turkey','2. Lig'],
+  ['scotland','League One'], ['sweden','Ettan'], ['japan','J2 League'],
+  ['republic-of-korea','K League 2'], ['brazil','Brasileirão Série C'],
+  ['argentina','Primera B'], ['mexico','Liga Premier'], ['egypt','Second Division'],
+  ['usa','MLS'], ['england','FA Cup'], ['world','Club Friendlies'],
+  ['world','World Cup Qualification'], ['asia','AFC Champions League Two'],
+  ["europe","UEFA Women's Champions League"], ['world','Virtual Champions League'],
+  ['cyberfifa','Premier League'], ['england','Premier League. Long-term bets (Singles only)'],
+];
+for (const [country, name] of denied) {
+  assert.equal(competitionDecision({ name }, { slug: country }).allowed, false, `${country}: ${name} must be excluded`);
+}
+
+const policy = buildCompetitionPolicy(
+  new Map([[101,{id:101,name:'Premier League',categoryId:1}],[102,{id:102,name:'League Two',categoryId:1}],[103,{id:103,name:'J1 League',categoryId:2}]]),
+  new Map([[1,{slug:'england'}],[2,{slug:'japan'}]]),
+);
+assert.equal(policy.get(101).rank, 24);
+assert.equal(policy.get(102).allowed, false);
+assert.equal(policy.get(103).rank, 94);
+console.log(`PASS strict competition whitelist: ${requested.length} approved competitions in exact order, aliases, country scoping and ${denied.length} exclusions`);

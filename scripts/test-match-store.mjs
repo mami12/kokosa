@@ -27,6 +27,7 @@ const mkRow = (over = {}) => ({
   tournament_id: 100,
   tournament_slug: 'epl',
   tournament_name: 'Premier League',
+  competition_rank: 50,
   home: 'Home FC',
   away: 'Away FC',
   service: 'LIVE',
@@ -80,6 +81,10 @@ check(
 );
 check('league filter', store.getMatches({ league: 'premier-league' }).length === 2);
 check('live sorts before prematch', store.getMatches({})[0].service === 'LIVE');
+store.upsert([mkRow({ match_id: 4, tournament_name: 'League Two', competition_rank: null })]);
+check('unlisted competitions never enter match results', !store.getMatches({ includeEnded: true }).some(match => match.match_id === 4));
+check('unlisted competitions never enter league counts', store.getLeagues().every(league => league.slug === 'premier-league'));
+check('unlisted competitions never enter feed subscriptions', !store.getSubscriptionIds({ liveLimit: 20 }).live.includes(4));
 check(
   'limit/offset',
   store.getMatches({ limit: 1 }).length === 1 &&
@@ -100,7 +105,7 @@ check('subscription ids respect limits', subs.live.length === 1 && subs.prematch
 
 // --- freshness -------------------------------------------------------------------
 const fresh = store.getFeedFreshness(90);
-check('freshness: live counted, stale not', fresh.live === 2 && fresh.staleClock === 1 && fresh.staleScore === 1, JSON.stringify(fresh));
+check('freshness: all active LIVE feeds counted, including unlisted competitions', fresh.live === 3 && fresh.staleClock === 2 && fresh.staleScore === 2, JSON.stringify(fresh));
 
 // --- expiry ----------------------------------------------------------------------
 const expired = store.expireStale(0, Date.now() + 60 * 60 * 1000); // everything is "old" an hour from now

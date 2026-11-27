@@ -506,7 +506,7 @@ app.get('/api/matches', async (req, res, next) => {
 app.get('/api/matches/:id', async (req, res, next) => {
   try {
     const row = await getMatchById(Number(req.params.id));
-    if (!row || isSyntheticFootballMatch(row) || overrides.isMatchHidden(row)) return res.status(404).json({ error: 'match not found' });
+    if (!row || row.competition_rank == null || isSyntheticFootballMatch(row) || overrides.isMatchHidden(row)) return res.status(404).json({ error: 'match not found' });
     boostMatch(row.match_id); // opened matches always get their full market list
     if (['ybets','zizobet'].includes(config.sportsProvider) && (isYbetsMatchId(row.match_id)||isZizoId(row.match_id))) {await collector?.focus(row.match_id).catch(()=>{});await flushFeedBuffer();}
     else pusher?.subscribeFull(row.match_id);
@@ -598,7 +598,7 @@ async function broadcastOdds(changed) {
     // already hides it via serializeMatch, and pushing placeholder prices (41.00 / 1.29)
     // would only confuse the frontend.
     const row = await getMatchById(Number(matchId));
-    if (!row || row.has_open_odds === false || isSyntheticFootballMatch(row) || overrides.isMatchHidden(row)) continue;
+    if (!row || row.competition_rank == null || row.has_open_odds === false || isSyntheticFootballMatch(row) || overrides.isMatchHidden(row)) continue;
     // Include live minute so the frontend can advance the clock even when
     // match-info-snapshot frames are rare
     const now = Date.now();
@@ -1041,7 +1041,7 @@ io.on('connection', async (socket) => {
     socket.data.scopeQueue=(socket.data.scopeQueue??Promise.resolve()).catch(()=>{}).then(async()=>{
     if(version!==socket.data.scopeVersion||!socket.connected||shuttingDown)return;socketTasks++;
     try{const previous=socket.data.feedScope;const requested=value??{};const requestedBoard=Array.isArray(requested.boardIds)?requested.boardIds:[],requestedSelection=Array.isArray(requested.selectionIds)?requested.selectionIds:[];const catalog=await getMatches({catalog:true});const eligible=new Set(catalog.filter(row=>!isSyntheticFootballMatch(row)&&!overrides.isMatchHidden(row)).map(row=>String(row.match_id)));const safeScope={...requested,boardIds:requestedBoard.filter(id=>eligible.has(String(id))),detail:requested.detail&&eligible.has(String(requested.detail.id))?requested.detail:null,selectionIds:requestedSelection.filter(id=>eligible.has(String(id).split('|')[0]))};const scope=await setSocketScope(socket,safeScope);const interested=new Set([...scope.boardIds,...(scope.detail?[scope.detail.id]:[]),...scope.selectionIds.map(id=>id.split('|')[0])]);const pending=socket.data.pendingScopeSnapshots??new Set();socket.data.pendingScopeSnapshots=pending;for(const id of [...pending])if(!interested.has(id))pending.delete(id);for(const id of scope.boardIds)if(!previous?.boardIds.includes(id))pending.add(id);if(scope.detail&&(scope.detail.id!==previous?.detail?.id||scope.detail.category!==previous?.detail?.category))pending.add(scope.detail.id);for(const key of scope.selectionIds)if(!previous?.selectionIds.includes(key))pending.add(key.split('|')[0]);const ids=[...pending];
-      for(const id of ids){if(!socket.connected||socket.data.scopeVersion!==version)return;const row=await getMatchById(Number(id));if(!row||isSyntheticFootballMatch(row)||overrides.isMatchHidden(row)){pending.delete(id);continue;}const [full]=await withOdds([row],Date.now(),{board:scope.detail?.id!==id&&!scope.selectionIds.some(key=>key.startsWith(id+'|')),displayStats:scope.detail?.id===id});const [client]=toClientMatches([full]);
+      for(const id of ids){if(!socket.connected||socket.data.scopeVersion!==version)return;const row=await getMatchById(Number(id));if(!row||row.competition_rank==null||isSyntheticFootballMatch(row)||overrides.isMatchHidden(row)){pending.delete(id);continue;}const [full]=await withOdds([row],Date.now(),{board:scope.detail?.id!==id&&!scope.selectionIds.some(key=>key.startsWith(id+'|')),displayStats:scope.detail?.id===id});const [client]=toClientMatches([full]);
         const board=projectClientBoardMatches([client])[0],keys=new Set((board.markets??[]).map(m=>m.extId+'|'+(m.line??''))),selected=new Set(scope.selectionIds);if(scope.boardIds.includes(id))publishedBoardKeys.set(id,keys);
         const detail=scope.detail?.id===id?new Set(detailProjection(client,scope.detail.category).markets.map(m=>m.extId+'|'+(m.line??''))):new Set();
         const markets=(full.markets??[]).filter(m=>offeredMarket(m)).map(m=>({...m,outcomes:(m.outcomes??[]).filter(o=>(scope.boardIds.includes(id)&&keys.has(m.key+'|'+(m.line??'')))||detail.has(m.key+'|'+(m.line??''))||selected.has(id+'|'+m.key+'|'+(m.line??'')+'|'+o.key)).map(o=>({...o,priceValidUntil:quoteValidUntil(o.priceUpdatedAt,row,config.prematchStaleMs)}))})).filter(m=>m.outcomes.length);
