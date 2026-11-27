@@ -58,7 +58,7 @@ import {quoteValidUntil} from './ledger/quote-validity.mjs';
 import {projectOddsDelta} from './ledger/odds-delta.mjs';
 import {refreshMarketCatalog,seedNativeMarketCatalog,onMarketPolicy} from './ledger/market-catalog-store.mjs';
 import {emitScopedOdds,setSocketScope,detailProjection,offeredMarket} from './market-delivery.mjs';
-import {emitScopedMatchInfo,createLiveMembershipPublisher,liveMatchIds} from './feed-delivery.mjs';
+import {emitScopedMatchInfo,createLiveMembershipPublisher,createLiveIncidentPublisher,projectLiveIncidentSnapshot,liveMatchIds} from './feed-delivery.mjs';
 import {isBoardOddsRow,projectClientBoardMatches} from './ledger/board-projection.mjs';
 import {catalogRows,categoryPolicies,scopeBlockRows} from './market-catalog.mjs';
 import {refreshBoardSettings} from './ledger/board-settings-store.mjs';
@@ -1026,6 +1026,9 @@ const publishLiveMembership=createLiveMembershipPublisher(ids=>{
     matches:ids.map(id=>({id})),syncStream:feedStreamId,syncSequence:++liveBoardSequence
   });
 });
+const publishLiveIncidentSnapshots=createLiveIncidentPublisher(payload=>{
+  io.emit('matches:incidents',payload);
+});
 onMarketPolicy(()=>io.emit('markets:policy',{markets:catalogRows(),categories:categoryPolicies(),scopes:scopeBlockRows()}));
 io.engine.on('headers', freshSocketHeaders);
 
@@ -1063,6 +1066,9 @@ io.on('connection', async (socket) => {
     // socket), so this must not send an empty list first
     if (getFeedMode() !== 'live') return;
     const rows = (await getMatches({ service: 'LIVE', catalog:true })).filter(row=>!isSyntheticFootballMatch(row)&&!overrides.isMatchHidden(row));
+    socket.emit('matches:incidents',{
+      at:Date.now(),matches:rows.map(row=>projectLiveIncidentSnapshot(row)).filter(Boolean)
+    });
     socket.emit('matches:live', {
       at: new Date().toISOString(),
       mode: getFeedMode(),
@@ -1176,6 +1182,7 @@ async function boot() {
         await expireStaleMatches(180);
         const rows=(await getMatches({service:'LIVE',catalog:true})).filter(row=>!isSyntheticFootballMatch(row)&&!overrides.isMatchHidden(row));
         publishLiveMembership(rows);
+        publishLiveIncidentSnapshots(rows);
       },
       selectRows:rows=>{
         const visible=selectPublishedMatches(rows.filter(r=>!['closed','uncovered','ended'].includes(r.status)&&!overrides.isMatchHidden(r)),{prematchLimit:0}).rows;
