@@ -87,13 +87,13 @@ const cases=[
 ];
 
 try{
- await db.exec(SCHEMA_SQL);
  await db.exec(LEDGER_SQL);
+ await db.exec(SCHEMA_SQL);
  pool.query=(sql,params)=>run(sql,params);
  pool.connect=async()=>({query:run,release(){}});
  await run(
   'insert into app_user(id,username,password_hash,role,balance) values($1,$2,$3,$4,$5)',
-  [userId,'market-family-money-flow','isolated','PLAYER',1000]
+  [userId,'market-family-money-flow','isolated','PLAYER',1000-cases.length*10]
  );
  const statistics={
   cards:{home:2,away:1},
