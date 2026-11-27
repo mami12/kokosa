@@ -93,7 +93,7 @@ export function createLiveIncidentPublisher(emit){
   const current=new Set(),changed=[];
   for(const snapshot of snapshots){
    current.add(snapshot.matchId);
-   const {at:observedAt,...facts}=snapshot;
+   const facts={...snapshot};delete facts.at;
    const signature=JSON.stringify(facts);
    if(previous.get(snapshot.matchId)!==signature){
     previous.set(snapshot.matchId,signature);
