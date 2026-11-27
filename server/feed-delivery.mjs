@@ -63,7 +63,7 @@ export function projectLiveIncidentSnapshot(row,at=Date.now()){
  const teams=teamStatisticsFromRow(row);
  const pair=field=>{
   const home=integer(teams.home?.[field]),away=integer(teams.away?.[field]);
-  return home===null&&away===null?undefined:home===null||away===null?undefined:{home,away};
+  return home===null&&away===null?undefined:{home,away};
  };
  const counters={
   corners:pair('corners'),yellowCards:pair('yellow'),redCards:pair('red'),
