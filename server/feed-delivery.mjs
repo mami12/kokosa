@@ -26,15 +26,18 @@ export function emitScopedMatchInfo(io,matchId,payload){
  return rooms.length;
 }
 
+export function liveMatchIds(rows){
+ return [...new Set((Array.isArray(rows)?rows:[])
+  .map(row=>String(row?.match_id??row?.matchId??row?.id??'').trim())
+  .filter(Boolean))].sort();
+}
+
 /** Publish only meaningful live-list membership changes, not every clock poll. */
 export function createLiveMembershipPublisher(emit){
  if(typeof emit!=='function')throw new TypeError('emit must be a function');
  let previous=null;
  return rows=>{
-  const ids=[...new Set((Array.isArray(rows)?rows:[])
-   .map(row=>String(row?.match_id??row?.matchId??row?.id??'').trim())
-   .filter(Boolean))].sort();
-  const signature=ids.join(',');
+  const ids=liveMatchIds(rows),signature=ids.join(',');
   if(signature===previous)return false;
   previous=signature;
   emit(ids);
