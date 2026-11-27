@@ -105,7 +105,7 @@ check('subscription ids respect limits', subs.live.length === 1 && subs.prematch
 
 // --- freshness -------------------------------------------------------------------
 const fresh = store.getFeedFreshness(90);
-check('freshness: live counted, stale not', fresh.live === 2 && fresh.staleClock === 1 && fresh.staleScore === 1, JSON.stringify(fresh));
+check('freshness: all active LIVE feeds counted, including unlisted competitions', fresh.live === 3 && fresh.staleClock === 2 && fresh.staleScore === 2, JSON.stringify(fresh));
 
 // --- expiry ----------------------------------------------------------------------
 const expired = store.expireStale(0, Date.now() + 60 * 60 * 1000); // everything is "old" an hour from now
