@@ -415,7 +415,17 @@ export function LiveFeedProvider({ children }: { children: ReactNode }) {
       if (typeof payload?.enabled === 'boolean') setCombosEnabled(payload.enabled);
     });
 
-    // the whole live board, once per collector cycle
+    // Compact counter snapshots retain provisional alerts for every LIVE fixture
+    // without pushing full match records or causing board React state updates.
+    socket.on('matches:incidents',(payload:any)=>{
+      const fallbackAt=timestamp(payload?.at)||Date.now();
+      for(const match of payload?.matches??[]){
+        if(!match?.matchId)return;
+        observeLiveIncidents({...match,at:timestamp(match.at)||fallbackAt});
+      }
+    });
+
+    // Fixture membership changes are separate from the per-match scoped feed.
     let liveMembership='';
     socket.on('matches:live', (payload: { matches?: any[] }) => {
       useMode(payload); // the first board after a wake also announces the mode
