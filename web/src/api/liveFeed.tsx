@@ -418,10 +418,11 @@ export function LiveFeedProvider({ children }: { children: ReactNode }) {
     // Compact counter snapshots retain provisional alerts for every LIVE fixture
     // without pushing full match records or causing board React state updates.
     socket.on('matches:incidents',(payload:any)=>{
-      const fallbackAt=timestamp(payload?.at)||Date.now();
+      const readAt=(value:any)=>typeof value==='number'&&Number.isFinite(value)?value:timestamp(value);
+      const fallbackAt=readAt(payload?.at)||Date.now();
       for(const match of payload?.matches??[]){
-        if(!match?.matchId)return;
-        observeLiveIncidents({...match,at:timestamp(match.at)||fallbackAt});
+        if(!match?.matchId)continue;
+        observeLiveIncidents({...match,at:readAt(match.at)||fallbackAt});
       }
     });
 
