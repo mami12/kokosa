@@ -51,6 +51,7 @@ export interface Match {
   listingPriority?:number;
   protectedPrematch?:boolean;
   competitionOrder?: number;
+  competitionRank?: number | null;
   listingStale?: boolean;
   tournamentId: number;
   homeTeam: string;

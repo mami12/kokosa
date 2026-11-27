@@ -45,7 +45,7 @@ const BLOCKED_SPORT_TYPES = new Set(['esport', 'polybet']);
 const BLOCKED_CATEGORY_SLUGS = new Set([
   'cyberfifa', 'ereplays', 'replays', 'short-football', 'cyber-leagues', 'cybersport',
   'cyber-football', 'virtual-football', 'crypto', 'crypto-live', 'computer-games',
-  'fifa', 'vsport', 'express', 'special-1', 'special-2',
+  'vsport', 'express', 'special-1', 'special-2',
 ]);
 const BLOCKED_CATEGORY_RE = /^(cyber|e-?replays?$|virtual|crypto|computer|vsport|express|special[-_]?\d)/i;
 const BLOCKED_TOURNAMENT_RE =
@@ -114,11 +114,9 @@ export function isRealFootball(match, catalog) {
   if (BLOCKED_SPORT_TYPES.has(sportType)) return false;
   if (BLOCKED_CATEGORY_SLUGS.has(categorySlug) || BLOCKED_CATEGORY_RE.test(categorySlug)) return false;
   if (BLOCKED_TOURNAMENT_RE.test(tournament.name ?? '')) return false;
-  if (process.env.FOOTBALL_TOP_TIERS_ONLY !== 'false') {
-    const decision = catalog.competitionPolicy?.get(match.tournamentId)
-      ?? competitionDecision(match.tournament ?? tournament, category);
-    if (!decision.allowed) return false;
-  }
+  const decision = catalog.competitionPolicy?.get(match.tournamentId)
+    ?? competitionDecision(match.tournament ?? tournament, category);
+  if (!decision.allowed) return false;
 
   const competitors = match.competitors ?? [];
   const home = match.homeTeam?.name ?? competitors[0]?.name;
@@ -141,6 +139,8 @@ function toRow(match, catalog) {
   const startAt = new Date((match.startAt ?? 0) * 1000);
   const service = String(match.service ?? '').toUpperCase();
   const clock = service === 'LIVE' ? liveClock(startAt) : { minute: null, phase: 'pre', status: 'scheduled' };
+  const competition = catalog.competitionPolicy?.get(match.tournamentId)
+    ?? competitionDecision(tournament, category);
 
   return {
     match_id: match.id,
@@ -152,6 +152,7 @@ function toRow(match, catalog) {
     tournament_id: match.tournamentId ?? null,
     tournament_slug: tournament.slug ?? match.tournament?.slug ?? null,
     tournament_name: tournament.name ?? null,
+    competition_rank: competition.allowed ? competition.rank : null,
     home,
     away,
     service,

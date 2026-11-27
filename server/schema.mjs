@@ -31,6 +31,7 @@ create index if not exists matches_active_idx        on matches (active);
 alter table matches add column if not exists live_first_seen_at timestamptz;
 alter table matches add column if not exists prematch_first_seen_at timestamptz;
 alter table matches add column if not exists listing_stale boolean not null default false;
+alter table matches add column if not exists competition_rank int;
 update matches set live_first_seen_at=first_seen_at where service='LIVE' and live_first_seen_at is null;
 update matches set prematch_first_seen_at=first_seen_at where service='PREMATCH' and prematch_first_seen_at is null;
 

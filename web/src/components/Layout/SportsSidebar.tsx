@@ -6,7 +6,6 @@ import {
   CalendarDays, ChevronDown, ChevronRight, Search, X, Star,
   Dribbble, Target, Circle, Trophy,
 } from 'lucide-react';
-import { isMainFootballCompetition } from '../../utils/sportsbookFilters';
 import CountryFlag from '../Sports/CountryFlag';
 
 interface Props {
@@ -132,9 +131,7 @@ export default function SportsSidebar({
           const Icon = sportIcons[s.name] ?? Trophy;
           const categories = (s.categories ?? []).map(category => ({
             ...category,
-            tournaments: isFootball
-              ? (category.tournaments ?? []).filter(tour => tour.protectedPrematch || isMainFootballCompetition(tour.name, category.name))
-              : (category.tournaments ?? []),
+            tournaments: category.tournaments ?? [],
           })).filter(cat => cat.tournaments.length > 0);
           return (
             <section key={sportId} className="mb-2 border border-[#111b28]">

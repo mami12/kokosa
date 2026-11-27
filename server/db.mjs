@@ -27,7 +27,7 @@ export async function dbHealth() {
 
 const MATCH_COLUMNS = [
   'match_id', 'sport_id', 'sport_tag', 'category_id', 'category_slug', 'category_name',
-  'tournament_id', 'tournament_slug', 'tournament_name', 'home', 'away', 'service',
+  'tournament_id', 'tournament_slug', 'tournament_name', 'competition_rank', 'home', 'away', 'service',
   'start_at', 'is_hot', 'is_real', 'live_minute', 'phase', 'status', 'raw',
 ];
 
@@ -61,6 +61,7 @@ export async function upsertMatches(rows, chunkSize = 150) {
         tournament_id   = excluded.tournament_id,
         tournament_slug = excluded.tournament_slug,
         tournament_name = excluded.tournament_name,
+        competition_rank = excluded.competition_rank,
         home            = excluded.home,
         away            = excluded.away,
         service         = excluded.service,
@@ -109,7 +110,7 @@ export async function getMatches({ service = null, league = null, tournamentId =
     `select matches.*, (select min(case when matches.service='LIVE' then all_matches.live_first_seen_at else all_matches.prematch_first_seen_at end)
       from matches all_matches where all_matches.sport_id is not distinct from matches.sport_id
         and all_matches.tournament_id is not distinct from matches.tournament_id) as competition_first_seen_at from matches
-      where active
+      where active and competition_rank is not null
         and ($1::text is null or service = upper($1))
         and ($2::text is null or category_slug = $2)
         and ($3::text is null or home ilike '%' || $3 || '%' or away ilike '%' || $3 || '%'
@@ -118,7 +119,7 @@ export async function getMatches({ service = null, league = null, tournamentId =
         and ($6::boolean or status <> 'ended')
         and ($7::text is null or tournament_id::text = $7)
         and ($8::text is null or sport_id::text = $8)
-      order by (service = 'LIVE') desc, competition_first_seen_at asc nulls last,
+      order by (service = 'LIVE') desc, competition_rank asc, competition_first_seen_at asc nulls last,
         coalesce(tournament_id,category_id,0) asc,
         case when service='LIVE' then coalesce(live_first_seen_at,first_seen_at) else coalesce(prematch_first_seen_at,first_seen_at) end asc, match_id asc
       limit $4 offset $5`,
@@ -140,9 +141,9 @@ export async function getLeagues() {
             count(*) filter (where service = 'LIVE') as live,
             count(*) filter (where service = 'PREMATCH') as prematch
        from matches
-      where active
+      where active and competition_rank is not null
       group by category_slug
-      order by (count(*) filter (where service = 'LIVE')) desc, count(*) desc`,
+      order by min(competition_rank) asc, (count(*) filter (where service = 'LIVE')) desc, count(*) desc`,
   );
   return res.rows;
 }
@@ -153,7 +154,7 @@ export async function getCounts() {
             count(*) filter (where service = 'PREMATCH' and status <> 'ended') as prematch,
             count(*) filter (where status = 'ended')                           as finished,
             max(updated_at)                                                    as updated_at
-       from matches where active`,
+       from matches where active and competition_rank is not null`,
   );
   const r = res.rows[0];
   return {
@@ -435,13 +436,13 @@ export async function getSubscriptionIds({
 } = {}) {
   const live = await query(
     `select match_id from matches
-      where active and service = 'LIVE' and status <> 'ended'
+      where active and competition_rank is not null and service = 'LIVE' and status <> 'ended'
       order by start_at limit $1`,
     [Number(liveLimit)>0?Math.floor(Number(liveLimit)):null],
   );
   const prematch = await query(
     `select match_id, start_at from matches
-      where active and service = 'PREMATCH' and status <> 'ended'
+      where active and competition_rank is not null and service = 'PREMATCH' and status <> 'ended'
       order by start_at limit $1`,
     [Number(prematchLimit)>0?Math.floor(Number(prematchLimit)):null],
   );

@@ -1,5 +1,6 @@
 import type { Match } from '../types';
 const ordinal = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
+const competitionRank = (value: unknown) => value == null || !Number.isFinite(Number(value)) ? Number.MAX_SAFE_INTEGER : Number(value);
 const kickoffDay = (value: unknown) => {
   const date = new Date(String(value ?? ''));
   if (!Number.isFinite(date.getTime())) return Number.MAX_SAFE_INTEGER;
@@ -12,6 +13,7 @@ const kickoffDay = (value: unknown) => {
 export function compareMatchDisplay(a: Match, b: Match): number {
   const aLive=a.status==='LIVE', bLive=b.status==='LIVE';
   return Number(bLive) - Number(aLive)
+    || competitionRank(a.competitionRank) - competitionRank(b.competitionRank)
     || (!aLive ? ordinal(a.listingPriority)-ordinal(b.listingPriority) : 0)
     || (!aLive ? kickoffDay(a.startTime) - kickoffDay(b.startTime) : 0)
     || ordinal(a.competitionOrder) - ordinal(b.competitionOrder)

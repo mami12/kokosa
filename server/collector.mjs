@@ -525,6 +525,7 @@ export function serializeMatch(row, oddsRows = [], now = Date.now()) {
     service: row.service,
     displayOrder: row.first_seen_at ? new Date((row.service === 'LIVE' ? row.live_first_seen_at : row.prematch_first_seen_at) ?? row.first_seen_at).getTime() : undefined,
     competitionOrder: row.competition_first_seen_at ? new Date(row.competition_first_seen_at).getTime() : undefined,
+    competitionRank: row.competition_rank == null ? null : Number(row.competition_rank),
     listingStale: row.listing_stale === true,
     live: row.service === 'LIVE',
     status: clock.status,

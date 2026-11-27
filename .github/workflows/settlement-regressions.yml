@@ -5,6 +5,11 @@ on:
     branches: [main]
     paths:
       - "server/ledger/**"
+      - "server/football-competitions.mjs"
+      - "server/upstream.mjs"
+      - "server/match-store.mjs"
+      - "server/db.mjs"
+      - "server/schema.mjs"
       - "server/zizobet/**"
       - "server/match-statistics.mjs"
       - "scripts/test-*.mjs"
@@ -17,6 +22,11 @@ on:
   pull_request:
     paths:
       - "server/ledger/**"
+      - "server/football-competitions.mjs"
+      - "server/upstream.mjs"
+      - "server/match-store.mjs"
+      - "server/db.mjs"
+      - "server/schema.mjs"
       - "server/zizobet/**"
       - "server/match-statistics.mjs"
       - "scripts/test-*.mjs"
@@ -40,7 +50,7 @@ jobs:
       - run: npm run test:settlement-focused
       - run: npm run test:historical-settlement
       - run: npm run test:selection-market
-      - run: node scripts/test-board-settings.mjs && npm run test:match-order
+      - run: node scripts/test-football-competitions.mjs && npm run test:matches && npm run test:match-order && node scripts/test-board-settings.mjs
       - run: node scripts/test-prematch-market-catalog.mjs
       - run: node scripts/test-zizobet-all-match-history.mjs && node scripts/test-provider-timeline-retention.mjs
       - run: npm ci --prefix web

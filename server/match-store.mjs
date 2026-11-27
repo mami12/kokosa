@@ -17,7 +17,7 @@ import {mergeTeamStats} from './match-statistics.mjs';
 
 const MATCH_COLUMNS = [
   'match_id', 'sport_id', 'sport_tag', 'category_id', 'category_slug', 'category_name',
-  'tournament_id', 'tournament_slug', 'tournament_name', 'home', 'away', 'service',
+  'tournament_id', 'tournament_slug', 'tournament_name', 'competition_rank', 'home', 'away', 'service',
   'start_at', 'is_hot', 'is_real', 'live_minute', 'phase', 'status', 'raw',
 ];
 
@@ -114,7 +114,7 @@ export function getMatches({ service = null, league = null, tournamentId = null,
   const out = [];
 
   for (const match of byId.values()) {
-    if (!match.active) continue;
+    if (!match.active || match.competition_rank == null || !Number.isInteger(Number(match.competition_rank))) continue;
     if (wantService && match.service !== wantService) continue;
     if (league && match.category_slug !== league) continue;
     if (tournamentId != null && String(match.tournament_id) !== String(tournamentId)) continue;
@@ -130,6 +130,7 @@ export function getMatches({ service = null, league = null, tournamentId = null,
   out.sort(
     (a, b) =>
       (b.service === 'LIVE' ? 1 : 0) - (a.service === 'LIVE' ? 1 : 0) ||
+      Number(a.competition_rank) - Number(b.competition_rank) ||
       time(a.competition_first_seen_at ?? a.first_seen_at) - time(b.competition_first_seen_at ?? b.first_seen_at) ||
       Number(a.tournament_id ?? a.category_id ?? 0) - Number(b.tournament_id ?? b.category_id ?? 0) ||
       time(a.service === 'LIVE' ? a.live_first_seen_at : a.prematch_first_seen_at ?? a.first_seen_at) - time(b.service === 'LIVE' ? b.live_first_seen_at : b.prematch_first_seen_at ?? b.first_seen_at) || Number(a.match_id) - Number(b.match_id),
@@ -148,13 +149,14 @@ export function getLeagues() {
   const groups = new Map();
 
   for (const match of byId.values()) {
-    if (!match.active) continue;
+    if (!match.active || match.competition_rank == null || !Number.isInteger(Number(match.competition_rank))) continue;
     const slug = match.category_slug ?? '';
     let group = groups.get(slug);
     if (!group) {
-      group = { slug, name: match.category_name ?? null, live: 0, prematch: 0, total: 0 };
+      group = { slug, name: match.category_name ?? null, live: 0, prematch: 0, total: 0, competition_rank: Number(match.competition_rank) };
       groups.set(slug, group);
     }
+    group.competition_rank = Math.min(group.competition_rank, Number(match.competition_rank));
     if (!group.name && match.category_name) group.name = match.category_name;
     group.total++;
     if (match.service === 'LIVE') group.live++;
@@ -162,7 +164,7 @@ export function getLeagues() {
   }
 
   return [...groups.values()]
-    .sort((a, b) => b.live - a.live || b.total - a.total)
+    .sort((a, b) => a.competition_rank - b.competition_rank || b.live - a.live || b.total - a.total)
     .map(({ slug, name, live, prematch }) => ({ slug, name, live, prematch }));
 }
 
@@ -172,7 +174,7 @@ export function getCounts() {
   let finished = 0;
 
   for (const match of byId.values()) {
-    if (!match.active) continue;
+    if (!match.active || match.competition_rank == null || !Number.isInteger(Number(match.competition_rank))) continue;
     if (match.status === 'ended') finished++;
     else if (match.service === 'LIVE') live++;
     else if (match.service === 'PREMATCH') prematch++;
@@ -198,7 +200,7 @@ export function getSubscriptionIds({
   const pick = (service, limit) =>
     [...byId.values()]
       .filter((m) => {
-        if (!m.active || m.service !== service) return false;
+        if (!m.active || m.competition_rank == null || !Number.isInteger(Number(m.competition_rank)) || m.service !== service) return false;
         // A match whose derived clock already says full time must stay subscribed while the
         // feed keeps reporting a clock for it - unsubscribing there froze its minute, its
         // score and its prices for the rest of the game (matches "disappeared" around 70').
