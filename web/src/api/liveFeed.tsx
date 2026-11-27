@@ -415,7 +415,18 @@ export function LiveFeedProvider({ children }: { children: ReactNode }) {
       if (typeof payload?.enabled === 'boolean') setCombosEnabled(payload.enabled);
     });
 
-    // the whole live board, once per collector cycle
+    // Compact counter snapshots retain provisional alerts for every LIVE fixture
+    // without pushing full match records or causing board React state updates.
+    socket.on('matches:incidents',(payload:any)=>{
+      const readAt=(value:any)=>typeof value==='number'&&Number.isFinite(value)?value:timestamp(value);
+      const fallbackAt=readAt(payload?.at)||Date.now();
+      for(const match of payload?.matches??[]){
+        if(!match?.matchId)continue;
+        observeLiveIncidents({...match,at:readAt(match.at)||fallbackAt});
+      }
+    });
+
+    // Fixture membership changes are separate from the per-match scoped feed.
     let liveMembership='';
     socket.on('matches:live', (payload: { matches?: any[] }) => {
       useMode(payload); // the first board after a wake also announces the mode
@@ -423,6 +434,9 @@ export function LiveFeedProvider({ children }: { children: ReactNode }) {
       // live ID set needs an immediate refetch, not every clock snapshot.
       const membership=(payload.matches??[]).map(m=>String(m.id)).sort().join(',');
       if(membership!==liveMembership){liveMembership=membership;refresh();}
+      // The server sends this compact packet only when live fixture membership
+      // changes. Scores, clocks and statistics arrive through scoped match:info.
+      if((payload as any).membershipOnly===true)return;
       const patches: Record<string, LivePatch> = {};
       for (const m of payload?.matches ?? []) {
         if (!m || m.id === undefined || m.id === null) continue;

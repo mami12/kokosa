@@ -50,7 +50,7 @@ import { startCollector, withOdds, buildMarkets, toDbOddsShape, statsFromRow } f
 import { liveClock } from './minute.mjs';
 import { liveRiskReason, riskMinute } from './live-risk.mjs';
 import { liveRiskSettings, subscribeLiveRiskSettings } from './live-risk-settings.mjs';
-import { freshFeed, freshSocketHeaders, liveBoardFacts } from './feed-sync.mjs';
+import { freshFeed, freshSocketHeaders } from './feed-sync.mjs';
 import {createMatchDetailRefresh} from './match-detail-refresh.mjs';
 import { refreshLiveRiskSettings } from './ledger/live-risk-store.mjs';
 import { createIdleMonitor, getFeedMode, feedIsStopped } from './idle-mode.mjs';
@@ -58,6 +58,7 @@ import {quoteValidUntil} from './ledger/quote-validity.mjs';
 import {projectOddsDelta} from './ledger/odds-delta.mjs';
 import {refreshMarketCatalog,seedNativeMarketCatalog,onMarketPolicy} from './ledger/market-catalog-store.mjs';
 import {emitScopedOdds,setSocketScope,detailProjection,offeredMarket} from './market-delivery.mjs';
+import {emitScopedMatchInfo,createLiveMembershipPublisher,createLiveIncidentPublisher,projectLiveIncidentSnapshot,liveMatchIds} from './feed-delivery.mjs';
 import {isBoardOddsRow,projectClientBoardMatches} from './ledger/board-projection.mjs';
 import {catalogRows,categoryPolicies,scopeBlockRows} from './market-catalog.mjs';
 import {refreshBoardSettings} from './ledger/board-settings-store.mjs';
@@ -682,7 +683,7 @@ async function applyInfoFromFeed(info) {
         console.error('[settle] failed to preserve provider FT match', updated.match_id, e.message);
       }
     }
-    if(!isSyntheticFootballMatch(updated)&&!overrides.isMatchHidden(updated))io?.emit('match:info', { ...enriched, ...updated, at: new Date().toISOString(), stats: statsFromRow(updated),syncStream:feedStreamId,syncSequence:++matchInfoSequence });
+    if(!isSyntheticFootballMatch(updated)&&!overrides.isMatchHidden(updated))emitScopedMatchInfo(io,updated.match_id,{ ...enriched, ...updated, at: new Date().toISOString(), stats: statsFromRow(updated),syncStream:feedStreamId,syncSequence:++matchInfoSequence });
     await broadcastLiveRiskLocks(info.matchId, updated);
   }
   return updated;
@@ -1019,6 +1020,15 @@ const io = new SocketServer(server, {
   cors: { origin: corsOrigin },
   path: '/socket.io',
 });
+const publishLiveMembership=createLiveMembershipPublisher(ids=>{
+  io.emit('matches:live',{
+    at:new Date().toISOString(),mode:getFeedMode(),membershipOnly:true,
+    matches:ids.map(id=>({id})),syncStream:feedStreamId,syncSequence:++liveBoardSequence
+  });
+});
+const publishLiveIncidentSnapshots=createLiveIncidentPublisher(payload=>{
+  io.emit('matches:incidents',payload);
+});
 onMarketPolicy(()=>io.emit('markets:policy',{markets:catalogRows(),categories:categoryPolicies(),scopes:scopeBlockRows()}));
 io.engine.on('headers', freshSocketHeaders);
 
@@ -1056,11 +1066,15 @@ io.on('connection', async (socket) => {
     // socket), so this must not send an empty list first
     if (getFeedMode() !== 'live') return;
     const rows = (await getMatches({ service: 'LIVE', catalog:true })).filter(row=>!isSyntheticFootballMatch(row)&&!overrides.isMatchHidden(row));
+    const incidentAt=Date.now();
+    socket.emit('matches:incidents',{
+      at:incidentAt,matches:rows.map(row=>projectLiveIncidentSnapshot(row,incidentAt)).filter(Boolean)
+    });
     socket.emit('matches:live', {
       at: new Date().toISOString(),
-      counts,
       mode: getFeedMode(),
-      matches: liveBoardFacts(await withOdds(rows,Date.now(),{board:true})),
+      membershipOnly: true,
+      matches: liveMatchIds(rows).map(id=>({id})),
     });
   } catch (e) {
     socket.emit('server:error', { message: e.message });
@@ -1168,8 +1182,8 @@ async function boot() {
         broadcastFeedState();
         await expireStaleMatches(180);
         const rows=(await getMatches({service:'LIVE',catalog:true})).filter(row=>!isSyntheticFootballMatch(row)&&!overrides.isMatchHidden(row));
-        const matches=await withOdds(rows,Date.now(),{board:true}),counts=await getCounts();
-        io.emit('matches:live',{at:new Date().toISOString(),counts,matches:liveBoardFacts(matches),syncStream:feedStreamId,syncSequence:++liveBoardSequence});
+        publishLiveMembership(rows);
+        publishLiveIncidentSnapshots(rows);
       },
       selectRows:rows=>{
         const visible=selectPublishedMatches(rows.filter(r=>!['closed','uncovered','ended'].includes(r.status)&&!overrides.isMatchHidden(r)),{prematchLimit:0}).rows;
