@@ -19,6 +19,8 @@ on:
   pull_request:
     paths:
       - "server/ledger/**"
+      - "server/index.mjs"
+      - "server/feed-delivery.mjs"
       - "server/zizobet/**"
       - "server/match-statistics.mjs"
       - "scripts/test-*.mjs"
