@@ -1066,8 +1066,9 @@ io.on('connection', async (socket) => {
     // socket), so this must not send an empty list first
     if (getFeedMode() !== 'live') return;
     const rows = (await getMatches({ service: 'LIVE', catalog:true })).filter(row=>!isSyntheticFootballMatch(row)&&!overrides.isMatchHidden(row));
+    const incidentAt=Date.now();
     socket.emit('matches:incidents',{
-      at:Date.now(),matches:rows.map(row=>projectLiveIncidentSnapshot(row)).filter(Boolean)
+      at:incidentAt,matches:rows.map(row=>projectLiveIncidentSnapshot(row,incidentAt)).filter(Boolean)
     });
     socket.emit('matches:live', {
       at: new Date().toISOString(),
