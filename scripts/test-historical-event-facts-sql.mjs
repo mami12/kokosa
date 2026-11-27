@@ -23,6 +23,20 @@ assert.equal(validateHistoricalGoals({...complete,events:[
  {...complete.events[0],minute:10,phase:'H2'},complete.events[1]]}),null,
  'Second-half minute must be an absolute match clock, not the period-relative minute');
 
+// Every stoppage minute from 45+1 through 90+15 validates as regular time.
+for(const base of [45,90])for(let added=1;added<=15;added++){
+ const checked=validateHistoricalGoals({...complete,homeScore:1,awayScore:0,events:[
+  {type:'goal',id:`goal-${base}-plus-${added}`,team:'home',minute:base,injury:added,own:false}
+ ]});
+ assert.ok(checked,`FotMob goal ${base}+${added} is valid regular-time stoppage evidence`);
+ assert.equal(checked.events[0].minute,base+added);
+ assert.equal(checked.events[0].phase,base===45?'H1':'H2');
+}
+assert.equal(validateHistoricalGoals({...complete,events:[
+ {type:'goal',id:'bad-added-goal',team:'home',minute:40,injury:3,own:false},
+ {type:'goal',id:'other-goal',team:'away',minute:23,own:false}
+]}),null,'Added time away from the 45th/90th boundary is not accepted');
+
 const db=new PGlite();
 const database={connect:async()=>({query:(sql,params)=>db.query(sql,params),release(){}})};
 try{
@@ -66,6 +80,44 @@ try{
   {...line('window',{from:10,to:20,choice:true}),live_contract:{
     version:1,kind:'window',event:'corner',from:10,to:20,choice:true}},
   result,{execute:run}),null,'Goal history cannot grade a corner bet');
+
+ // Two stoppage-time goals must retain their true order (90+3 before 90+6).
+ const stoppageMatch=id+10;
+ await run(`insert into app_match_result(match_id,home_team,away_team,home_score,away_score,source)
+  values($1,'Home','Away',1,1,'RECOVERY')`,[stoppageMatch]);
+ const stoppagePayload={source:'fotmob',complete:true,final:true,goalsAvailable:true,
+  homeScore:1,awayScore:1,events:[
+   {type:'goal',id:'home-90-plus-3',team:'home',minute:90,injury:3,own:false},
+   {type:'goal',id:'away-90-plus-6',team:'away',minute:90,injury:6,own:false}
+  ]};
+ assert.equal((await persistHistoricalGoalFacts(stoppageMatch,stoppagePayload,{database})).stored,true);
+ const stoppageRows=(await run(`select minute,phase from app_match_event_fact
+  where match_id=$1 and provider='fotmob' and kind='goal' order by minute`,[stoppageMatch])).rows;
+ assert.deepEqual(stoppageRows,[{minute:93,phase:'H2'},{minute:96,phase:'H2'}]);
+ const stoppageLine=(kind,rest)=>({id:uuid,match_id:stoppageMatch,
+  live_contract:{version:1,kind,event:'goal',...rest}});
+ assert.equal(await gradeStoredEventContract(stoppageLine('sequence',{target:1,side:'home'}),
+  {home_score:1,away_score:1},{execute:run}),'WON','90+3 home is the first goal');
+ assert.equal(await gradeStoredEventContract(stoppageLine('sequence',{target:2,side:'away'}),
+  {home_score:1,away_score:1},{execute:run}),'WON','90+6 away is the second goal');
+ assert.equal(await gradeStoredEventContract(stoppageLine('window',{from:76,to:90,choice:true}),
+  {home_score:1,away_score:1},{execute:run}),'WON','90+N goals belong to the 76-90 interval');
+
+ const firstHalfStoppageMatch=id+11;
+ await run(`insert into app_match_result(match_id,home_team,away_team,home_score,away_score,source)
+  values($1,'Home','Away',1,0,'RECOVERY')`,[firstHalfStoppageMatch]);
+ const firstHalfAdded={source:'fotmob',complete:true,final:true,goalsAvailable:true,
+  homeScore:1,awayScore:0,events:[
+   {type:'goal',id:'home-45-plus-15',team:'home',minute:45,injury:15,own:false}
+  ]};
+ assert.equal((await persistHistoricalGoalFacts(firstHalfStoppageMatch,firstHalfAdded,{database})).stored,true);
+ const firstHalfLine={id:uuid,match_id:firstHalfStoppageMatch,
+  live_contract:{version:1,kind:'window',event:'goal',from:31,to:45,choice:true}};
+ assert.equal(await gradeStoredEventContract(firstHalfLine,{home_score:1,away_score:0},
+  {execute:run}),'WON','45+15 is included in the closing first-half interval');
+ const firstHalfStored=(await run(`select minute,phase from app_match_event_fact
+  where match_id=$1 and provider='fotmob' and kind='goal'`,[firstHalfStoppageMatch])).rows[0];
+ assert.deepEqual(firstHalfStored,{minute:60,phase:'H1'});
 
  const other=91822882;
  await run("insert into app_match_result(match_id,home_team,away_team,home_score,away_score,source) values($1,'Home','Away',0,0,'RECOVERY')",[other]);

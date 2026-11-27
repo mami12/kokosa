@@ -83,6 +83,28 @@ assert.ok(validateHistoricalTimedEvents({
  homeCount:0,awayCount:1,events:fotmobNinetyPlus.cardEvents
 }),'A 90+2 FotMob card retains its side and color');
 
+// Exhaustive 45+1..45+15 and 90+1..90+15 coverage for BOTH supported
+// historical timed incident families. Absolute minutes preserve ordering.
+const stoppagePayloads={};
+for(const kind of ['corner','card']){
+ const events=[];
+ for(const base of [45,90])for(let added=1;added<=15;added++){
+  events.push({id:`${kind}-${base}-plus-${added}`,type:kind,team:'home',
+   minute:base,injury:added,...(kind==='card'?{cardColor:'yellow'}:{})});
+ }
+ const payload={source:'fotmob',kind,final:true,complete:true,timelineAvailable:true,
+  homeCount:30,awayCount:0,events};
+ const verified=validateHistoricalTimedEvents(payload);
+ assert.ok(verified,`${kind}: all first- and second-half stoppage minutes validate`);
+ assert.deepEqual(verified.facts.map(event=>event.minute),[
+  ...Array.from({length:15},(_,i)=>46+i),
+  ...Array.from({length:15},(_,i)=>91+i)
+ ],`${kind}: absolute stoppage minutes preserve chronology`);
+ assert.deepEqual(verified.facts.slice(0,15).map(event=>event.phase),Array(15).fill('H1'));
+ assert.deepEqual(verified.facts.slice(15).map(event=>event.phase),Array(15).fill('H2'));
+ stoppagePayloads[kind]=payload;
+}
+
 const ap=apiFootballTimedIncidents([
  {type:'Card',detail:'Red Card',team:{id:12},time:{elapsed:42},player:{id:73,name:'Sent Off Player'}}
 ],{teams:{home:{id:11},away:{id:12}}});
@@ -134,6 +156,36 @@ try{
  const conflicting={...result,corners_away:2};
  assert.equal(await gradeStoredEventContract(bet('corner','sequence',{target:1,side:'home'}),
   conflicting,{execute:run}),null,'Disagreement with final totals cannot change the wallet');
+
+ // Persist and grade both historical stoppage timelines. 45+15 and 90+15
+ // remain regular-time events and are ordered by their absolute minute.
+ const stoppageId=id+50;
+ await run(`insert into app_match_result(match_id,home_team,away_team,
+  home_score,away_score,corners_home,corners_away,cards_home,cards_away,source)
+  values($1,'Home','Away',0,0,30,0,30,0,'RECOVERY')`,[stoppageId]);
+ assert.equal((await persistHistoricalTimedEvents(stoppageId,stoppagePayloads.corner,{database})).stored,true);
+ assert.equal((await persistHistoricalTimedEvents(stoppageId,stoppagePayloads.card,{database})).stored,true);
+ const stoppageBet=(event,kind,rest)=>({...bet(event,kind,rest),match_id:stoppageId});
+ for(const kind of ['corner','card']){
+  const stored=(await run(`select minute,phase from app_match_event_fact
+   where match_id=$1 and provider='fotmob' and kind=$2 order by minute`,[stoppageId,kind])).rows;
+  assert.deepEqual(stored.map(row=>row.minute),[
+   ...Array.from({length:15},(_,i)=>46+i),
+   ...Array.from({length:15},(_,i)=>91+i)
+  ],`${kind} stores distinct 45+N / 90+N event minutes`);
+  assert.ok(stored.slice(0,15).every(row=>row.phase==='H1'));
+  assert.ok(stored.slice(15).every(row=>row.phase==='H2'));
+  const final={home_score:0,away_score:0,corners_home:30,corners_away:0,cards_home:30,cards_away:0};
+  assert.equal(await gradeStoredEventContract(stoppageBet(kind,'window',{
+   from:31,to:45,choice:true,...(kind==='card'?{cardColor:'yellow'}:{})
+  }),final,{execute:run}),'WON',`${kind}: 45+N belongs to the 31-45 interval`);
+  assert.equal(await gradeStoredEventContract(stoppageBet(kind,'window',{
+   from:76,to:90,choice:true,...(kind==='card'?{cardColor:'yellow'}:{})
+  }),final,{execute:run}),'WON',`${kind}: 90+N belongs to the 76-90 interval`);
+ }
+ assert.equal(await gradeStoredEventContract(stoppageBet('corner','sequence',{target:30,side:'home'}),
+  {home_score:0,away_score:0,corners_home:30,corners_away:0,cards_home:30,cards_away:0},
+  {execute:run}),'WON','90+15 is the last ordered corner');
 
  // Missing Zizobet corner counters may be filled by one complete, independently
  // matched FT timeline. The alternate provider never changes the stored score.

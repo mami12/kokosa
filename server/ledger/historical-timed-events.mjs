@@ -28,13 +28,13 @@ export function validateHistoricalTimedEvents(payload){
   const time=Number(event.minute);
   const injury=Number(event.injury??0);
   const rawPhase=String(event.phase??'').toLowerCase().trim();
-  // A 45+N or 90+N incident explicitly belongs to 1H/2H by football
-  // clock notation; a generic N+M at another minute is not meaningful.
-  // Preserve a normalized H1/H2 phase for every admissible stoppage event.
+  // 45+N / 90+N is regular-time stoppage. Store the absolute minute
+  // (90+6 => 96) so separate incidents keep their chronological order.
   if(!Number.isSafeInteger(time)||time<0||time>90||
       !Number.isSafeInteger(injury)||injury<0||injury>30||
       (injury>0&&time!==45&&time!==90)||
       /extra|shootout|penalt/.test(rawPhase)||event.shootout===true)return null;
+  const absoluteMinute=time+injury;
   const phase=injury>0?(time===45?'H1':'H2'):(event.phase==null?null:String(event.phase));
   const phaseText=String(phase??'').toLowerCase();
   if((/^(?:2$|h2|2nd|second)/.test(phaseText)&&time<45)||
@@ -46,8 +46,8 @@ export function validateHistoricalTimedEvents(payload){
   if(unique.has(key))return null;
   unique.add(key);
   const seconds=event.seconds==null?null:Number(event.seconds);
-  if(seconds!==null&&(injury>0||!Number.isFinite(seconds)||
-      seconds<time*60||seconds>=(time+1)*60))return null;
+  if(seconds!==null&&(!Number.isFinite(seconds)||
+      seconds<absoluteMinute*60||seconds>=(absoluteMinute+1)*60))return null;
   // Added-time display minutes contain no sub-minute ordering evidence.
   // Keeping seconds null makes same-minute races conservative and auditable.
   const color=kind==='card'?String(event.cardColor??'').toLowerCase():null;
@@ -60,7 +60,7 @@ export function validateHistoricalTimedEvents(payload){
    null:String(event.playerId).trim().slice(0,150);
   const playerName=typeof event.playerName==='string'&&event.playerName.trim()?
    event.playerName.trim().slice(0,200):null;
-  facts.push({id:key,kind,team:event.team,minute:time,seconds,
+  facts.push({id:key,kind,team:event.team,minute:absoluteMinute,seconds,
    cardColor:color,phase,
    playerId,playerName});
  }
