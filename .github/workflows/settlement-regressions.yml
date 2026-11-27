@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - "server/ledger/**"
+      - "server/index.mjs"
+      - "server/feed-delivery.mjs"
       - "server/zizobet/**"
       - "server/match-statistics.mjs"
       - "scripts/test-*.mjs"
@@ -37,6 +39,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: node scripts/test-feed-delivery.mjs
       - run: npm run test:settlement-focused
       - run: npm run test:historical-settlement
       - run: npm run test:selection-market
