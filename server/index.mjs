@@ -58,6 +58,7 @@ import {quoteValidUntil} from './ledger/quote-validity.mjs';
 import {projectOddsDelta} from './ledger/odds-delta.mjs';
 import {refreshMarketCatalog,seedNativeMarketCatalog,onMarketPolicy} from './ledger/market-catalog-store.mjs';
 import {emitScopedOdds,setSocketScope,detailProjection,offeredMarket} from './market-delivery.mjs';
+import {emitScopedMatchInfo,createLiveMembershipPublisher,liveMatchIds} from './feed-delivery.mjs';
 import {isBoardOddsRow,projectClientBoardMatches} from './ledger/board-projection.mjs';
 import {catalogRows,categoryPolicies,scopeBlockRows} from './market-catalog.mjs';
 import {refreshBoardSettings} from './ledger/board-settings-store.mjs';
@@ -682,7 +683,7 @@ async function applyInfoFromFeed(info) {
         console.error('[settle] failed to preserve provider FT match', updated.match_id, e.message);
       }
     }
-    if(!isSyntheticFootballMatch(updated)&&!overrides.isMatchHidden(updated))io?.emit('match:info', { ...enriched, ...updated, at: new Date().toISOString(), stats: statsFromRow(updated),syncStream:feedStreamId,syncSequence:++matchInfoSequence });
+    if(!isSyntheticFootballMatch(updated)&&!overrides.isMatchHidden(updated))emitScopedMatchInfo(io,updated.match_id,{ ...enriched, ...updated, at: new Date().toISOString(), stats: statsFromRow(updated),syncStream:feedStreamId,syncSequence:++matchInfoSequence });
     await broadcastLiveRiskLocks(info.matchId, updated);
   }
   return updated;
@@ -1019,6 +1020,12 @@ const io = new SocketServer(server, {
   cors: { origin: corsOrigin },
   path: '/socket.io',
 });
+const publishLiveMembership=createLiveMembershipPublisher(ids=>{
+  io.emit('matches:live',{
+    at:new Date().toISOString(),mode:getFeedMode(),membershipOnly:true,
+    matches:ids.map(id=>({id})),syncStream:feedStreamId,syncSequence:++liveBoardSequence
+  });
+});
 onMarketPolicy(()=>io.emit('markets:policy',{markets:catalogRows(),categories:categoryPolicies(),scopes:scopeBlockRows()}));
 io.engine.on('headers', freshSocketHeaders);
 
@@ -1058,9 +1065,9 @@ io.on('connection', async (socket) => {
     const rows = (await getMatches({ service: 'LIVE', catalog:true })).filter(row=>!isSyntheticFootballMatch(row)&&!overrides.isMatchHidden(row));
     socket.emit('matches:live', {
       at: new Date().toISOString(),
-      counts,
       mode: getFeedMode(),
-      matches: liveBoardFacts(await withOdds(rows,Date.now(),{board:true})),
+      membershipOnly: true,
+      matches: liveMatchIds(rows).map(id=>({id})),
     });
   } catch (e) {
     socket.emit('server:error', { message: e.message });
@@ -1168,8 +1175,7 @@ async function boot() {
         broadcastFeedState();
         await expireStaleMatches(180);
         const rows=(await getMatches({service:'LIVE',catalog:true})).filter(row=>!isSyntheticFootballMatch(row)&&!overrides.isMatchHidden(row));
-        const matches=await withOdds(rows,Date.now(),{board:true}),counts=await getCounts();
-        io.emit('matches:live',{at:new Date().toISOString(),counts,matches:liveBoardFacts(matches),syncStream:feedStreamId,syncSequence:++liveBoardSequence});
+        publishLiveMembership(rows);
       },
       selectRows:rows=>{
         const visible=selectPublishedMatches(rows.filter(r=>!['closed','uncovered','ended'].includes(r.status)&&!overrides.isMatchHidden(r)),{prematchLimit:0}).rows;
