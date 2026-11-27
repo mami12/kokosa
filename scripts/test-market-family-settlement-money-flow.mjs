@@ -90,7 +90,18 @@ try{
  await db.exec(LEDGER_SQL);
  await db.exec(SCHEMA_SQL);
  pool.query=(sql,params)=>run(sql,params);
- pool.connect=async()=>({query:run,release(){}});
+ // PGlite exposes one database handle rather than independent pooled
+ // PostgreSQL sessions. Serialize transaction clients so concurrent ticket
+ // recalculations cannot interleave BEGIN/COMMIT on the same connection.
+ let connectionTail=Promise.resolve();
+ pool.connect=async()=>{
+  const previous=connectionTail;
+  let unlock;
+  connectionTail=new Promise(resolve=>{unlock=resolve;});
+  await previous;
+  let released=false;
+  return {query:run,release(){if(!released){released=true;unlock();}}};
+ };
  await run(
   'insert into app_user(id,username,password_hash,role,balance) values($1,$2,$3,$4,$5)',
   [userId,'market-family-money-flow','isolated','PLAYER',1000-cases.length*10]
