@@ -423,6 +423,9 @@ export function LiveFeedProvider({ children }: { children: ReactNode }) {
       // live ID set needs an immediate refetch, not every clock snapshot.
       const membership=(payload.matches??[]).map(m=>String(m.id)).sort().join(',');
       if(membership!==liveMembership){liveMembership=membership;refresh();}
+      // The server sends this compact packet only when live fixture membership
+      // changes. Scores, clocks and statistics arrive through scoped match:info.
+      if((payload as any).membershipOnly===true)return;
       const patches: Record<string, LivePatch> = {};
       for (const m of payload?.matches ?? []) {
         if (!m || m.id === undefined || m.id === null) continue;
