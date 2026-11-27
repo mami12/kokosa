@@ -1,62 +1,74 @@
 import assert from 'node:assert/strict';
-import{selectPublishedMatches,validateBoardSettings,competitionPriority,filterBoardSubscriptionPlan}from'../server/board-settings.mjs';
+import {competitionPriority,selectPublishedMatches,filterBoardSubscriptionPlan} from '../server/board-settings.mjs';
+import {competitionDisplayOrder} from '../server/football-competitions.mjs';
 import * as store from '../server/match-store.mjs';
-const row=(id,country,name,service='PREMATCH')=>({match_id:id,active:true,status:service,service,category_slug:country,category_name:country,tournament_id:id,tournament_name:name,first_seen_at:new Date(2026,0,1),home:'Home',away:'Away',sport_id:18});
-const rows=[row(1,'england','League One'),row(2,'sweden','Superettan'),row(3,'england','Premier League'),row(4,'italy','Serie A'),row(5,'germany','Bundesliga'),row(6,'spain','La Liga'),row(7,'france','Ligue 1'),row(8,'world','World Cup'),row(9,'sweden','Allsvenskan'),row(10,'italy','Coppa Italia'),row(11,'england','Championship','LIVE'),{...row(12,'england','Premier League'),active:false},{...row(13,'england','Premier League'),status:'ended'}];
-assert.equal(competitionPriority(rows[0]).protected,true);assert.equal(competitionPriority(rows[2]).protected,true);
-const selected=selectPublishedMatches(rows,{prematchLimit:2});
-assert.equal(selected.summary.protectedPrematch,7);assert.equal(selected.summary.visiblePrematch,2);assert.equal(selected.summary.protectedExceedsLimit,false);assert.equal(selected.summary.live,1);
-assert.equal(selected.rows[0].match_id,11);assert.equal(selected.rows[1].match_id,3);assert.equal(selected.rows[2].match_id,4);
-assert.deepEqual(selected.rows.map(x=>x.match_id),selectPublishedMatches([...rows].reverse(),{prematchLimit:2}).rows.map(x=>x.match_id),'same set independent of client/provider arrival order');
-const filled=selectPublishedMatches(rows,{prematchLimit:8});assert.equal(filled.summary.visiblePrematch,8);assert.equal(filled.summary.hiddenPrematch,2);
-assert.equal(selectPublishedMatches(rows,{prematchLimit:0}).summary.visiblePrematch,10);
-assert.equal(rows[0].listing_priority,undefined,'stored facts never mutated by presentation policy');
-for(const invalid of [null,[],{},true,{prematchLimit:'20'},{prematchLimit:-1},{prematchLimit:1.1},{prematchLimit:10001},{prematchLimit:NaN},{prematchLimit:20,liveLimit:5}])assert.throws(()=>validateBoardSettings(invalid));
-for(const n of [0,1,200,10000])assert.deepEqual(validateBoardSettings({prematchLimit:n}),{prematchLimit:n});
-const huge=Array.from({length:2100},(_,i)=>row(i+100,'england','Championship'));huge.push(row(5000,'italy','Serie A'));
-store.clear();store.upsert(huge);
-assert.equal(store.getMatches({limit:2000}).length,2000);assert.equal(store.getMatches({catalog:true}).length,2101);
-assert.equal(selectPublishedMatches(store.getMatches({catalog:true}),{prematchLimit:1}).rows[0].match_id,5000,'protected league beyond historical 2000-row slice retained');
-store.clear();console.log('PASS board policy: canonical order, main leagues retained beyond cap and 2000 rows, LIVE untouched, 0 unlimited, strict settings, no fact mutation');
 
-for(const [country,name]of [['portugal','Primeira Liga'],['portugal','Segunda Liga'],['portugal','Liga 3']])assert.equal(competitionPriority(row(900,country,name)).protected,true);
-for(const [country,name]of [['japan','J1 League'],['brazil','Serie A'],['asia','AFC Champions League'],['world','FIFA World Cup'],['italy','Coppa Italia']])assert.equal(competitionPriority(row(901,country,name)).protected,false);
-assert.equal(competitionPriority(row(902,'europe','UEFA Champions League')).protected,true);
-assert.equal(competitionPriority(row(903,'international-clubs','Champions League')).priority,1,
- 'Champions League keeps top prematch priority even when Zizobet labels its category international-clubs');
-assert.equal(competitionPriority(row(909,'international-clubs','UEFA Champions League')).priority,1,
- 'UEFA Champions League has top prematch priority under a generic Zizobet category');
-assert.equal(competitionPriority(row(914,'international-clubs','UEFA Europa League')).priority,2,
- 'UEFA Europa League follows UEFA Champions League in prematch priority');
-assert.equal(competitionPriority(row(910,'international-clubs','GT Champions League')).protected,false,
- 'GT Champions League must not inherit UEFA competition priority');
-assert.equal(competitionPriority(row(911,'international-clubs','GT Sports League')).protected,false,
- 'GT Sports League must not inherit UEFA competition priority');
-const firstPrematchPage=selectPublishedMatches([
- row(912,'england','Premier League'),
- row(913,'international-clubs','GT Champions League'),
- row(909,'international-clubs','UEFA Champions League'),
-],{prematchLimit:0}).rows.slice(0,1);
-assert.deepEqual(firstPrematchPage.map(item=>item.match_id),[909],
- 'the first page is cut only after UEFA priority has been applied');
-const championsFirst=selectPublishedMatches([row(904,'england','Championship'),row(903,'international-clubs','Champions League')],{prematchLimit:1});
-assert.equal(championsFirst.rows[0].match_id,903,'the configured prematch limit is applied after continental competition priority');
-const dateOrdered=selectPublishedMatches([
- {...row(905,'england','Championship'),start_at:'2026-11-25T19:00:00+01:00'},
- {...row(906,'international-clubs','Champions League'),start_at:'2026-11-26T10:00:00+01:00'},
- {...row(907,'international-clubs','Champions League'),start_at:'2026-11-25T21:00:00+01:00'},
- {...row(908,'england','Premier League'),start_at:'2026-11-25T20:00:00+01:00'},
+const row=(id,country,name,service='PREMATCH',start='2026-11-27T18:00:00+01:00')=>{
+ const rank=competitionDisplayOrder(country,name);
+ return {match_id:id,active:true,status:service,service,category_slug:country,category_name:country,
+   tournament_id:id,tournament_name:name,competition_rank:rank,first_seen_at:new Date(2026,0,1),
+   start_at:start,home:'Home',away:'Away',sport_id:18};
+};
+
+// The exact user list is the only public board whitelist.
+const fixtures=[
+ row(1,'england','League One'),
+ row(2,'sweden','Superettan'),
+ row(3,'england','Premier League'),
+ row(4,'italy','Serie A'),
+ row(5,'germany','Bundesliga'),
+ row(6,'spain','LaLiga'),
+ row(7,'france','Ligue 1'),
+ row(8,'world','FIFA World Cup'),
+ row(9,'sweden','Allsvenskan'),
+ row(10,'italy','Coppa Italia'),
+ row(11,'england','Championship','LIVE'),
+ row(12,'england','League Two','LIVE'),
+];
+assert.ok(fixtures.slice(0,9).every(r=>competitionPriority(r).rank!==null));
+assert.equal(competitionPriority(fixtures[9]).rank,null,'unlisted Italian cup excluded');
+assert.equal(competitionPriority(fixtures[11]).rank,null,'unlisted LIVE league excluded');
+
+const selected=selectPublishedMatches(fixtures,{prematchLimit:0});
+assert.deepEqual(selected.rows.map(r=>r.match_id),[11,8,3,1,5,6,4,7,9,2],
+ 'LIVE first; then exact competition order; kickoff date and provider arrival must not move higher-ranked competitions');
+assert.equal(selected.summary.live,1);
+assert.equal(selected.summary.availablePrematch,9);
+assert.equal(selected.summary.visiblePrematch,9);
+assert.equal(fixtures[0].listing_priority,undefined,'presentation sorting does not mutate feed facts');
+
+const reversed=selectPublishedMatches([...fixtures].reverse(),{prematchLimit:0});
+assert.deepEqual(reversed.rows.map(r=>r.match_id),selected.rows.map(r=>r.match_id),
+ 'same set and order regardless of source arrival order');
+
+// The same rank is applied to LIVE competitions, not only PREMATCH competitions.
+const liveOrder=selectPublishedMatches([
+ row(20,'england','Championship','LIVE'),
+ row(21,'world','FIFA World Cup','LIVE'),
+ row(22,'england','Premier League','LIVE'),
+ row(23,'italy','Serie A','LIVE'),
 ],{prematchLimit:0});
-assert.deepEqual(dateOrdered.rows.map(item=>item.match_id),[907,906,908,905],
- 'server ranks UEFA Champions League globally before domestic leagues, then sorts by Tirana date within each competition priority');
-const capped=selectPublishedMatches([row(1,'england','Premier League'),row(2,'japan','J1 League'),row(3,'brazil','Serie A')],{prematchLimit:2});assert.equal(capped.rows.length,2);assert.equal(capped.rows.filter(r=>r.protected_prematch).length,1);
-const plan={prematch:[1,2,3],prematchSoon:[1,3],prematchLater:[2],unpriced:[3],live:[99],boosted:[3],pendingResults:[3]};const filtered=filterBoardSubscriptionPlan(plan,capped.rows);assert.equal(filtered.prematch.length,2);assert.deepEqual(filtered.live,[99]);assert.deepEqual(filtered.boosted,[3]);assert.deepEqual(filtered.pendingResults,[3]);assert.equal(plan.prematch.length,3);
-console.log('PASS explicit administrator limit, preserved source fixtures, priority ordering and independent pending-result subscriptions');
+assert.deepEqual(liveOrder.rows.map(r=>r.match_id),[21,22,20,23]);
 
-const rankedPlan=filterBoardSubscriptionPlan({prematch:[2],live:[99],full:[3],pendingResults:[3]},capped.rows,{prematchLimit:1,soonMs:60000});assert.deepEqual(rankedPlan.prematch,[1,2]);assert.deepEqual(rankedPlan.full,[3]);assert.deepEqual(rankedPlan.pendingResults,[3]);
-store.clear();store.upsert(Array.from({length:2501},(_,i)=>row(i+1,'world','FIFA World Cup')));
-assert.equal(store.getSubscriptionIds({prematchLimit:0}).prematch.length,2501,'all eligible subscriptions survive legacy limits');store.clear();
-console.log('PASS protected publication/subscriptions: every eligible fixture remains visible, independent of legacy caps');
+// PREMATCH date sorting happens only after competition priority.
+const dateOrder=selectPublishedMatches([
+ row(30,'england','Premier League','PREMATCH','2026-11-27T11:00:00+01:00'),
+ row(31,'world','FIFA World Cup','PREMATCH','2026-11-28T22:00:00+01:00'),
+ row(32,'world','FIFA World Cup','PREMATCH','2026-11-27T21:00:00+01:00'),
+],{prematchLimit:0});
+assert.deepEqual(dateOrder.rows.map(r=>r.match_id),[32,31,30]);
 
-const fullCatalog=[...Array.from({length:1420},(_,i)=>row(i+1,'world','World Cup')),...Array.from({length:10},(_,i)=>row(i+5000,'world','World Cup','LIVE'))];
-const hundred=selectPublishedMatches(fullCatalog,{prematchLimit:100});assert.equal(hundred.summary.availablePrematch,1420);assert.equal(hundred.summary.visiblePrematch,100);assert.equal(hundred.summary.hiddenPrematch,1320);assert.equal(hundred.summary.live,10);assert.equal(hundred.rows.length,110);assert.equal(selectPublishedMatches(fullCatalog,{prematchLimit:0}).rows.length,1430);console.log('PASS 1420 source prematches → exactly100 active +10 live; 0 restores1430 total, no source mutation');
+// In-memory endpoint, league totals and feed subscriptions contain only the whitelist.
+store.clear();
+store.upsert(fixtures);
+assert.deepEqual(store.getMatches({catalog:true}).map(r=>r.match_id),[11,8,3,5,4,6,7,1,9,2]);
+assert.ok(store.getLeagues().every(r=>r.slug!=='italy'||r.live+r.prematch>0));
+assert.equal(store.getMatches({catalog:true}).some(r=>r.match_id===12),false);
+assert.equal(store.getSubscriptionIds({liveLimit:0,prematchLimit:0}).live.includes(12),false);
+assert.equal(store.getCounts().live,1);
+const plan=filterBoardSubscriptionPlan({live:[11,12],prematch:[1,2,3,4,5,6,7,8,9,10],prematchSoon:[],prematchLater:[],unpriced:[]},selected.rows);
+assert.deepEqual(plan.live,[11,12],'subscription helper preserves LIVE IDs; getSubscriptionIds excludes unlisted LIVE fixtures');
+assert.equal(plan.prematch.includes(10),false);
+store.clear();
+
+console.log('PASS strict LIVE + PREMATCH competition whitelist, stable 100-item priority, leagues, counts and subscription filters');

@@ -9,7 +9,7 @@ const kickoffDay = (value: unknown) => {
   }).formatToParts(date).map(part => [part.type, part.value]));
   return Number(parts.year + parts.month + parts.day);
 };
-/** LIVE first; PREMATCH competition priority globally, then Tirana kickoff date within each priority. */
+/** LIVE first; the configured competition rank applies inside both LIVE and PREMATCH sections. PREMATCH kickoff dates only break ties within one rank. */
 export function compareMatchDisplay(a: Match, b: Match): number {
   const aLive=a.status==='LIVE', bLive=b.status==='LIVE';
   return Number(bLive) - Number(aLive)

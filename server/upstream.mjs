@@ -45,7 +45,7 @@ const BLOCKED_SPORT_TYPES = new Set(['esport', 'polybet']);
 const BLOCKED_CATEGORY_SLUGS = new Set([
   'cyberfifa', 'ereplays', 'replays', 'short-football', 'cyber-leagues', 'cybersport',
   'cyber-football', 'virtual-football', 'crypto', 'crypto-live', 'computer-games',
-  'vsport', 'express', 'special-1', 'special-2',
+  'fifa', 'vsport', 'express', 'special-1', 'special-2',
 ]);
 const BLOCKED_CATEGORY_RE = /^(cyber|e-?replays?$|virtual|crypto|computer|vsport|express|special[-_]?\d)/i;
 const BLOCKED_TOURNAMENT_RE =

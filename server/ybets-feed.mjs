@@ -2,15 +2,11 @@ import WebSocket from 'ws';
 import {YbetsHttpClient,YbetsSocket} from './ybets/client.mjs';
 import {YbetsCache} from './ybets/cache.mjs';
 import {normalizeMatch,normalizeInfo,normalizeMarkets,internalMatchId,nativeMatchId,isYbetsMatchId,isYbetsFootball} from './ybets-normalize.mjs';
-import {competitionDecision} from './football-competitions.mjs';
 
 export function isAllowedYbetsMatch(m){
  if(!isYbetsFootball(m))return false;
- if([1,2,3,4,5].includes(Number(m.status))){
-   const text=[m.tournament?.name,m.tournament?.category?.slug,m.competitors?.home?.name,m.competitors?.away?.name].join(' ');
-   return !/\b(?:virtual|cyber|esports?|esportsbattle|simulated|simulation|replays?|ehighlights|short[- ]football|fantasy|volta|penalty shootout)\b|\(2x\d+ min\)/i.test(text);
- }
- const r=normalizeMatch(m);return !!r&&competitionDecision({name:r.tournament_name},{slug:r.category_slug}).allowed;
+ const row=normalizeMatch(m);
+ return row?.competition_rank!=null;
 }
 /** Public football only. The HTTP catalogue discovers fixtures; the socket
  * changes prices/statuses. Full snapshots repair omissions and reconnect gaps. */

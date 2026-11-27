@@ -1,5 +1,5 @@
 /** Presentation policy only: never removes feed rows or pending-ticket facts. */
-import {competitionDecision,normalizeCompetition,isEuropeanFootballCountry,isSyntheticFootballMatch} from './football-competitions.mjs';
+import {competitionDecision,isSyntheticFootballMatch} from './football-competitions.mjs';
 import {splitByKickoff} from './subscribe-plan.mjs';
 export const DEFAULT_BOARD_SETTINGS=Object.freeze({prematchLimit:0});
 let settings={...DEFAULT_BOARD_SETTINGS};const listeners=new Set();
@@ -10,25 +10,13 @@ export function validateBoardSettings(value){
 }
 export function setBoardSettings(value){const next=validateBoardSettings(value);if(next.prematchLimit!==settings.prematchLimit){settings=next;for(const fn of listeners)try{fn(boardSettings());}catch{}}return boardSettings();}
 export function subscribeBoardSettings(fn){listeners.add(fn);return()=>listeners.delete(fn);}
-const countries=['england','italy','spain','germany','france','portugal'];
 export function competitionPriority(row){
- const country=String(row.category_slug??row.tournament?.category?.slug??'').toLowerCase();
+ const country=String(row.category_slug??row.tournament?.category?.slug??'');
  const name=row.tournament_name??row.tournament?.name??'';
- const decision=competitionDecision({name},{slug:country});
- if(!decision.allowed)return {priority:100,protected:false};
- const label=normalizeCompetition(name);
- const gtCompetition=/\bgt\b/.test(label);
- // Continental cup names are reliable identifiers even when Zizobet assigns
- // them to a generic category such as "international-clubs" instead of "europe".
- // Rank them before domestic leagues on the same local date, so the
- // administrator's prematch cap respects both date groups and competition order.
- const nonEuropeanCompetition=/\b(?:afc|caf|concacaf|conmebol|ofc|asian|african|north american|south american)\b/.test(label)
-  ||['asia','africa','south-america','north-america','central-america','oceania','concacaf','conmebol','afc','caf','ofc'].includes(country);
- if(!gtCompetition&&!nonEuropeanCompetition&&/\bchampions league\b/.test(label))return {priority:1,protected:true};
- if(!gtCompetition&&!nonEuropeanCompetition&&/\b(?:europa league|conference league|nations league|european championship)\b/.test(label))return {priority:2,protected:true};
- if(decision.tier&&countries.includes(country))return {priority:10+countries.indexOf(country)+(decision.tier-1)*10,protected:true};
- if(decision.tier===1&&isEuropeanFootballCountry(country))return {priority:40,protected:true};
- return {priority:100,protected:false};
+ const decision=competitionDecision({name,categorySlug:country},{slug:country});
+ return decision.allowed
+  ? {priority:decision.rank,rank:decision.rank,protected:true}
+  : {priority:100,rank:null,protected:false};
 }
 const time=value=>{const n=new Date(value??0).getTime();return Number.isFinite(n)?n:0;};
 const kickoffDay=value=>{
@@ -41,8 +29,8 @@ const live=row=>String(row.service??row.status).toUpperCase()==='LIVE';
 function compare(a,b){
  const aLive=live(a),bLive=live(b);
  return Number(bLive)-Number(aLive)
-  ||(!aLive?a.listing_priority-b.listing_priority:0)
-  ||(!aLive?kickoffDay(a.start_at)-kickoffDay(b.start_at):0)
+  ||Number(a.listing_priority??100)-Number(b.listing_priority??100)
+  ||kickoffDay(a.start_at)-kickoffDay(b.start_at)
   ||time(a.competition_first_seen_at??a.first_seen_at)-time(b.competition_first_seen_at??b.first_seen_at)
   ||String(a.tournament_id??'').localeCompare(String(b.tournament_id??''),'en',{numeric:true})
   ||time(aLive?a.live_first_seen_at:a.prematch_first_seen_at??a.first_seen_at)-time(bLive?b.live_first_seen_at:b.prematch_first_seen_at??b.first_seen_at)
@@ -50,7 +38,7 @@ function compare(a,b){
   ||String(a.match_id).localeCompare(String(b.match_id),'en',{numeric:true});
 }
 export function selectPublishedMatches(catalog,config=boardSettings()){
- const rows=catalog.filter(r=>r.active!==false&&!isSyntheticFootballMatch(r)&&!/^(?:ended|finished|cancelled|closed|uncovered)$/i.test(String(r.status??''))&&!/^(?:ft|finished|ended|full.?time)$/i.test(String(r.feed_status??''))).map(row=>{const rank=competitionPriority(row);return {...row,listing_priority:rank.priority,protected_prematch:!live(row)&&rank.protected};}).sort(compare);
+ const rows=catalog.filter(r=>r.active!==false&&!isSyntheticFootballMatch(r)&&competitionPriority(r).rank!=null&&!/^(?:ended|finished|cancelled|closed|uncovered)$/i.test(String(r.status??''))&&!/^(?:ft|finished|ended|full.?time)$/i.test(String(r.feed_status??''))).map(row=>{const rank=competitionPriority(row);return {...row,competition_rank:rank.rank,listing_priority:rank.priority,protected_prematch:!live(row)&&rank.protected};}).sort(compare);
  const prematch=rows.filter(r=>!live(r)),protectedRows=prematch.filter(r=>r.protected_prematch),others=prematch.filter(r=>!r.protected_prematch);
  const limit=validateBoardSettings({prematchLimit:config.prematchLimit??0}).prematchLimit;
  const activePrematch=limit>0?prematch.slice(0,limit):prematch;

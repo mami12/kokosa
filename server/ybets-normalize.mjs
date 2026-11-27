@@ -1,6 +1,7 @@
 /** Public Ybets API -> the board's provider-independent contract.
  * This module never evaluates a wager or invents a result from elapsed time.
  */
+import {competitionDecision} from './football-competitions.mjs';
 export const YBETS_MATCH_OFFSET = 7_000_000_000_000;
 const LOOKUP_OFFSET = 1_000_000_000;
 const integer = value => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
@@ -66,10 +67,12 @@ export function normalizeMatch(match) {
   if(!isYbetsFootball(match)) return null;
   const tournament=match.tournament??{},category=tournament.category??{},phase=phaseOf(match);
   const millis=clockMilliseconds(match.statistics?.clock?.match_time),start=instant(match.start_time);
+  const competition=competitionDecision({name:tournament.name,categorySlug:category.slug||slug(category.name)},{slug:category.slug||slug(category.name)});
   return {
     match_id:internalMatchId(match.id),sport_id:18,sport_tag:'football',
     category_id:lookupId(category.id),category_slug:category.slug||slug(category.name),category_name:label(category.name)||null,
     tournament_id:lookupId(tournament.id),tournament_slug:tournament.slug||slug(tournament.name),tournament_name:label(tournament.name)||null,
+    competition_rank:competition.allowed?competition.rank:null,
     home:label(match.competitors?.home?.name),away:label(match.competitors?.away?.name),
     service:Number(match.status)===0?'PREMATCH':'LIVE',start_at:start?new Date(start):null,
     is_hot:false,is_real:true,live_minute:millis==null?null:Math.floor(millis/60000),phase:phase.phase,status:phase.status,

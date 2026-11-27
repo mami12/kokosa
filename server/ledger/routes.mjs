@@ -425,7 +425,7 @@ ledgerRouter.get(
     });
     if(!Number.isSafeInteger(matchId)||matchId<=0)return res.status(404).json({message:'match not found'});
     let row=await getMatchRow(matchId);
-    if(row&&(isMatchHidden(row)||isSyntheticFootballMatch(row)))return res.status(404).json({message:'match not found'});
+    if(row&&(row.competition_rank==null||isMatchHidden(row)||isSyntheticFootballMatch(row)))return res.status(404).json({message:'match not found'});
     if(ledger.isLedgerReady()&&(!row||row.status==='ended')){
       const archive=(await recentFinishedFavorites([matchId]))[0];
       if(archive)return res.json(archive);
@@ -475,7 +475,7 @@ ledgerRouter.get('/matches/:id/incidents',guard(async(req,res)=>{
  const matchId=Number(req.params.id);
  if(!Number.isSafeInteger(matchId)||matchId<=0)return res.status(404).json({message:'match not found'});
  const row=await getMatchRow(matchId);
- if(!row||isMatchHidden(row)||isSyntheticFootballMatch(row))
+ if(!row||row.competition_rank==null||isMatchHidden(row)||isSyntheticFootballMatch(row))
    return res.status(404).json({message:'match not found'});
  if(String(row.service??'').toUpperCase()!=='LIVE'&&
     !/^(?:ended|finished)$/i.test(String(row.status??'')))
@@ -493,7 +493,7 @@ ledgerRouter.get(
   '/matches/:id/tracker',
   guard(async (req, res) => {
     let row = await getMatchRow(Number(req.params.id));
-    if (!row || isMatchHidden(row) || isSyntheticFootballMatch(row)) return res.status(404).json({ message: 'match not found' });
+    if (!row || row.competition_rank == null || isMatchHidden(row) || isSyntheticFootballMatch(row)) return res.status(404).json({ message: 'match not found' });
     boostMatch(row.match_id);
     // The quoted snapshot is local. Full provider markets refresh in the
     // background and reach this match through the next odds push/REST poll.

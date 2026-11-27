@@ -29,16 +29,16 @@ function addRule(scope, label, aliases = [], tier = null) {
 }
 addRule("global", "FIFA World Cup", ["World Cup"], null);
 addRule("global", "FIFA Club World Cup", ["Club World Cup"], null);
-addRule("global", "FIFA U-20 World Cup", ["FIFA U20 World Cup","FIFA Under 20 World Cup","U-20 World Cup","U20 World Cup","Under 20 World Cup"], null);
-addRule("global", "FIFA U-17 World Cup", ["FIFA U17 World Cup","FIFA Under 17 World Cup","U-17 World Cup","U17 World Cup","Under 17 World Cup"], null);
-addRule("global", "FIFA Women's World Cup", ["FIFA Women World Cup","Women's World Cup","Women World Cup"], null);
+addRule("global", "FIFA U-20 World Cup", ["FIFA U20 World Cup","FIFA U-20 World Cup","U20 World Cup","U-20 World Cup","Under 20 World Cup"], null);
+addRule("global", "FIFA U-17 World Cup", ["FIFA U17 World Cup","FIFA U-17 World Cup","U17 World Cup","U-17 World Cup","Under 17 World Cup"], null);
+addRule("global", "FIFA Women's World Cup", ["FIFA Women World Cup","FIFA Women's World Cup","Women's World Cup","Women World Cup"], null);
 addRule("global", "UEFA Champions League", ["Champions League"], null);
 addRule("global", "UEFA Europa League", ["Europa League"], null);
 addRule("global", "UEFA Conference League", ["Conference League"], null);
 addRule("global", "UEFA Super Cup", ["European Super Cup"], null);
 addRule("global", "UEFA European Championship", ["European Championship","UEFA Euro","Euro"], null);
 addRule("global", "UEFA Nations League", ["Nations League"], null);
-addRule("global", "UEFA U-21 European Championship", ["UEFA U21 European Championship","U21 European Championship","European U21 Championship","U21 Euro","UEFA U21 Euro"], null);
+addRule("global", "UEFA U-21 European Championship", ["UEFA U21 European Championship","U21 European Championship","European U21 Championship"], null);
 addRule("global", "UEFA Youth League", [], null);
 addRule("global", "Copa Libertadores", ["CONMEBOL Libertadores"], null);
 addRule("global", "Copa Sudamericana", ["CONMEBOL Sudamericana"], null);
@@ -69,7 +69,7 @@ addRule(["netherlands"], "Eredivisie", [], 1);
 addRule(["netherlands"], "Eerste Divisie", [], 2);
 addRule(["portugal"], "Primeira Liga", ["Liga Portugal","Liga Portugal 1"], 1);
 addRule(["portugal"], "Liga Portugal 2", ["Segunda Liga","Liga Portugal Segunda"], 2);
-addRule(["turkey","turkiye"], "Süper Lig", ["Super Lig","Super League"], 1);
+addRule(["turkey"], "Süper Lig", ["Super Lig","Super League"], 1);
 addRule(["turkey"], "1. Lig", ["1 Lig","1 League"], 2);
 addRule(["belgium"], "Pro League", ["Jupiler Pro League"], 1);
 addRule(["belgium"], "Challenger Pro League", ["First Division B"], 2);
@@ -121,20 +121,15 @@ addRule(["nigeria"], "NPFL", ["Premier League","Nigeria Premier League"], 1);
 addRule(["ghana"], "Ghana Premier League", ["Premier League"], 1);
 addRule(["saudi-arabia"], "Saudi Pro League", ["Professional League","Pro League"], 1);
 addRule(["japan"], "J1 League", [], 1);
-addRule(["republic-of-korea","south-korea","korea-republic","korea"], "K League 1", ["K-League 1"], 1);
-addRule(["china"], "Chinese Super League", ["Super League"], 1);
+addRule(["republic-of-korea","south-korea","korea-republic"], "K League 1", ["K-League 1"], 1);
+addRule(["china","china-pr"], "Chinese Super League", ["Super League"], 1);
 addRule(["qatar"], "Qatar Stars League", ["Stars League"], 1);
 addRule(["united-arab-emirates","uae"], "UAE Pro League", ["Pro League","Professional League"], 1);
 addRule(["iran"], "Persian Gulf Pro League", ["Pro League"], 1);
 addRule(["australia"], "A-League Men", ["A League Men","A League"], 1);
 
-function nameMatches(name, aliases, allowYear = false) {
-  return aliases.some(alias => {
-    if (name === alias) return true;
-    if (!name.startsWith(alias + ' ')) return false;
-    const suffix = name.slice(alias.length + 1);
-    return /^(?:group|girone) [a-z0-9]+$/.test(suffix) || (allowYear && /^(?:19|20)\d{2}$/.test(suffix));
-  });
+function nameMatches(name, aliases) {
+  return aliases.some(alias => name === alias || (name.startsWith(alias + ' group ') && /^group [a-z0-9]+$/.test(name.slice(alias.length + 1))));
 }
 function countrySlugOf(tournament = {}, category = {}) {
   return normalizeCompetition(category.slug ?? tournament.category?.slug ?? tournament.categorySlug ?? '');
@@ -149,7 +144,7 @@ export function competitionDecision(tournament = {}, category = {}) {
   if (/\b(?:outrights?|long term|singles only)\b/.test(name)) {
     return { allowed: false, reason: 'not-a-match', country, rank: null, tier: null };
   }
-  const rule = rules.find(item => (!item.scope || item.scope.has(country)) && nameMatches(name, item.names, !item.scope));
+  const rule = rules.find(item => (!item.scope || item.scope.has(country)) && nameMatches(name, item.names));
   return rule ? { allowed: true, reason: 'configured', country, rank: rule.rank, tier: rule.tier, competition: rule.label }
     : { allowed: false, reason: 'not-configured', country, rank: null, tier: null };
 }
@@ -157,12 +152,6 @@ export function competitionDecision(tournament = {}, category = {}) {
 export function competitionDisplayOrder(categorySlug, tournamentName) {
   const decision = competitionDecision({ name: tournamentName, categorySlug }, { slug: categorySlug });
   return decision.allowed ? decision.rank : null;
-}
-
-export function rankCompetitionRow(row) {
-  if (!row) return null;
-  const rank = competitionDisplayOrder(row.category_slug, row.tournament_name);
-  return rank == null ? null : { ...row, competition_rank: rank };
 }
 
 export function buildCompetitionPolicy(tournaments, categories) {

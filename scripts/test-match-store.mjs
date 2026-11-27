@@ -81,6 +81,10 @@ check(
 );
 check('league filter', store.getMatches({ league: 'premier-league' }).length === 2);
 check('live sorts before prematch', store.getMatches({})[0].service === 'LIVE');
+store.upsert([mkRow({ match_id: 4, tournament_name: 'League Two', competition_rank: null })]);
+check('unlisted competitions never enter match results', !store.getMatches({ includeEnded: true }).some(match => match.match_id === 4));
+check('unlisted competitions never enter league counts', store.getLeagues().every(league => league.slug === 'premier-league'));
+check('unlisted competitions never enter feed subscriptions', !store.getSubscriptionIds({ liveLimit: 20 }).live.includes(4));
 check(
   'limit/offset',
   store.getMatches({ limit: 1 }).length === 1 &&
@@ -108,11 +112,6 @@ const expired = store.expireStale(0, Date.now() + 60 * 60 * 1000); // everything
 check('missing listings suspend unresolved matches instead of inventing FT', expired.length === 1 && store.getMatches({ includeEnded: true }).length === 2);
 check('unconfirmed live match retains its phase and is suspended', store.getById(1).status === 'live' && store.getById(1).listing_stale === true);
 check('reappearing match becomes active again', store.upsert([mkRow({ match_id: 1 })]) === 1 && store.getById(1).active === true);
-store.upsert([mkRow({ match_id: 4, tournament_name: 'League Two', competition_rank: null })]);
-check('unlisted competitions never enter match results', !store.getMatches({ includeEnded: true }).some(match => match.match_id === 4));
-check('unlisted competitions never enter league counts', store.getLeagues().every(league => league.slug === 'premier-league'));
-check('unlisted competitions never enter feed subscriptions', !store.getSubscriptionIds({ liveLimit: 20 }).live.includes(4));
-
 // --- subscription tiers (what the pusher subscribes, and how often) --------------
 store.clear();
 store.upsert([
