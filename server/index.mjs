@@ -50,7 +50,7 @@ import { startCollector, withOdds, buildMarkets, toDbOddsShape, statsFromRow } f
 import { liveClock } from './minute.mjs';
 import { liveRiskReason, riskMinute } from './live-risk.mjs';
 import { liveRiskSettings, subscribeLiveRiskSettings } from './live-risk-settings.mjs';
-import { freshFeed, freshSocketHeaders, liveBoardFacts } from './feed-sync.mjs';
+import { freshFeed, freshSocketHeaders } from './feed-sync.mjs';
 import {createMatchDetailRefresh} from './match-detail-refresh.mjs';
 import { refreshLiveRiskSettings } from './ledger/live-risk-store.mjs';
 import { createIdleMonitor, getFeedMode, feedIsStopped } from './idle-mode.mjs';
