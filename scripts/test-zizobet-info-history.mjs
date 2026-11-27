@@ -25,6 +25,33 @@ assert.equal(frame.events.filter(e=>e.type==='corner').length,12,
 
 assert.equal(frame.coverage.cornerThrough,79,'All twelve corners reconcile to scoreboard');
 
+// Zizobet's own timeline normalizer retains 45+1..45+15 and 90+1..90+15
+// as absolute regular-time minutes for goals, corners and cards.
+const fullStoppageTimeline=[];
+for(const type of ['score_change','corner_kick','yellow_card']){
+ for(const base of [45,90])for(let added=1;added<=15;added++)
+  fullStoppageTimeline.push({id:`${type}-${base}-plus-${added}`,type,team:1,gt:`${base}+${added}`});
+}
+const allStoppageFrame=normalizeLiveFrame({Match:{
+ EventStatus:40,MatchStatusID:40,Score:'30:0',MatchTimeExtended:'105:00',
+ CornersTeam1:30,CornersTeam2:0,
+ YellowCardsTeam1:30,YellowCardsTeam2:0,RedCardsTeam1:0,RedCardsTeam2:0
+},TimeLines:fullStoppageTimeline});
+for(const kind of ['goal','corner','card']){
+ const incidents=allStoppageFrame.events.filter(event=>event.type===kind);
+ assert.equal(incidents.length,30,`${kind}: all stoppage incidents survive normalization`);
+ assert.deepEqual(incidents.map(event=>event.minute),[
+  ...Array.from({length:15},(_,i)=>46+i),
+  ...Array.from({length:15},(_,i)=>91+i)
+ ]);
+ assert.ok(incidents.slice(0,15).every(event=>event.phase==='1st half'));
+ assert.ok(incidents.slice(15).every(event=>event.phase==='2nd half'));
+}
+assert.equal(allStoppageFrame.coverage.goalThrough,130);
+assert.equal(allStoppageFrame.coverage.cornerThrough,130);
+assert.equal(allStoppageFrame.coverage.cardThrough,130);
+assert.equal(allStoppageFrame.cardColorsVerified,true);
+
 // A provider can reuse one event ID for two separate corners. Keep both rows
 // in both the dashboard and financial evidence, and keep their occurrence IDs
 // stable across identical polling snapshots.

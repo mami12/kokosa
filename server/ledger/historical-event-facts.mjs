@@ -31,27 +31,31 @@ export function validateHistoricalGoals(payload){
   if(event.own===true||event.ownGoal===true)return null;
   const id=String(event.id??'').trim(),minute=Number(event.minute);
   const phase=String(event.phase??'').toLowerCase();
+  const injury=event.injury==null?0:Number(event.injury);
   if(!id||ids.has(id)||!['home','away'].includes(event.team)||
      !Number.isInteger(minute)||minute<0||minute>90||
+     !Number.isSafeInteger(injury)||injury<0||injury>30||
+     (injury>0&&minute!==45&&minute!==90)||
      (/^(?:2$|h2|2nd|second)/.test(phase)&&minute<45)||
      (/^(?:1$|h1|1st|first)/.test(phase)&&minute>45))return null;
-  const injury=event.injury==null?0:Number(event.injury);
-  if(!Number.isSafeInteger(injury)||injury<0||injury>30)return null;
-  // Stoppage-time labels (45+2 / 90+2) cannot be treated as the
-  // ordinary minute 45/90 for money grading without provider-specific
-  // absolute-clock semantics. Keep them display-only until verified.
-  if(injury!==0)return null;
+  // Convert 45+N / 90+N to absolute regular-time minutes. The explicit
+  // phase prevents 90+N from being confused with Extra Time, while the
+  // absolute minute preserves ordering between separate stoppage incidents.
+  const absoluteMinute=minute+injury;
+  const normalizedPhase=injury>0?(minute===45?'H1':'H2'):
+   typeof event.phase==='string'?event.phase:null;
   const rawSeconds=event.seconds==null?null:Number(event.seconds);
   const second=rawSeconds!==null&&Number.isFinite(rawSeconds)&&
-    rawSeconds>=minute*60&&rawSeconds<(minute+1)*60?rawSeconds:null;
+    rawSeconds>=absoluteMinute*60&&rawSeconds<(absoluteMinute+1)*60?rawSeconds:null;
+  if(rawSeconds!==null&&second===null)return null;
   ids.add(id);
   events.push({
-   id,team:event.team,minute,seconds:second,
+   id,team:event.team,minute:absoluteMinute,seconds:second,
    playerId:event.playerId==null?null:String(event.playerId),
    playerName:typeof event.player==='string'?event.player.trim()||null:null,
    ownGoal:typeof event.own==='boolean'?event.own:
     typeof event.ownGoal==='boolean'?event.ownGoal:null,
-   phase:typeof event.phase==='string'?event.phase:null
+   phase:normalizedPhase
   });
  }
  if(events.filter(x=>x.team==='home').length!==home||
