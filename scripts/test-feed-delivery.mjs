@@ -70,6 +70,9 @@ assert.deepEqual(snapshot.counters.fouls,{home:7,away:9});
 assert.deepEqual(snapshot.counters.shotsOnTarget,{home:4,away:3});
 assert.deepEqual(snapshot.counters.offsides,{home:2,away:1});
 assert.deepEqual(snapshot.counters.shots,{home:8,away:6});
+const partial=projectLiveIncidentSnapshot({...fixture,stats:{'1':{Corners:4}}},at);
+assert.deepEqual(partial.counters.corners,{home:4,away:null},
+ 'A missing team statistic must remain unknown rather than becoming zero');
 
 const incidentPackets=[];
 const publishIncidents=createLiveIncidentPublisher(packet=>incidentPackets.push(packet));
