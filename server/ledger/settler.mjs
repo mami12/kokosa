@@ -46,7 +46,7 @@ import {parseTeamCountMarket} from './live-contract-rules.mjs';
 import {statisticsNeedReview,settlementStatisticFields} from './settlement-review.mjs';
 import {createLiveSettlementPreviews} from './live-shadow-settlement.mjs';
 import {gradeStoredEventContract,SUPPORTED_FACT_KINDS,loadVerifiedHalfTimeScore} from './match-event-facts.mjs';
-import {recoverLegacyZizobetCornerContract} from './legacy-zizobet-corner-contract.mjs';
+import {recoverLegacyZizobetCornerContract,recoverLegacyZizobetEventContract} from './legacy-zizobet-corner-contract.mjs';
 import {backfillPendingTeamGoalContracts} from './live-contract-backfill.mjs';
 import {settleVerifiedLiveProposals} from './verified-live-settlement.mjs';
 import {nativeZizobetContractRow} from './native-zizobet-contract.mjs';
@@ -1965,20 +1965,21 @@ export async function settleMatch(matchId) {
       unresolved.push({line,result});
       continue;
     }
-    // Recover old native corner contracts from the immutable accepted quote
-    // before the generic hold guard. Only known parser-migration holds qualify.
-    const recoveredCornerContract=!line.live_contract?
-      recoverLegacyZizobetCornerContract(line):null;
+    // Recover old event contracts from the immutable accepted Zizobet quote
+    // before the generic hold guard. The parser may rebuild a goal/corner/card
+    // contract, but the grader still requires the matching provider chronology.
+    const recoveredEventContract=!line.live_contract?
+      recoverLegacyZizobetEventContract(line):null;
     if(line?.accepted_contract?.settlementHold&&
-       gradeHeldNativeCombo(line,result)===null&&!recoveredCornerContract){
+       gradeHeldNativeCombo(line,result)===null&&!recoveredEventContract){
       unresolved.push({line,result});
       continue;
     }
     let status=null;
-    const accepted=recoveredCornerContract&&typeof line.accepted_contract==='string'
+    const accepted=recoveredEventContract&&typeof line.accepted_contract==='string'
       ?JSON.parse(line.accepted_contract):line.accepted_contract;
-    const settlementLine=recoveredCornerContract?
-      {...line,live_contract:recoveredCornerContract,
+    const settlementLine=recoveredEventContract?
+      {...line,live_contract:recoveredEventContract,
        accepted_contract:{...accepted,settlementHold:null}}:line;
     // A frozen event contract is graded against PostgreSQL provider facts,
     // never parsed from a translated/displayed name at settlement time.
