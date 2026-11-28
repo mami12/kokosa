@@ -61,6 +61,10 @@ assert.equal(isSyntheticFootballMatch({ tournament_name: 'EFL Championship', hom
   'real EFL football must remain eligible');
 assert.equal(isSyntheticFootballMatch({ tournament_name: 'Eredivisie', homeTeam: 'Ajax', awayTeam: 'PSV' }), false,
   'the real Eredivisie must remain eligible');
+assert.equal(isSyntheticFootballMatch({ tournament_name: 'UEFA European Championship' }), false,
+  'a real European Championship must not be mistaken for an e-sports league');
+assert.equal(isSyntheticFootballMatch({ tournament_name: 'English Championship' }), false,
+  'real English competitions must not be caught by the e-prefix matcher');
 assert.equal(rankCompetitionRow({ tournament_name: 'Premier League', category_slug: 'england', isEsports: true }), null,
   'provider-level e-sports flags must survive competition ranking and block publication');
 assert.equal(rankCompetitionRow({ tournament: { name: 'Premier League', isEsports: true }, category_slug: 'england' }), null,
