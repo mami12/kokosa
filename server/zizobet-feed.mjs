@@ -6,7 +6,7 @@ import {rankCompetitionRow} from './football-competitions.mjs';
 import {collectEventEvidence} from './zizobet/event-collector.mjs';
 import {archiveZizobetMatchHistory} from './ledger/zizobet-match-history.mjs';
 import {normalizeLiveFrame} from './ledger/live-observation-store.mjs';
-import {providerTimeline,inheritEventPlayers} from './live-event-timeline.mjs';
+import {providerTimeline,inheritEventPlayers,mergeProviderTimeline,mergeDashboardTimelineEvents} from './live-event-timeline.mjs';
 
 // Keep checking the native event list briefly after FT: providers can publish
 // stoppage-time incidents or timeline corrections after their first final frame.
@@ -61,7 +61,7 @@ export function timelineCounterMismatches(data){
  });
 }
 export {isZizoId};
-export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDefinitions=()=>{},onFixtureDiscovered=()=>{},onHistoryConfirmed=()=>{},selectRows=r=>r,getWatchedIds=()=>[],request=get,connectMqtt=startMqtt,autoStart=true,now=()=>Date.now(),transitionGraceMs=120000,retentionMs=21600000,historyEnabled=autoStart,archiveHistory=archiveZizobetMatchHistory}={}){
+export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDefinitions=()=>{},onFixtureDiscovered=()=>{},onHistoryConfirmed=()=>{},selectRows=r=>r,getWatchedIds=()=>[],request=get,connectMqtt=startMqtt,autoStart=true,now=()=>Date.now(),transitionGraceMs=120000,retentionMs=21600000,historyEnabled=autoStart,archiveHistory=archiveZizobetMatchHistory,archiveDashboard=async()=>({events:[]})}={}){
  const meta={teams:new Map(),regions:new Map(),champs:new Map(),liveMarkets:new Map(),preMarkets:new Map(),positions:new Map(),statuses:new Map()};
  const footballLiveMarkets=new Map();
  const state={provider:'ZIZOBET',transport:'MQTT cache invalidations + HTTP snapshots',running:false,cycles:0,syncedAt:null,lastError:null,received:0,kept:0,paused:false,pauses:0,resumes:0};
@@ -111,6 +111,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
    historyMismatchAttempts.delete(id);
    historyPollAt.set(id,0);
   }
+  return {initial:!previous,changed};
  };
  const archiveMarketDefinitions=()=>{
   // Prematch definitions come from getprematchmarketsbysport(...,1), an
@@ -197,13 +198,20 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   if(startedAt<(versions.get(row.match_id)??0))return;versions.set(row.match_id,startedAt);
   const entry=games.get(Number(row.raw?.nativeId));
   const received=providerTimeline(row.match_id,game.TimeLines,game);
-  // Lightweight provider updates can omit an actor, even for the same ID.
-  // Keep the previously confirmed label without reintroducing deleted events.
-  const timeline=received?inheritEventPlayers(received,entry?.row?.raw?.eventTimeline):received;
-  if(timeline)row={...row,raw:{...row.raw,eventTimeline:timeline}};
-  // Keep the last complete provider timeline across the lightweight headers.
-  // A header carries no incidents and must not erase an observed event minute.
-  if(!timeline&&Array.isArray(entry?.row?.raw?.eventTimeline))row={...row,raw:{...row.raw,eventTimeline:entry.row.raw.eventTimeline}};
+  const previousTimeline=entry?.row?.raw?.eventTimeline??row.raw?.eventTimeline;
+  let timeline;
+  if(Array.isArray(received)){
+   // Only categories reconciled against this Match snapshot may replace the
+   // prior chronology. Blank/partial TimeLines must not erase observed events.
+   const frame=normalizeLiveFrame({Match:game,
+    ...(Array.isArray(game.TimeLines)?{TimeLines:game.TimeLines}:{})});
+   const verifiedKinds=['goal','corner','card','foul'].filter(kind=>frame.coverage?.[kind+'Through']!=null);
+   const incoming=inheritEventPlayers(received,previousTimeline);
+   timeline=mergeProviderTimeline(previousTimeline,incoming,{
+    verifiedKinds,rawTimelineTruncated:frame.rawTimelineTruncated
+   });
+  }else timeline=previousTimeline;
+  if(Array.isArray(timeline))row={...row,raw:{...row.raw,eventTimeline:timeline}};
   if(entry)entry.row=row;
   await onMatch(row);const info=infoOf(row,game,meta);if(Array.isArray(row.raw?.eventTimeline))info.events=row.raw.eventTimeline;await onInfo(info);
   if(entry&&info.hasOpenOdds!==undefined)entry.pricesSuspended=info.hasOpenOdds===false;
@@ -249,13 +257,33 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   const rows=[];await queue(async()=>{for(const g of data.Games){if(Number(g.Sport)!==1)continue;const r=rankCompetitionRow(rowOf(g,meta,true));if(!r)continue;
    // Header quote IDs are tied to this fixture's Sport=1 identity.
    if(rememberFootballLiveMarkets(g.hprs))footballDefinitionsChanged=true;
-   const id=Number(g.ID),previous=games.get(id);r.status=Number(g.MatchStatusID)===40?'ended':'live';rows.push(r);
-   // A delayed catalogue cannot roll back a newer detail or resurrect FT.
-   if(previous?.live&&(previous.row.status==='ended'||startedAt<(versions.get(r.match_id)??0)))continue;
+   const id=Number(g.ID),previous=games.get(id);rows.push(r);
+   // A delayed catalogue cannot roll back a newer detail. A previously
+   // finished fixture may still receive corrected dashboard counters, so do
+   // not discard its late score/corner/card updates.
+   if(previous?.live&&startedAt<(versions.get(r.match_id)??0))continue;
+   const wasEnded=previous?.live&&previous.row.status==='ended';
+   r.status=wasEnded||Number(g.MatchStatusID)===40?'ended':'live';
    if(Array.isArray(previous?.row?.raw?.eventTimeline))r.raw={...r.raw,eventTimeline:previous.row.raw.eventTimeline};
    const hadLive=previous?.live;
-   observeHeaderEvents(id,r,g);
+   const headerChange=observeHeaderEvents(id,r,g);
+   if(headerChange.initial||headerChange.changed){
+    try{
+     const archived=await archiveDashboard(r.match_id,g,{observedAt:new Date(now())});
+     if(Array.isArray(archived?.events)&&archived.events.length){
+      r.raw={...r.raw,eventTimeline:mergeDashboardTimelineEvents(r.raw?.eventTimeline,archived.events)};
+     }
+    }catch(error){
+     console.warn('[zizobet] dashboard incident archive',r.match_id,error?.message??error);
+    }
+   }
    const entry=previous??{};entry.row=r;entry.raw={...entry.raw,...g};entry.live=true;entry.seenAt=now();delete entry.transitionAt;transitions.delete(id);games.set(id,entry);
+   // Final fixtures continue receiving dashboard corrections during the
+   // post-FT recovery window, but their odds remain closed.
+   if(wasEnded){
+    await publish(r,g,[],{complete:false,startedAt});
+    continue;
+   }
    // Header prices remain live after a detail viewer leaves. Preserve a full
    // snapshot's suspension until a new full snapshot confirms reopening.
    if(hadLive&&fullObserved.has(id)&&r.status!=='ended'){

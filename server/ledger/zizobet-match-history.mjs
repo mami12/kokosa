@@ -159,3 +159,135 @@ export function createZizobetHistoryArchive({database=pool,now=()=>new Date()}={
  };
 }
 export const archiveZizobetMatchHistory=createZizobetHistoryArchive();
+
+const dashboardPairs=match=>{
+ const score=String(match?.Score??'').match(/^(\d+):(\d+)$/);
+ const goals=score?{home:Number(score[1]),away:Number(score[2])}:null;
+ const corners=providerResultPair(match,'Corners')??pair(match,'Corners');
+ return {
+  'goal:home':goals?.home??null,'goal:away':goals?.away??null,
+  'corner:home':corners?.home??whole(match?.CornersTeam1),
+  'corner:away':corners?.away??whole(match?.CornersTeam2),
+  'yellow:home':whole(match?.YellowCardsTeam1),'yellow:away':whole(match?.YellowCardsTeam2),
+  'red:home':whole(match?.RedCardsTeam1),'red:away':whole(match?.RedCardsTeam2)
+ };
+};
+const dashboardMinute=match=>{
+ const extended=String(match?.MatchTimeExtended??'').trim();
+ const fallback=extended.match(/^(\d{1,3}):([0-5]\d)$/)?.[1]??null;
+ const raw=match?.MatchTime??fallback;
+ if(raw==null)return null;
+ const parsed=zizobetEventTime(raw,extended,0);
+ return Number.isSafeInteger(parsed.minute)&&parsed.minute>=0&&parsed.minute<=130?parsed:null;
+};
+const dashboardCounterSpecs=Object.keys({
+ 'goal:home':1,'goal:away':1,'corner:home':1,'corner:away':1,
+ 'yellow:home':1,'yellow:away':1,'red:home':1,'red:away':1
+}).map(key=>{
+ const [type,team]=key.split(':');
+ return {key,type:type==='yellow'||type==='red'?'card':type,team,color:type==='yellow'?'yellow':type==='red'?'red':null};
+});
+const dashboardEventText=(kind,color)=>kind==='goal'?'Goal':kind==='corner'?'Corner':
+ color==='yellow'?'Yellow card':color==='red'?'Red card':'Card';
+
+/**
+ * Persist fast Match/Header counter deltas for every live fixture, regardless
+ * of viewers or pending tickets. These events carry the minute observed by
+ * the dashboard, not a claimed exact incident timestamp. TimeLines can enrich
+ * them later when its event list reconciles with the same counters.
+ */
+export function createZizobetDashboardIncidentArchive({database=pool,now=()=>new Date()}={}){
+ return async function archiveDashboard(matchId,match,{observedAt=null}={}){
+  const id=Number(matchId);
+  if(!Number.isSafeInteger(id)||id<1||!match||typeof match!=='object')
+   return {stored:false,reason:'INVALID_MATCH',events:[]};
+  const incoming=dashboardPairs(match),clock=dashboardMinute(match);
+  const observed=new Date(observedAt??now());
+  if(!Number.isFinite(observed.getTime()))throw Error('Invalid Zizobet dashboard observation time');
+  const client=await database.connect();
+  try{
+   await client.query('begin');
+   const seeded=await client.query(
+    "insert into app_zizobet_dashboard_counter_state(match_id,counters,observed_at) values($1,$2::jsonb,$3::timestamptz) on conflict(match_id) do nothing returning match_id",
+    [id,JSON.stringify(incoming),observed]
+   );
+   const locked=await client.query(
+    "select counters,observed_at from app_zizobet_dashboard_counter_state where match_id=$1 for update",[id]
+   );
+   const previous=locked.rows[0]?.counters??{};
+   const previousAt=new Date(locked.rows[0]?.observed_at??observed);
+   let next={...previous};
+   let created=0;
+   const isSeeded=seeded.rowCount>0;
+   if(!isSeeded&&observed.getTime()>=previousAt.getTime()){
+    for(const spec of dashboardCounterSpecs){
+     const before=whole(previous[spec.key]),after=whole(incoming[spec.key]);
+     if(after===null)continue;
+     if(before===null){
+      next[spec.key]=after;
+      continue;
+     }
+     if(after<before){
+      await client.query(
+       "update app_zizobet_dashboard_incident set active=false,observed_at=$4::timestamptz,detail=detail || '{\"counterCorrected\":true}'::jsonb where match_id=$1 and counter_key=$2 and team=$3 and counter_ordinal>$5 and active",
+       [id,spec.key,spec.team,observed,after]
+      );
+     }else if(after>before){
+      if(!clock){
+       // Do not consume the counter delta until a usable dashboard clock arrives.
+       next[spec.key]=before;
+       continue;
+      }
+      for(let ordinal=before+1;ordinal<=after;ordinal++){
+       const eventKey=id+':'+spec.key+':'+ordinal;
+       const detail={
+        source:'zizobet-dashboard',provisional:true,counterKey:spec.key,
+        counterOrdinal:ordinal,minuteLabel:clock.label,addedMinute:clock.added,
+        timestampQuality:'dashboard-observation',orderingUnverified:true,
+        observedAt:observed.toISOString(),...(spec.color?{cardColor:spec.color}:{})
+       };
+       await client.query(
+        "insert into app_zizobet_dashboard_incident(event_key,match_id,kind,counter_key,team,counter_ordinal,minute,added_minute,minute_label,sequence,detail,active,first_observed_at,observed_at) values($1,$2,$3,$4,$5,$6,$7,$8,$9,null,$10::jsonb,true,$11::timestamptz,$11::timestamptz) on conflict(event_key) do update set minute=excluded.minute,added_minute=excluded.added_minute,minute_label=excluded.minute_label,detail=app_zizobet_dashboard_incident.detail || excluded.detail,active=true,observed_at=excluded.observed_at",
+        [eventKey,id,spec.type,spec.key,spec.team,ordinal,clock.minute,clock.added,clock.label,
+         JSON.stringify(detail),observed]
+       );
+       created++;
+      }
+     }
+     next[spec.key]=after;
+    }
+    for(const key of Object.keys(incoming)){
+     if(incoming[key]!==null&&next[key]===undefined)next[key]=incoming[key];
+    }
+    await client.query(
+     "update app_zizobet_dashboard_counter_state set counters=$2::jsonb,observed_at=$3::timestamptz where match_id=$1",
+     [id,JSON.stringify(next),observed]
+    );
+   }
+   const {rows}=await client.query(
+    "select event_key,kind,counter_key,team,counter_ordinal,minute,added_minute,minute_label,sequence,provider_event_id,provisional,detail from app_zizobet_dashboard_incident where match_id=$1 and active=true order by minute,added_minute,first_observed_at,counter_key,counter_ordinal",
+    [id]
+   );
+   await client.query('commit');
+   const events=rows.map(row=>{
+    const color=row.detail?.cardColor??null;
+    const type=row.kind==='card'?(color==='yellow'?'yellow_card':color==='red'?'red_card':'card'):row.kind;
+    const added=Number(row.added_minute)||0;
+    const base=Number(row.minute)-added;
+    return {
+     id:row.event_key,matchId:String(id),type,minute:base,addedMinute:added,
+     minuteLabel:row.minute_label,team:row.team,text:dashboardEventText(row.kind,color),
+     sequence:row.sequence??null,counterOrdinal:Number(row.counter_ordinal),
+     source:'dashboard',provisional:!!row.provisional,
+     timestampQuality:row.detail?.timestampQuality??'provider-timeline',
+     ...(row.provider_event_id?{providerEventId:row.provider_event_id}:{}),
+     ...(typeof row.detail?.playerName==='string'&&row.detail.playerName?{player:row.detail.playerName}:{})
+    };
+   });
+   return {stored:created>0||isSeeded,baseline:isSeeded,created,events};
+  }catch(error){await client.query('rollback').catch(()=>{});throw error;}
+  finally{client.release();}
+ };
+}
+export const archiveZizobetDashboardIncidents=createZizobetDashboardIncidentArchive();
+
