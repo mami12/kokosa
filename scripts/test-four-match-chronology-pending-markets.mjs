@@ -217,6 +217,84 @@ try{
   'Halftime/fulltime & total goals (1.5)','X/1 and Under','1.5'),brest),'LOST',
   'The confirmed 1-0 HT result disproves X/1');
 
+ // All three score scopes for totals and compound result/total contracts.
+ // Nottingham's verified Zizobet score chain is 1-0 at HT and 3-2 at FT.
+ const nott={home_score:3,away_score:2,half_home_score:1,half_away_score:0,
+  home_team:'Nottingham Forest',away_team:'Chelsea'};
+ const heldHalf=(marketId,marketName,selection,line,hold='NATIVE_HALF_COMBO_UNMAPPED')=>
+  frozenCombo(marketId,marketName,selection,line,hold);
+ for(const [market,selection,threshold,expected] of [
+  ['1st Half Result and Total','1 and Over','0.5','WON'],
+  ['1st Half Result and Total','1 and Under','0.5','LOST'],
+  ['2nd Half Result and Total','X and Over','3.5','WON'],
+  ['2nd Half Result and Total','X and Under','3.5','LOST'],
+  ['Full Time Result and Total Goals','1 and Over','4.5','WON'],
+  ['Full Time Result and Total Goals','1 and Under','4.5','LOST'],
+  ['1st Half Total and BTTS','Under 1.5 and No','1.5','WON'],
+  ['2nd Half Total and BTTS','Over 3.5 and Yes','3.5','WON'],
+  ['Full Time Total and BTTS','Over 4.5 and Yes','4.5','WON']
+ ]){
+  const row=heldHalf(92000+Math.abs(market.length*17+selection.length),
+   market,selection,threshold);
+  const parsed=(await import('../server/ledger/settler.mjs')).gradeHeldNativeCombo(row,nott);
+  assert.equal(parsed,expected,market+' / '+selection);
+ }
+
+ // HT/FT + first-half, second-half and full-time totals. Both legs must win.
+ for(const [market,selection,threshold,expected] of [
+  ['Halftime/fulltime & 1st half total goals (1.5)','1/1 and Under','1.5','WON'],
+  ['Halftime/fulltime & 1st half total goals (1.5)','1/1 and Over','1.5','LOST'],
+  ['Halftime/fulltime & 2nd half total goals (3.5)','1/1 and Over','3.5','WON'],
+  ['Halftime/fulltime & 2nd half total goals (3.5)','1/1 and Under','3.5','LOST'],
+  ['Halftime/fulltime & total goals (4.5)','1/1 and Over','4.5','WON'],
+  ['Halftime/fulltime & total goals (4.5)','1/1 and Under','4.5','LOST'],
+  ['Halftime/fulltime & exact goals (5)','1/1 and 5','', 'WON'],
+  ['Halftime/fulltime correct score','1/1 3:2','', 'WON'],
+  ['Halftime/fulltime correct score','1/1 3:1','', 'LOST']
+ ]){
+  const row=frozenCombo(92100+Math.abs(market.length*19+selection.length),
+   market,selection,threshold);
+  assert.equal(gradeHeldNativeCombo(row,nott),expected,market+' / '+selection);
+ }
+
+ // Double Chance + BTTS is scoped to the quoted half, while Double Chance
+ // itself remains the match result. This is separate from whole-match BTTS.
+ for(const [market,selection,expected] of [
+  ['Double chance & 1st half both teams score','1X & No','WON'],
+  ['Double chance & 1st half both teams score','1X & Yes','LOST'],
+  ['Double chance & 2nd half both teams score','1X & Yes','WON'],
+  ['Double chance & 2nd half both teams score','X2 & Yes','LOST']
+ ]){
+  const row=frozenCombo(92200+Math.abs(market.length*13+selection.length),
+   market,selection,'','NATIVE_HALF_COMBO_UNMAPPED');
+  assert.equal(gradeHeldNativeCombo(row,nott),expected,market+' / '+selection);
+ }
+
+ // Brest - Paris is 1-0 at HT and FT. A total leg that is already false
+ // can close a combo; a possible HT/FT win still needs the verified HT pair.
+ const brestResult={home_score:1,away_score:0,half_home_score:1,half_away_score:0};
+ assert.equal(gradeHeldNativeCombo(frozenCombo(92301,
+  'Halftime/fulltime & 1st half total goals (1.5)','1/1 and Under','1.5'),brestResult),'WON');
+ assert.equal(gradeHeldNativeCombo(frozenCombo(92302,
+  'Halftime/fulltime & 2nd half total goals (0.5)','1/1 and Under','0.5'),brestResult),'WON');
+ assert.equal(gradeHeldNativeCombo(frozenCombo(92303,
+  'Halftime/fulltime & total goals (2.5)','1/1 and Over','2.5'),brestResult),'LOST');
+
+ // Werder - Gladbach (3-3) and Southampton - Middlesbrough (2-0):
+ // never invent HT. The FT can disprove a combined total leg, but cannot
+ // manufacture a positive HT/FT selection.
+ const werderNoHt={home_score:3,away_score:3,half_home_score:null,half_away_score:null};
+ assert.equal(gradeHeldNativeCombo(frozenCombo(92401,
+  'Halftime/fulltime & total goals (5.5)','1/1 and Under','5.5'),werderNoHt),'LOST');
+ assert.equal(gradeHeldNativeCombo(frozenCombo(92402,
+  'Halftime/fulltime & total goals (5.5)','1/1 and Over','5.5'),werderNoHt),null);
+ const southamptonNoHt={home_score:2,away_score:0,half_home_score:null,half_away_score:null};
+ assert.equal(gradeHeldNativeCombo(frozenCombo(92403,
+  'Halftime/fulltime & total goals (2.5)','1/1 and Over','2.5'),southamptonNoHt),'LOST');
+ assert.equal(gradeHeldNativeCombo(frozenCombo(92404,
+  'Halftime/fulltime & total goals (2.5)','1/1 and Under','2.5'),southamptonNoHt),null);
+
+ console.log('PASS four-match pending markets: full/1H/2H O-U combos, HTFT exact/score/totals, DC+BTTS by half, goal/corner/card intervals and evidence-only holds');
  console.log('PASS four-match legacy pending markets: goal interval, Nth corner, race to X, last corner, corner interval and separate yellow/red cards');
 }finally{
  await db.close();
