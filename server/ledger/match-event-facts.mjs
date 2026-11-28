@@ -483,6 +483,12 @@ function gradeOfficialCornerPeriodContract(contract,result){
    const side=winner(half);
    return side==='none'&&contract.drawOffered!==true?'VOID':side===contract.side?'WON':'LOST';
   }
+  if(contract.mode==='half-full-result'){
+   if(!['home','away','none'].includes(contract.halfSide)||
+      !['home','away','none'].includes(contract.fullSide))return null;
+   const winner=pair=>pair.home>pair.away?'home':pair.away>pair.home?'away':'none';
+   return winner(first)===contract.halfSide&&winner(full)===contract.fullSide?'WON':'LOST';
+  }
   if(contract.mode==='most-half'){
    if(![0,1,2].includes(contract.choice)||
       contract.scope!=null&&!['home','away'].includes(contract.scope))return null;
