@@ -397,10 +397,10 @@ export async function recoverPendingMatch(matchId, { matchName = null, placedAt 
   // FotMob is deliberately excluded from score and goal recovery. Its
   // statistics/corner/card fallback runs in the stats service against an
   // already identified Zizobet fixture and never authorizes a goal result.
-  const requested=(await runQuery(\`select distinct l.live_contract->>'event' as kind
+  const requested=(await runQuery(`select distinct l.live_contract->>'event' as kind
     from app_ticket_line l join app_ticket t on t.id=l.ticket_id
     where l.match_id=$1 and l.status='PENDING' and t.status='PENDING'
-      and l.live_contract->>'event' in ('goal','corner','card')\`,[id]))
+      and l.live_contract->>'event' in ('goal','corner','card')`,[id]))
     .rows.map(row=>row.kind);
   let parsed=null,source=null;
   const supplemental=[];
@@ -443,7 +443,7 @@ export async function recoverPendingMatch(matchId, { matchName = null, placedAt 
         parsed[home]=Number(extra[home]);parsed[away]=Number(extra[away]);
       }
     }
-    for(const field of ['shots','shotsOnTarget','fouls','possession']){
+    for(const field of ['shots','shotsOnTarget','fouls','possession','goalKicks']){
       if(parsed.statistics?.[field]?.home==null&&parsed.statistics?.[field]?.away==null&&
         extra.statistics?.[field]?.home!=null&&extra.statistics?.[field]?.away!=null){
         parsed.statistics??={};
