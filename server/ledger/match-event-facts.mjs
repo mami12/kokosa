@@ -1132,7 +1132,7 @@ export async function loadVerifiedHalfTimeScore(matchId,result,{execute}={}){
  const finalHome=whole(result?.home_score),finalAway=whole(result?.away_score);
  if(!Number.isSafeInteger(id)||id<=0||finalHome===null||finalAway===null||
     typeof execute!=='function')return null;
- const {rows}=await execute(\`select c.provider,c.count_home,c.count_away,c.complete,c.confirmed_at,
+ const {rows}=await execute(`select c.provider,c.count_home,c.count_away,c.complete,c.confirmed_at,
     f.provider_event_id,f.team,f.minute,f.phase
    from app_match_event_coverage c
    left join app_match_event_fact f on f.match_id=c.match_id and f.provider=c.provider
@@ -1140,7 +1140,7 @@ export async function loadVerifiedHalfTimeScore(matchId,result,{execute}={}){
    where c.match_id=$1 and c.kind='goal'
     and c.provider=any($2::text[]) and c.complete=true and c.confirmed_at is not null
    order by case c.provider when 'zizobet' then 0 when 'fotmob' then 1 else 2 end,
-    f.minute,f.seconds nulls last,f.provider_event_id\`,[
+    f.minute,f.seconds nulls last,f.provider_event_id`,[
     id,['zizobet',...HISTORICAL_TIMED_EVENT_PROVIDERS]
    ]);
  const groups=new Map();
