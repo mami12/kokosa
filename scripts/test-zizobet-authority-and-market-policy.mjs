@@ -1,6 +1,7 @@
 import './fixtures/isolated-casino-env.mjs';
 import assert from 'node:assert/strict';
 import {liveContract} from '../server/ledger/live-contract-rules.mjs';
+import {gradeLine} from '../server/ledger/settler.mjs';
 import {isZizobetNativeOffer} from '../server/ledger/decided-markets.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
 import {isExcludedOfferMarket,isPlayerOfferMarket,isRetiredPlayerOfferMarket} from '../server/market-policy.mjs';
@@ -230,6 +231,25 @@ for(const market of [
 for(const market of ['Home team to score','Away team to win','Manchester United to win',
  'Total Goals','Full Time Result','Total Corners','Total Cards'])
  assert.equal(isRetiredPlayerOfferMarket({market_name:market}),false,market+' must not be misclassified');
+
+// Confirmed legacy Zizobet hold: the leading star is display-only and must
+// not prevent a final away-team corner total from using verified FT counters.
+const starredCornerLine={
+ market_name:'* Total Corners awayteam',outcome_name:'Under',outcome_key:'Under',
+ market_key:'zz658@e30',line:'3.5',period:0,
+ accepted_contract:{
+  sourceProviderId:'ZIZOBET',settlementHold:'NATIVE_FINAL_RULE_UNMAPPED',
+  providerMarketName:'* Total Corners awayteam',providerOutcomeName:'Under',
+  providerMarketKey:'zz658@e30',providerOutcomeKey:'Under',line:'3.5',providerPeriod:0
+ }
+};
+assert.equal(gradeLine(starredCornerLine,{
+ source:'ZIZOBET',home_score:3,away_score:3,corners_home:7,corners_away:4
+}),'LOST','Awayteam Under 3.5 must lose when Zizobet final away corners equal 4');
+assert.equal(starredCornerLine.market_name,'* Total Corners awayteam',
+ 'Parsing must not rewrite the ticket title');
+assert.equal(starredCornerLine.accepted_contract.providerMarketName,'* Total Corners awayteam',
+ 'Parsing must preserve the immutable accepted provider title');
 
 
 // The admin market catalog must not reintroduce markets removed from the board.
