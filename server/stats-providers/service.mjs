@@ -333,6 +333,8 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    const requiredForMatch=[...new Set([...(final?[]:requiredStats),...settlementFields])];
    const matchStatsReady=entry=>statsReady(entry,requiredForMatch);
    const finalReviewNeeded=final&&(settlementFields.length>0||finalTimelineNeeds.length>0);
+   const fotmobReviewNeeded=final&&(settlementFields.length>0||
+    finalTimelineNeeds.some(kind=>['corner','card'].includes(kind)));
    const eventKindsKey=JSON.stringify(finalTimelineNeeds.slice().sort());
    const old=cached??await read('display:'+id);
    // Opening a fixture is itself a request for the complete FotMob incident
@@ -420,6 +422,9 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    // an opened match still needs a source-labelled scorer history.
    // Enrichment attaches only to a Zizobet incident, never an inferred goal.
    const needsAnyActors=()=>needsActors();
+   const needsFotMobActors=()=>primaryActors.some(f=>f.kind==='card'&&
+     !f.player_name&&!(f.aiscore_verified&&f.aiscore_player_name)&&
+     !(f.supplemental_verified&&f.supplemental_player_name));
    const observations=[],attempted=[],unavailable={};
    if(final&&result)observations.push({provider:'ZIZOBET',final:true,observedAt:new Date(now()).toISOString(),values:{...primaryArchive}});
    const state=await read('match:'+id),mapping={...(state?.identity===identity?state.mapping??{}:{}),...(old?.identity===identity?old.mapping??{}:{})};
@@ -466,16 +471,16 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    }
    // FotMob is restricted to match statistics and corner/card incident
    // verification. Goal chronology and scorer identity remain non-FotMob.
-   if(needsAnyActors()||!matchStatsReady(entry)||finalReviewNeeded||detailTimelineRefresh){
+   if(needsFotMobActors()||!matchStatsReady(entry)||fotmobReviewNeeded||detailTimelineRefresh){
     if(detailTimelineRefresh)entry.fotmobTimelineAttemptedAt=now();
-    if(finalReviewNeeded)attempted.push('fotmob');
+    if(fotmobReviewNeeded)attempted.push('fotmob');
     try{
      const targetDate=row.start_at||row.startAt||new Date().toISOString();
      const dates=candidateDateStrings(targetDate);
      const fm=await findFotMobFixture(row.home,row.away,dates,row.start_at??row.startAt);
      if(!fm?.match){
       const issue=fotMobTransportStatus().lastError??'FOTMOB_FIXTURE_NOT_UNIQUELY_MATCHED';
-      if(finalReviewNeeded)unavailable.fotmob=issue;
+      if(fotmobReviewNeeded)unavailable.fotmob=issue;
       health.providers.fotmob={...health.providers.fotmob,lastError:issue};
      }else{
       const details=await fetchFotMobDetails(fm.match.id,{force:urgent.has(id)});
@@ -484,7 +489,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
        lastError:details?null:(fotMobTransportStatus().lastError??'FOTMOB_DETAILS_UNAVAILABLE'),
        ...(details?{lastSuccessAt:new Date(now()).toISOString()}:{})};
       if(!details){
-       if(finalReviewNeeded)unavailable.fotmob=fotMobTransportStatus().lastError??'FOTMOB_DETAILS_UNAVAILABLE';
+       if(fotmobReviewNeeded)unavailable.fotmob=fotMobTransportStatus().lastError??'FOTMOB_DETAILS_UNAVAILABLE';
       }else{
        const parsed=parseFotMobPayload(fm.match,details);
        // FotMob may fill a missing Zizobet corner/card chronology only when
@@ -557,13 +562,13 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
           fixtureId:fm.match.id,observedAt:new Date(now()).toISOString()
          });
         }
-       }else if(finalReviewNeeded){
+       }else if(fotmobReviewNeeded){
         unavailable.fotmob='STATS_NOT_FINAL';
        }
       }
      }
     }catch(error){
-     if(finalReviewNeeded)unavailable.fotmob='FOTMOB_ENRICHMENT_ERROR';
+     if(fotmobReviewNeeded)unavailable.fotmob='FOTMOB_ENRICHMENT_ERROR';
      health.providers.fotmob={...health.providers.fotmob,lastError:'FOTMOB_ENRICHMENT_ERROR'};
      console.warn('[fotmob] verified fixture enrichment failed:',String(error?.message??error));
     }
@@ -604,9 +609,8 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
      }
     }catch(error){console.warn('[historical event recovery]',id,String(error?.message??error));}
    }
-   // Identity rotation: FotMob first (above), then a confirmed AiScore mapping,
-   // then the configured daily-quota providers. Stop once known primary actors
-   // are identified. All offers, goals, clocks and prices remain Zizobet.
+   // Goal actors stay with the primary timeline/AiScore path. FotMob is used
+   // only for aggregate statistics and independently verified corner/card facts.
    if(needsAnyActors()){
     try{
      const {footballInformation}=await import('./football-information.mjs');
