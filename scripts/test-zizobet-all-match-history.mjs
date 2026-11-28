@@ -5,6 +5,7 @@ import {LEDGER_SQL} from '../server/ledger/schema.mjs';
 import {projectZizobetHistory,createZizobetHistoryArchive} from '../server/ledger/zizobet-match-history.mjs';
 import {normalizeLiveFrame} from '../server/ledger/live-observation-store.mjs';
 import {startZizoFeed} from '../server/zizobet-feed.mjs';
+import {providerTimeline} from '../server/live-event-timeline.mjs';
 
 const game=(score,clock,events,extra={})=>({
  Match:{GameID:7,Score:score,MatchTimeExtended:clock,MatchStatusID:10,EventStatus:10,
@@ -37,6 +38,41 @@ assert.deepEqual(lateCorners.events.map(event=>[event.type,event.minute]),
 
 assert.equal(lateCorners.coverage.cornerThrough,130,
  'A reconciled FT event list with final 1-1 corner counters covers stoppage time');
+
+// Some Zizobet incidents encode added time as the rounded next minute plus
+// a clock still inside 45:xx / 90:xx instead of explicit "45+1"/"90+1".
+const firstHalfAdded={
+ Match:{Score:'1:0',MatchTimeExtended:'45:56',EventStatus:10,MatchStatusID:10,
+  CornersTeam1:1,CornersTeam2:0,YellowCardsTeam1:0,YellowCardsTeam2:0,
+  RedCardsTeam1:0,RedCardsTeam2:0},
+ TimeLines:[
+  {id:'goal-45-added',type:'score_change',team:1,gt:'46',clk:'45:56'},
+  {id:'corner-45-added',type:'corner_kick',team:2,gt:'46',clk:'45:56'}
+ ]
+};
+const firstHalfFrame=normalizeLiveFrame(firstHalfAdded);
+assert.deepEqual(firstHalfFrame.events.map(e=>[e.type,e.minute,e.minuteLabel,e.phase]),[
+ ['goal',46,'45+1','1st half'],['corner',46,'45+1','1st half']
+],'gt=46 plus clk=45:56 must be recognized as first-half added time');
+const firstHalfDisplay=providerTimeline(9001,firstHalfAdded.TimeLines,firstHalfAdded.Match);
+assert.deepEqual(firstHalfDisplay.map(e=>[e.minute,e.addedMinute,e.minuteLabel,e.phase]),[
+ [45,1,'45+1','1st half'],[45,1,'45+1','1st half']
+],'The live display and settlement parser must use the same first-half added-time interpretation');
+
+const secondHalfAdded={
+ Match:{Score:'1:1',MatchTimeExtended:'90:18',EventStatus:10,MatchStatusID:10,
+  CornersTeam1:0,CornersTeam2:0,YellowCardsTeam1:0,YellowCardsTeam2:0,
+  RedCardsTeam1:0,RedCardsTeam2:0},
+ TimeLines:[{id:'goal-90-added',type:'score_change',team:2,gt:'91',clk:'90:18'}]
+};
+const secondHalfFrame=normalizeLiveFrame(secondHalfAdded);
+assert.deepEqual(secondHalfFrame.events.map(e=>[e.minute,e.minuteLabel,e.phase]),[
+ [91,'90+1','2nd half']
+],'gt=91 plus clk=90:18 must be recognized as second-half added time');
+const secondHalfDisplay=providerTimeline(9002,secondHalfAdded.TimeLines,secondHalfAdded.Match);
+assert.deepEqual(secondHalfDisplay.map(e=>[e.minute,e.addedMinute,e.minuteLabel,e.phase]),[
+ [90,1,'90+1','2nd half']
+],'The displayed 90+1 incident must retain second-half phase evidence');
 
 // Exact duplicate Zizobet rows can represent two provider-counted incidents.
 // Keep both from normalization through the independent history archive.
