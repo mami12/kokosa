@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { competitionDecision, competitionDisplayOrder, buildCompetitionPolicy } from '../server/football-competitions.mjs';
+import { competitionDecision, competitionDisplayOrder, buildCompetitionPolicy, isSyntheticFootballMatch, rankCompetitionRow } from '../server/football-competitions.mjs';
 
 const requested = [["world","FIFA World Cup"],["world","FIFA Club World Cup"],["world","FIFA U-20 World Cup"],["world","FIFA U-17 World Cup"],["world","FIFA Women's World Cup"],["europe","UEFA Champions League"],["europe","UEFA Europa League"],["europe","UEFA Conference League"],["europe","UEFA Super Cup"],["europe","UEFA European Championship"],["europe","UEFA Nations League"],["europe","UEFA U-21 European Championship"],["europe","UEFA Youth League"],["south-america","Copa Libertadores"],["south-america","Copa Sudamericana"],["south-america","Copa América"],["africa","CAF Champions League"],["africa","CAF Confederation Cup"],["africa","Africa Cup of Nations"],["asia","AFC Champions League Elite"],["asia","AFC Asian Cup"],["north-america","CONCACAF Champions Cup"],["north-america","Gold Cup"],["england","Premier League"],["england","Championship"],["england","League One"],["germany","Bundesliga"],["germany","2. Bundesliga"],["germany","3. Liga"],["spain","LaLiga"],["spain","LaLiga 2"],["spain","Primera Federación"],["italy","Serie A"],["italy","Serie B"],["italy","Serie C"],["france","Ligue 1"],["france","Ligue 2"],["france","Ligue 3"],["netherlands","Eredivisie"],["netherlands","Eerste Divisie"],["portugal","Primeira Liga"],["portugal","Liga Portugal 2"],["turkey","Süper Lig"],["turkey","1. Lig"],["belgium","Pro League"],["belgium","Challenger Pro League"],["scotland","Scottish Premiership"],["scotland","Scottish Championship"],["sweden","Allsvenskan"],["sweden","Superettan"],["denmark","Superliga"],["denmark","1. Division"],["norway","Eliteserien"],["norway","1. divisjon"],["austria","Bundesliga"],["austria","2. Liga"],["switzerland","Super League"],["switzerland","Challenge League"],["poland","Ekstraklasa"],["poland","I liga"],["greece","Super League 1"],["greece","Super League 2"],["croatia","SuperSport HNL"],["croatia","Prva NL"],["czechia","Chance Liga"],["hungary","NB I"],["romania","SuperLiga"],["serbia","SuperLiga"],["ukraine","Premier League"],["bulgaria","First Professional League"],["slovakia","Niké Liga"],["brazil","Brasileirão Série A"],["brazil","Brasileirão Série B"],["argentina","Liga Profesional"],["argentina","Primera Nacional"],["mexico","Liga MX"],["mexico","Liga de Expansión MX"],["colombia","Categoría Primera A"],["colombia","Categoría Primera B"],["chile","Primera División"],["chile","Primera B"],["uruguay","Primera División"],["uruguay","Segunda División"],["ecuador","LigaPro Serie A"],["ecuador","LigaPro Serie B"],["egypt","Egyptian Premier League"],["morocco","Botola Pro"],["south-africa","Premier Division"],["algeria","Ligue 1"],["tunisia","Ligue 1"],["nigeria","NPFL"],["ghana","Ghana Premier League"],["saudi-arabia","Saudi Pro League"],["japan","J1 League"],["republic-of-korea","K League 1"],["china","Chinese Super League"],["qatar","Qatar Stars League"],["united-arab-emirates","UAE Pro League"],["iran","Persian Gulf Pro League"],["australia","A-League Men"]];
 assert.equal(requested.length, 100, 'the configured list contains the complete 100 requested competitions');
@@ -48,4 +48,30 @@ const policy = buildCompetitionPolicy(
 assert.equal(policy.get(101).rank, 24);
 assert.equal(policy.get(102).allowed, false);
 assert.equal(policy.get(103).rank, 94);
-console.log(`PASS strict competition whitelist: ${requested.length} approved competitions in exact order, aliases, country scoping and ${denied.length} exclusions`);
+
+// E-sports are excluded across provider naming variants, not just one league.
+for (const name of [
+  'eAdriatic League','ePremier League','eChampions League','eFootball Battle',
+  'eSoccer World Cup','EA Sports FC 26','Cyber Football League','Virtual Football League','FIFA 24',
+]) assert.equal(isSyntheticFootballMatch({ tournament_name: name }), true, name + ' must be excluded');
+for (const flag of ['isEsport','is_esport','isEsports','is_esports','is_e_sports','isElectronicSport','isElectronicSports','isVirtual','isSimulated']) {
+  assert.equal(isSyntheticFootballMatch({ [flag]: true, tournament_name: 'Premier League' }), true, flag + ' must exclude an explicitly marked e-sport/simulation');
+}
+assert.equal(isSyntheticFootballMatch({ tournament_name: 'EFL Championship', homeTeam: 'Leeds', awayTeam: 'Norwich' }), false,
+  'real EFL football must remain eligible');
+assert.equal(isSyntheticFootballMatch({ tournament_name: 'Eredivisie', homeTeam: 'Ajax', awayTeam: 'PSV' }), false,
+  'the real Eredivisie must remain eligible');
+assert.equal(isSyntheticFootballMatch({ tournament_name: 'UEFA Europa League' }), false,
+  'the real Europa League must not be mistaken for an e-sports league');
+assert.equal(isSyntheticFootballMatch({ tournament_name: 'UEFA European Championship' }), false,
+  'a real European Championship must not be mistaken for an e-sports league');
+assert.equal(isSyntheticFootballMatch({ tournament_name: 'English Championship' }), false,
+  'real English competitions must not be caught by the e-prefix matcher');
+assert.equal(rankCompetitionRow({ tournament_name: 'Premier League', category_slug: 'england', isEsports: true }), null,
+  'provider-level e-sports flags must survive competition ranking and block publication');
+assert.equal(rankCompetitionRow({ tournament: { name: 'Premier League', isEsports: true }, category_slug: 'england' }), null,
+  'nested tournament e-sports flags must block publication');
+assert.ok(rankCompetitionRow({ tournament_name: 'Premier League', category_slug: 'england', home: 'Arsenal', away: 'Chelsea' }),
+  'ordinary real football remains published');
+
+console.log(`PASS competition filter and e-sports exclusion: ${requested.length} existing configured examples, ${denied.length} exclusions, broad provider flags and labels`);

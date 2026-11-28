@@ -62,6 +62,33 @@ export function nativeMarketPolicyKeys(m,match){
  if(service==='PREMATCH'||service==='SCHEDULED')return ['zizobet:prematch:'+id];
  return ['zizobet:live:'+id,'zizobet:prematch:'+id];
 }
+
+/** Only half-step lines are valid for football Over/Under totals.
+ * Applies to goals, corners, cards, fouls and native titles that are displayed
+ * generically as "Over/Under". Non-total markets are left unchanged.
+ */
+export function isAllowedTotalLine(m={}) {
+ const type=String(m.market_type??m.marketType??'').trim().toLowerCase().replace(/[\s-]+/g,'_');
+ const names=[m.market_name,m.marketName,m.native_market_name,m.nativeMarketName,m.name]
+  .filter(value=>value!==null&&value!==undefined).map(value=>String(value).trim()).filter(Boolean);
+ const joined=names.join(' ').toLowerCase();
+ const isTotal=['over_under','overunder','total'].includes(type)||
+  joined.includes('total')||joined.includes('over/under')||joined.includes('over under');
+ if(!isTotal)return true;
+ let rawLine=m.line??m.market_line??m.marketLine;
+ if(rawLine===null||rawLine===undefined||!String(rawLine).trim()||/^#\d+$/.test(String(rawLine).trim())){
+  for(const name of names){
+   const suffix=name.match(/\s+(-?\d+(?:[.,]\d+)?)\s*$/);
+   if(suffix){rawLine=suffix[1];break;}
+  }
+ }
+ if(rawLine===null||rawLine===undefined||!String(rawLine).trim())return true;
+ const value=Number(String(rawLine).trim().replace(',','.'));
+ if(!Number.isFinite(value))return false;
+ const fraction=value-Math.floor(value);
+ return Math.abs(fraction-0.5)<1e-9;
+}
+
 export function marketCategories(name){
  const n=String(name).toLowerCase(),tags=[];
  for(const[tag,pattern]of Object.entries({totals:/total|over.?under/,intervals:/interval|minutes?|when will|time of/,corners:/corner/,cards:/card|booking/,fouls:/foul/,shots:/shot/,players:/player|scorer|\{pl\}|scoring type/,combos:/&|(?:^|[^\d])\+|bet builder|\b(?:and|both halves)\b/,results:/1x2|result|winner|double chance|correct score|draw no bet/,goals:/goal|score|clean sheet|to nil/}))if(pattern.test(n))tags.push(tag);

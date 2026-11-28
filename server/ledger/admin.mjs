@@ -129,18 +129,31 @@ const checkRequestId = (runId, outcomeId) => {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${((Number.parseInt(hex[16], 16) & 3) | 8).toString(16)}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 };
 
-async function settlementCheckSelections(matchIds, refresh) {
+async function settlementCheckSelections(matchIds, refreshAll) {
   if (!Array.isArray(matchIds) || matchIds.length !== 2) throw badRequest('Zgjidh saktësisht dy ndeshje.');
   const ids = matchIds.map(value => Number(value));
   if (ids.some(id => !Number.isSafeInteger(id) || id <= 0) || new Set(ids).size !== 2) throw badRequest('Dy ndeshjet duhet të jenë të ndryshme.');
+
+  // Validate both selected fixtures in parallel before fetching their full market grids.
+  const selectedRows = await Promise.all(ids.map(id => getMatchRow(id)));
+  if (selectedRows.some(row => !row || isSyntheticFootballMatch(row) || overrides.isMatchHidden(row))) {
+    throw badRequest('Një nga ndeshjet nuk është e disponueshme për këtë kontroll.');
+  }
+
+  // Load the COMPLETE market grid for both selected fixtures concurrently.
+  // Never use the homepage/board projection in the settlement-check flow.
+  await refreshAll?.(ids);
+  const rows = await Promise.all(ids.map(async (id, index) => (await getMatchRow(id)) ?? selectedRows[index]));
+  if (rows.some(row => !row || isSyntheticFootballMatch(row) || overrides.isMatchHidden(row))) {
+    throw badRequest('Një nga ndeshjet nuk është më e disponueshme për këtë kontroll.');
+  }
+  const quotedMatches = await withOdds(rows, Date.now(), { board: false });
+  const quotedById = new Map(quotedMatches.map(quoted => [String(quoted.id), quoted]));
   const matches = [];
-  for (const id of ids) {
-    const row = await getMatchRow(id);
-    if (!row || isSyntheticFootballMatch(row) || overrides.isMatchHidden(row)) throw badRequest('Një nga ndeshjet nuk është e disponueshme për këtë kontroll.');
-    await refresh?.(id);
-    const latest = await getMatchRow(id);
-    const current = latest ?? row;
-    const [quoted] = await withOdds([current], Date.now(), { board: false });
+
+  for (const current of rows) {
+    const quoted = quotedById.get(String(current.match_id));
+    if (!quoted) throw badRequest('Nuk u ngarkuan të gjitha tregjet e njërës prej ndeshjeve.');
     const match = toClientMatch(quoted);
     if (!['LIVE', 'PREMATCH'].includes(match.status) || match.isSuspended || match.isHidden) throw badRequest('Zgjidh vetëm ndeshje aktive live ose para fillimit.');
     const isLiveMatch = match.status === 'LIVE' || current.service === 'LIVE' || current.live === true;
@@ -156,20 +169,13 @@ async function settlementCheckSelections(matchIds, refresh) {
     const seen = new Set(), selections = [], selectedMarkets = new Set(), quoteNow = Date.now();
     for (const market of match.markets ?? []) {
       if (market.status !== 'ACTIVE') continue;
-      // Exclude markets we do NOT want (cards, fouls, shots on target, saves, tackles, throw-ins, offsides, player props, Asian handicap)
+      // Retain existing exclusions as a second line of defence.
       if (isExcludedOfferMarket(market) || isRetiredPlayerOfferMarket(market) || isHandicapOfferMarket(market)) continue;
       const nativeZizobet = isZizobetNativeOffer(market, current);
-      // A numbered-goal interval becomes unbettable as soon as that goal
-      // ordinal has already happened, even if Zizobet still exposes the quote.
-      // Also exclude a no-goal result only after the whole quoted interval ends.
       if (isLiveMatch && isDecidedLiveNumberedGoalWindow(current, market)) continue;
-      // Zizobet is authoritative for its currently offered native contracts.
-      // Local score/clock heuristics are fallback rules for non-native feeds only.
       if (isLiveMatch && !nativeZizobet) {
         if (isDecidedLiveMarket(current, market)) continue;
-        // 1st half markets cannot be bet on in 2nd half or HT
         if (inSecondHalfOrHT && (Number(market.period ?? 0) === 1 || /\b(?:1st|first)\s*half\b|\bhalf.?time\b(?!\s*\/?\s*(?:fulltime|ft))/i.test(String(market.name ?? '')))) continue;
-        // First goal markets cannot be bet on once a goal was scored
         const isFirstGoalTiming = /^(?:when will (?:the )?(?:first goal|goal 1) be scored|(?:first|1st) goal (?:time|interval)|time of (?:the )?first goal)(?:\b|$)/i.test(String(market.name ?? ''));
         if (isFirstGoalTiming && totalGoals >= 1) continue;
       }
@@ -177,7 +183,6 @@ async function settlementCheckSelections(matchIds, refresh) {
         if (!isCurrentSettlementCheckQuote(market, outcome, quoteNow) || seen.has(outcome.id)) continue;
         if (isLiveMatch && !nativeZizobet) {
           if (isDecidedLiveOutcome(current, { ...market, outcomeName: outcome.name, outcomeCode: outcome.key, outcome_name: outcome.name, outcome_key: outcome.key })) continue;
-          // Check elapsed minute intervals: e.g. at min 20, outcome "1-10" or "1-15" is expired
           if (currentMin !== null && Number.isFinite(currentMin)) {
             const cleanLabel = String(outcome.name ?? '').replace(/\s*(?:st|nd|rd|th)?\s*(?:match|mins?\.?|minutes?\.?)?$/i, '').trim();
             const range = cleanLabel.match(/^(?:min(?:ute)?s?\s*)?(\d{1,3})(?::\d{2})?\s*[-–]\s*(\d{1,3})(?::\d{2})?/);
@@ -508,7 +513,7 @@ adminRouter.post('/manager/users/:id/withdraw', ...manager, moveBalance(-1, 'WIT
 
 /* ------------------------------------------------ settlement check tickets */
 adminRouter.post('/admin/settlement-check/preview', ...admin, guard(async (req, res) => {
-  const matches = await settlementCheckSelections(req.body?.matchIds, req.app.locals.loadMatchDetailFully);
+  const matches = await settlementCheckSelections(req.body?.matchIds, req.app.locals.loadMatchDetailsFully ?? (ids => Promise.all(ids.map(id => req.app.locals.loadMatchDetailFully?.(id)))));
   const ticketCount = matches.reduce((total, match) => total + match.selections.length, 0);
   res.json({stakePerTicket:automatedCheckStake,ticketCount,totalStake:ticketCount * automatedCheckStake,matches:matches.map(({selections,...match})=>({...match,ticketCount:selections.length}))});
 }));
@@ -517,7 +522,7 @@ adminRouter.post('/admin/settlement-check/place', ...admin, guard(async (req, re
   if (!uuidPattern.test(String(runId ?? ''))) throw badRequest('Identifikuesi i kontrollit nuk është i vlefshëm. Rifresko dhe provo përsëri.');
   const player = await ledger.getUserById(playerId);
   if (!player || player.role !== 'PLAYER' || player.status !== 'ACTIVE') throw badRequest('Zgjidh një llogari lojtari aktive.');
-  const matches = await settlementCheckSelections(matchIds, req.app.locals.loadMatchDetailFully), placed = [], skipped = [];
+  const matches = await settlementCheckSelections(matchIds, req.app.locals.loadMatchDetailsFully ?? (ids => Promise.all(ids.map(id => req.app.locals.loadMatchDetailFully?.(id))))), placed = [], skipped = [];
   for (const match of matches) for (const selection of match.selections) {
     try {
       const ticket = await bets.placeBet({user:player,stake:automatedCheckStake,selections:[selection],clientRequestId:checkRequestId(String(runId).toLowerCase(),selection.outcomeId)});

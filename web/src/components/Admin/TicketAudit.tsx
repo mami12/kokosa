@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiClient } from '../../api/client';
-import { ChevronDown, ChevronUp, Ticket as TicketIcon, CheckCircle2, XCircle, Clock, RotateCcw, Search, X, Copy, Check, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronUp, Ticket as TicketIcon, CheckCircle2, RotateCcw, Search, X, Copy, Check, RefreshCw } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { formatMarketSelectionLabel, formatTicketSelection, translateTicketStatus, translateTicketType } from '../../utils/sportsbookLabels';
 import { formatOdds } from '../../utils/formatOdds';
@@ -34,7 +34,7 @@ export default function TicketAudit() {
   const { t: translate } = useLanguage();
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
+  const [expandedMatchId, setExpandedMatchId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'WON' | 'LOST' | 'REVERTED'>('ALL');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
@@ -46,7 +46,7 @@ export default function TicketAudit() {
   const fetchTickets = async () => {
     try {
       setLoading(true);
-      const res = await apiClient.get('/admin/tickets');
+      const res = await apiClient.get('/admin/tickets', { params: { limit: 10000 } });
       setTickets(res.data);
     } catch (e: any) {
       console.error(e);
@@ -119,10 +119,37 @@ export default function TicketAudit() {
       const matchId = t.id?.toLowerCase() || '';
       const matchCode = t.bookingCode?.toLowerCase() || '';
       const matchUser = t.user?.username?.toLowerCase() || '';
-      return matchId.includes(q) || matchCode.includes(q) || matchUser.includes(q);
+      const matchSelection = (t.lines ?? []).some((line: any) =>
+        [line.matchName,line.marketName,line.marketLine,line.outcomeName].some(value =>
+          String(value ?? '').toLowerCase().includes(q)));
+      return matchId.includes(q) || matchCode.includes(q) || matchUser.includes(q) || matchSelection;
     }
     return true;
   });
+
+  // One ticket can contain selections from multiple matches. It appears under
+  // each related fixture, while each fixture group shows only its own markets.
+  const groupedTickets = (() => {
+    const groups = new Map<string, { matchName: string; tickets: { ticket: any; lines: any[] }[] }>();
+    for (const ticket of filteredTickets) {
+      const byMatch = new Map<string, { matchName: string; lines: any[] }>();
+      for (const line of ticket.lines ?? []) {
+        const matchId = String(line.matchId ?? '');
+        const matchName = String(line.matchName ?? '').trim() || 'Ndeshje pa emër';
+        const key = matchId || 'name:' + matchName.toLowerCase();
+        const entry = byMatch.get(key) ?? { matchName, lines: [] };
+        entry.lines.push(line);
+        byMatch.set(key, entry);
+      }
+      if (!byMatch.size) byMatch.set('__no_match__', { matchName: 'Pa ndeshje', lines: [] });
+      for (const [key, entry] of byMatch) {
+        const group = groups.get(key) ?? { matchName: entry.matchName, tickets: [] };
+        group.tickets.push({ ticket, lines: entry.lines });
+        groups.set(key, group);
+      }
+    }
+    return [...groups.entries()].map(([key, group]) => ({ key, ...group }));
+  })();
 
   const pendingCount = tickets.filter(t => t.status === 'PENDING').length;
   const wonCount = tickets.filter(t => t.status === 'WON').length;
@@ -246,14 +273,14 @@ export default function TicketAudit() {
         </div>
       </div>
 
-      {/* Ticket List */}
+      {/* All tickets grouped by match. Opening a match reveals every user's tickets and markets. */}
       <div className="bg-secondary rounded-2xl border border-tertiary shadow-xl overflow-hidden">
         {loading ? (
           <div className="p-16 text-center text-text-secondary flex flex-col items-center justify-center gap-3">
             <RefreshCw size={26} className="animate-spin text-accent-green" />
             <span className="text-sm font-semibold">{translate('tickets.loading_records')}</span>
           </div>
-        ) : filteredTickets.length === 0 ? (
+        ) : groupedTickets.length === 0 ? (
           <div className="p-12 text-center text-text-secondary flex flex-col items-center gap-2">
             <TicketIcon size={32} className="opacity-30 text-white" />
             <div className="text-sm font-bold text-white">{translate("Nuk u gjet asnjë skedinë")}</div>
@@ -261,127 +288,120 @@ export default function TicketAudit() {
           </div>
         ) : (
           <div className="divide-y divide-tertiary/70">
-            {filteredTickets.map(t => {
-              const isExpanded = expandedTicketId === t.id;
+            {groupedTickets.map(group => {
+              const isExpanded = expandedMatchId === group.key;
+              const ticketCount = group.tickets.length;
+              const lineCount = group.tickets.reduce((total, entry) => total + entry.lines.length, 0);
+              const userCount = new Set(group.tickets.map(entry => entry.ticket.user?.username || 'guest')).size;
               return (
-                <div key={t.id} className="p-3.5 sm:p-4 hover:bg-primary/30 transition">
-                  {/* Top Ticket Row */}
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
-                    <div className="flex items-start sm:items-center gap-3">
-                      <div className={`p-2 sm:p-2.5 rounded-xl flex items-center justify-center shrink-0 mt-0.5 sm:mt-0 ${
-                        t.status === 'WON' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                        t.status === 'LOST' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' :
-                        t.status === 'REVERTED' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                      }`}>
-                        {t.status === 'WON' && <CheckCircle2 size={20} />}
-                        {t.status === 'LOST' && <XCircle size={20} />}
-                        {t.status === 'REVERTED' && <RotateCcw size={20} />}
-                        {t.status === 'PENDING' && <Clock size={20} />}
-                      </div>
-
-                      <div className="space-y-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-white text-sm sm:text-base">
-                            {translate("Skedina #")}{t.id.substring(0, 8)}
-                          </span>
-                          {t.bookingCode && (
-                            <button
-                              onClick={() => copyToClipboard(t.bookingCode)}
-                              className="text-[11px] bg-accent-blue/15 hover:bg-accent-blue/25 text-accent-blue font-mono px-2 py-0.5 rounded-lg font-bold flex items-center gap-1 border border-accent-blue/20 transition active:scale-95"
-                              title={translate("Kopjo kodin e rezervimit")}
-                            >
-                              <span>{translate("Kodi:") + " "}{t.bookingCode}</span>
-                              {copiedCode === t.bookingCode ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
-                            </button>
-                          )}
-                          <span className={`text-[10px] sm:text-xs px-2 py-0.5 rounded-full font-black uppercase ${
-                            t.status === 'WON' ? 'bg-emerald-500/20 text-emerald-400' :
-                            t.status === 'LOST' ? 'bg-rose-500/20 text-rose-400' :
-                            t.status === 'REVERTED' ? 'bg-purple-500/20 text-purple-400' : 'bg-amber-500/20 text-amber-400'
-                          }`}>
-                            {translateTicketStatus(t.status, translate)}
-                          </span>
-                        </div>
-
-                        <div className="text-[11px] sm:text-xs text-text-secondary flex items-center gap-2 flex-wrap">
-                          <span>{translate('admin.user')}: <strong className="text-white">{t.user?.username || translate('tickets.guest_booked')}</strong></span>
-                          <span>&bull;</span>
-                          <span>{translate('tickets.type')}: <strong className="text-accent-yellow uppercase">{translateTicketType(t.ticketType, translate)}</strong></span>
-                          <span>&bull;</span>
-                          <span>{new Date(t.placedAt).toLocaleString('sq-AL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Financial Numbers & Actions */}
-                    <div className="flex items-center justify-between md:justify-end gap-3 sm:gap-4 pt-2 md:pt-0 border-t md:border-t-0 border-tertiary/40">
-                      <div className="text-left md:text-right">
-                        <div className="text-[10px] sm:text-xs text-text-secondary uppercase">{translate('tickets.stake_payout')}</div>
-                        <div className="text-xs sm:text-sm font-bold text-white tabular-nums">
-                          {t.stake.toFixed(2)} {" " + translate("Lëk →") + " "}<span className="text-accent-green font-black text-sm sm:text-base">{(t.system && t.status !== 'PENDING' ? t.actualPayout ?? 0 : t.potentialPayout).toFixed(2)} {" " + translate("Lëk")}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {t.status === 'PENDING' && (
-                          <button
-                            onClick={() => handleRevertTicket(t.id)}
-                            className="px-3 py-1.5 sm:py-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 border border-purple-500/30"
-                            title={translate('tickets.revert_ticket')}
-                          >
-                            <RotateCcw size={13} /> <span>{translate('manager.revert')}</span>
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setExpandedTicketId(isExpanded ? null : t.id)}
-                          className="px-2.5 py-1.5 sm:p-2 bg-tertiary hover:bg-tertiary/80 text-text-secondary hover:text-white rounded-xl text-xs font-bold flex items-center gap-1 transition active:scale-95"
-                          title={translate('tickets.view_selections')}
-                        >
-                          <span className="sm:hidden text-xs">{translate("Zgjedhjet")}</span>
-                          {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* EXPANDED LINES */}
+                <section key={group.key}>
+                  <button
+                    type="button"
+                    aria-expanded={isExpanded}
+                    onClick={() => setExpandedMatchId(isExpanded ? null : group.key)}
+                    className="flex w-full items-center justify-between gap-3 p-3.5 text-left transition hover:bg-primary/30 sm:p-4"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-black text-white sm:text-base">{group.matchName}</span>
+                      <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-text-secondary">
+                        <span>{ticketCount} {translate("bileta")}</span>
+                        <span>{userCount} {translate("përdorues")}</span>
+                        <span>{lineCount} {translate("tregje")}</span>
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2 rounded-lg bg-tertiary px-2.5 py-1.5 text-xs font-bold text-white">
+                      {isExpanded ? translate("Mbyll") : translate("Hap")}
+                      {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </span>
+                  </button>
                   {isExpanded && (
-                    <div className="mt-3.5 pt-3.5 border-t border-tertiary/60 space-y-2.5">
-                      <SystemTicketSummary ticket={t} />
-                      <div className="text-xs font-bold uppercase text-text-secondary tracking-wider">
-                        {translate('tickets.selections')} ({t.lines?.length || 0})
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {t.lines?.map((line: any) => (
-                          <div key={line.id} className="bg-primary/80 p-3 rounded-xl border border-tertiary flex justify-between items-center text-xs gap-2">
-                            <div className="space-y-0.5 min-w-0">
-                              <div className="text-text-secondary text-[11px] truncate">
-                                {line.matchName}
-                                {line.scoreAtPlacement && <span className="ml-1 text-accent-green font-bold">{line.scoreAtPlacement}</span>}
-                              </div>
-                              <div className="font-semibold text-white">
-                                {formatMarketSelectionLabel(line.marketName, line.marketLine, translate)}: <span className="text-accent-green font-black">{formatTicketSelection(line.outcomeName, line.marketName, line.matchName, translate)}</span>
-                              </div>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <span className="font-black text-white px-2 py-0.5 bg-secondary rounded-lg border border-tertiary tabular-nums">
-                                {formatOdds(line.settledOdds ?? line.oddsAtPlacement ?? line.odds)}
-                              </span>
-                              <div className="mt-1 font-bold text-[10px] uppercase">
-                                <span className={
-                                  line.status === 'WON' ? 'text-emerald-400' :
-                                  line.status === 'LOST' ? 'text-rose-400' : 'text-amber-400'
-                                }>
-                                  {translateTicketStatus(line.status, translate)}
+                    <div className="space-y-3 border-t border-tertiary/60 bg-primary/20 p-3 animate-in slide-in-from-top-2 duration-200 sm:p-4">
+                      {group.tickets.map(({ ticket: t, lines }) => (
+                        <article key={t.id} className="space-y-3 rounded-xl border border-tertiary bg-secondary p-3 sm:p-4">
+                          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <div className="min-w-0 space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-black text-white">{translate("Skedina #")}{String(t.id).substring(0, 8)}</span>
+                                {t.bookingCode && (
+                                  <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(t.bookingCode)}
+                                    className="flex items-center gap-1 rounded-lg border border-accent-blue/20 bg-accent-blue/15 px-2 py-0.5 font-mono text-[11px] font-bold text-accent-blue"
+                                    title={translate("Kopjo kodin e rezervimit")}
+                                  >
+                                    {translate("Kodi:")} {t.bookingCode}
+                                    {copiedCode === t.bookingCode ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                                  </button>
+                                )}
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
+                                  t.status === 'WON' ? 'bg-emerald-500/20 text-emerald-400' :
+                                  t.status === 'LOST' ? 'bg-rose-500/20 text-rose-400' :
+                                  t.status === 'REVERTED' ? 'bg-purple-500/20 text-purple-400' : 'bg-amber-500/20 text-amber-400'
+                                }`}>
+                                  {translateTicketStatus(t.status, translate)}
                                 </span>
                               </div>
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-secondary">
+                                <span>{translate('admin.user')}: <strong className="text-white">{t.user?.username || translate('tickets.guest_booked')}</strong></span>
+                                <span>•</span>
+                                <span>{translate('tickets.type')}: <strong className="uppercase text-accent-yellow">{translateTicketType(t.ticketType, translate)}</strong></span>
+                                <span>•</span>
+                                <span>{new Date(t.placedAt).toLocaleString('sq-AL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 border-t border-tertiary/40 pt-2 md:justify-end md:border-t-0 md:pt-0">
+                              <div className="text-left md:text-right">
+                                <div className="text-[10px] uppercase text-text-secondary">{translate('tickets.stake_payout')}</div>
+                                <div className="text-xs font-bold tabular-nums text-white sm:text-sm">
+                                  {Number(t.stake).toFixed(2)} {translate("Lëk →")} <span className="text-sm font-black text-accent-green">{Number(t.system && t.status !== 'PENDING' ? t.actualPayout ?? 0 : t.potentialPayout).toFixed(2)} {translate("Lëk")}</span>
+                                </div>
+                              </div>
+                              {t.status === 'PENDING' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRevertTicket(t.id)}
+                                  className="flex items-center gap-1.5 rounded-xl border border-purple-500/30 bg-purple-500/20 px-3 py-1.5 text-xs font-bold text-purple-400 transition hover:bg-purple-500/30"
+                                  title={translate('tickets.revert_ticket')}
+                                >
+                                  <RotateCcw size={13} /> {translate('manager.revert')}
+                                </button>
+                              )}
                             </div>
                           </div>
-                        ))}
-                      </div>
+                          <SystemTicketSummary ticket={{ ...t, lines }} />
+                          <div className="text-xs font-bold uppercase tracking-wider text-text-secondary">
+                            {translate('tickets.selections')} ({lines.length})
+                          </div>
+                          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                            {lines.map((line: any) => (
+                              <div key={line.id} className="flex items-center justify-between gap-2 rounded-xl border border-tertiary bg-primary/80 p-3 text-xs">
+                                <div className="min-w-0 space-y-0.5">
+                                  <div className="truncate text-[11px] text-text-secondary">
+                                    {line.matchName}
+                                    {line.scoreAtPlacement && <span className="ml-1 font-bold text-accent-green">{line.scoreAtPlacement}</span>}
+                                  </div>
+                                  <div className="font-semibold text-white">
+                                    {formatMarketSelectionLabel(line.marketName, line.marketLine, translate)}: <span className="font-black text-accent-green">{formatTicketSelection(line.outcomeName, line.marketName, line.matchName, translate)}</span>
+                                  </div>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <span className="rounded-lg border border-tertiary bg-secondary px-2 py-0.5 font-black tabular-nums text-white">
+                                    {formatOdds(line.settledOdds ?? line.oddsAtPlacement ?? line.odds)}
+                                  </span>
+                                  <div className="mt-1 text-[10px] font-bold uppercase">
+                                    <span className={line.status === 'WON' ? 'text-emerald-400' : line.status === 'LOST' ? 'text-rose-400' : 'text-amber-400'}>
+                                      {translateTicketStatus(line.status, translate)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </article>
+                      ))}
                     </div>
                   )}
-                </div>
+                </section>
               );
             })}
           </div>

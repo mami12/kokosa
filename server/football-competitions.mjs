@@ -6,18 +6,45 @@ export const normalizeCompetition = value => String(value ?? '').normalize('NFD'
  * because its official name contains FIFA. Team age/gender suffixes are real.
  */
 export function isSyntheticFootballMatch(match={}) {
-  const tournament=match.tournament??{},category=tournament.category??match.category??{},raw=match.raw??{};
-  if(match.isEsport===true||match.is_esport===true||match.isSimulated===true||match.is_simulated===true||match.isVirtual===true||match.is_real===false||raw.isEsport===true||raw.isSimulated===true||raw.isVirtual===true)return true;
+  const tournament=match.tournament??{},category=tournament.category??match.category??{},raw=match.raw??match.rawData??{};
+  const sport=match.sport??tournament.sport??category.sport??raw.sport??{};
+  const explicitFlags=[
+    match.isEsport,match.is_esport,match.isEsports,match.is_esports,match.is_e_sports,
+    match.isElectronicSport,match.isElectronicSports,match.isSimulated,match.is_simulated,
+    match.isVirtual,match.is_virtual,match.isSynthetic,match.is_synthetic,
+    tournament.isEsport,tournament.is_esport,tournament.isEsports,tournament.is_esports,tournament.is_e_sports,
+    tournament.isElectronicSport,tournament.isElectronicSports,tournament.isSimulated,tournament.isVirtual,
+    category.isEsport,category.is_esport,category.isEsports,category.is_esports,category.is_e_sports,
+    category.isElectronicSport,category.isElectronicSports,category.isSimulated,category.isVirtual,
+    sport.isEsport,sport.is_esport,sport.isEsports,sport.is_esports,sport.is_e_sports,
+    sport.isElectronicSport,sport.isElectronicSports,raw.isEsport,raw.is_esport,raw.isEsports,
+    raw.is_esports,raw.isSimulated,raw.isVirtual,raw.isSynthetic,
+  ];
+  if(explicitFlags.some(value=>value===true)||match.is_real===false||raw.is_real===false)return true;
+
+  const values=[
+    match.tournament_name,match.tournamentName,tournament.name,tournament.tournament_name,
+    match.category_slug,match.categorySlug,match.category_name,match.categoryName,
+    category.slug,category.name,match.sport_name,match.sportName,match.sport_type,
+    match.sportType,sport.name,sport.slug,sport.type,sport.discipline,
+    tournament.sport_name,tournament.sportName,tournament.sport_type,
+    category.sport_name,category.sportName,category.sport_type,
+  ];
+  const text=values.filter(value=>typeof value==='string'||typeof value==='number')
+    .map(value=>normalizeCompetition(value)).filter(Boolean).join(' ');
   const competition=normalizeCompetition(match.tournament_name??match.tournamentName??tournament.name??'');
-  const region=normalizeCompetition([match.category_slug??match.categorySlug??category.slug,match.category_name??match.categoryName??category.name].filter(Boolean).join(' '));
-  const text=[competition,region].join(' ');
-  if(/\b(?:e\s?soccer(?:battle)?|e\s?football(?:battle)?|e\s?sports?(?:battle)?|cyber\w*|virtual|simulat(?:ed|ion)|srl|replays?|ereplays?|ehighlights|video games?|computer games?|vsport|volta|fantasy|short football|h2h gg)\b/.test(text))return true;
+  // Explicit e-sport formats, virtual leagues and computer-generated matches.
+  // This includes provider names such as eAdriatic, ePremier and eChampions,
+  // without matching real EFL competitions or the real Eredivisie.
+  if(/\b(?:e\s?soccer(?:battle)?|e\s?football(?:battle)?|e\s?sports?(?:battle)?|e\s?(?:basketball|hockey|tennis|cricket|racing|adriatic)|cyber\w*|virtual|simulat(?:ed|ion)|srl|replays?|ereplays?|ehighlights|video games?|computer games?|vsport|volta|fantasy|short football|h2h gg)\b/.test(text))return true;
+  if(/\b(?:(?!european\b|europa\b|europe\b|english\b|eastern\b|euro\b)e[a-z]{4,}|e\s+(?!uropean\b|uropa\b|urope\b|nglish\b|astern\b|uro\b)[a-z]{3,})\s+(?:league|cup|championship|tournament|series)\b/.test(text))return true;
   if(/\bfifa\s+e\s?(?:world|nations|club)\s+cup\b/.test(text))return true;
   const realFifa=/\bfifa(?:\s+\d{2}(?:\d{2})?)?\s+(?:(?:club|women s|womens|u\s?\d{2})\s+)?world cup\b|\bfifa(?:\s+\d{2}(?:\d{2})?)?\s+(?:world cup\s+)?(?:qualifiers?|qualifications?)\b/.test(competition);
   if(/\b(?:ea sports fc|ea fc)(?:\s*\d{2})?\b/.test(text)||(!realFifa&&/\bfifa\s*(?:1\d|2\d)\b/.test(text)))return true;
-  if(!realFifa&&(/^(?:fifa|electronic(?: leagues?|sports?)?|e leagues?)(?:\s|$)/.test(region)||/^fifa$/.test(competition)))return true;
-  const teams=[match.home??match.homeTeam,match.away??match.awayTeam].filter(Boolean).join(' ');
-  if(/\((?:v|sim|srl|virtual|replay|replays)\)/i.test(teams))return true;
+  if(!realFifa&&(/^(?:fifa|electronic(?: leagues?|sports?)?|e leagues?)(?:\s|$)/.test(text)||/^fifa$/.test(competition)))return true;
+  const teams=[match.home??match.homeTeam,match.away??match.awayTeam]
+    .filter(Boolean).map(team=>typeof team==='string'?team:team?.name??'').join(' ');
+  if(/\((?:v|sim|srl|virtual|replay|replays|esports?)\)/i.test(teams))return true;
   return /\b2\s*x\s*(?:[1-9]|1[0-5])\s*(?:min(?:ute)?s?)?\b/i.test([competition,teams].join(' '));
 }
 
@@ -159,8 +186,8 @@ export function rankCompetitionRow(row, { allowUnlisted = false } = {}) {
   const categorySlug = row.category_slug ?? row.tournament?.category?.slug ?? '';
   const tournamentName = row.tournament_name ?? row.tournament?.name ?? '';
   const decision = competitionDecision(
-    { name: tournamentName, categorySlug },
-    { slug: categorySlug },
+    { ...(row.tournament ?? {}), ...row, name: tournamentName, categorySlug, tournament: row.tournament, category: row.category },
+    { ...(row.category ?? {}), slug: categorySlug },
   );
   if (!decision.allowed) {
     return allowUnlisted ? { ...row, competition_rank: null } : null;
