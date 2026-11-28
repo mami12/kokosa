@@ -742,7 +742,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
     };
     const corners=validPair('corners'),yellow=validPair('yellow'),red=validPair('red');
     const cards=yellow&&red?{home:yellow.home+red.home,away:yellow.away+red.away}:null;
-    const statistics=Object.fromEntries(['shots','shotsOnTarget','fouls','possession']
+    const statistics=Object.fromEntries(['shots','shotsOnTarget','fouls','possession','goalKicks']
       .map(field=>[field,validPair(field)]).filter(([,pair])=>pair));
     const candidate={source:provider,homeScore:Number(evidence.homeScore),awayScore:Number(evidence.awayScore),
       cornersHome:corners?.home??null,cornersAway:corners?.away??null,
