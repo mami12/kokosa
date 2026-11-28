@@ -306,7 +306,7 @@ function MatchTimeline({ item }: { item: ReviewItem }) {
           for (const event of kindEvents) {
             if (event.team === 'home') homeGoals++;
             else if (event.team === 'away') awayGoals++;
-            scoreAfterGoal.set(provider + ':' + event.id, \`${homeGoals} – ${awayGoals}\`);
+            scoreAfterGoal.set(provider + ':' + event.id, `${homeGoals} – ${awayGoals}`);
           }
         }
       }
