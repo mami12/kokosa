@@ -87,6 +87,8 @@ assert.deepEqual([actual.cardsHome,actual.cardsAway],[1,1]);
 assert.deepEqual(actual.statistics.shots,{home:12,away:7});
 assert.deepEqual(actual.statistics.shotsOnTarget,{home:5,away:2});
 assert.deepEqual(actual.statistics.fouls,{home:9,away:13});
+assert.deepEqual(actual.statistics.goalKicks,{home:8,away:6},
+ 'FotMob goal-kick totals are parsed as statistics, not event chronology or goals');
 assert.deepEqual(actual.statistics.possession,{home:61,away:39},
  'FotMob percentage strings such as 61% are parsed instead of discarded');
 assert.equal(actual.goalTimelineAvailable,true);
