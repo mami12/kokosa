@@ -73,6 +73,7 @@ const liveDetails={
     {title:'Shots on Target',stats:['5','2']}
    ]},
    {title:'Fouls',stats:['9','13']},
+   {title:'Goal Kicks',stats:['8','6']},
    {title:'Possession',stats:['61%','39%']}
   ]}}}
  }
