@@ -77,9 +77,9 @@ export function fotMobIncidents(details){
  const teamOf=e=>{
   if(e?.isHome===true||e?.isHomeTeam===true||e?.is_home===true||e?.team?.isHome===true)return 'home';
   if(e?.isHome===false||e?.isHomeTeam===false||e?.is_home===false||e?.team?.isHome===false)return 'away';
-  const side=String(e?.side??e?.teamSide??e?.team_side??'').toLowerCase();
-  if(['home','h','1'].includes(side))return 'home';
-  if(['away','a','2'].includes(side))return 'away';
+  const side=String(e?.side??e?.teamSide??e?.team_side??(typeof e?.team==='string'?e.team:'')).toLowerCase();
+  if(['home','home team','h','1'].includes(side))return 'home';
+  if(['away','away team','a','2'].includes(side))return 'away';
   const id=e?.teamId??e?.team_id??e?.team?.id;
   if(id!=null&&homeId!=null&&String(id)===String(homeId))return 'home';
   if(id!=null&&awayId!=null&&String(id)===String(awayId))return 'away';
@@ -102,6 +102,8 @@ export function fotMobIncidents(details){
     /foul/.test(label)?'foul':null;
    if(!kind)continue;
    const clock=minutes(e.time??e.timeStr??e.minute??e.clock);
+   const added=count(e.addedTime??e.added_time??e.minuteAdded??e.minAdded??e.time?.added??e.time?.extra);
+   if(added!==null&&added>0&&clock.minute!==null)clock.addedMinute=added;
    const actor=identity(e);
    const cardText=[e.card,e.cardType,e.card_type,e.description,e.type].filter(Boolean).join(' ');
    result.push({kind,team:teamOf(e),...clock,...actor,
