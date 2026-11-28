@@ -125,7 +125,7 @@ export function gradeHeldNativeCombo(line,result){
  // A leading asterisk is a Zizobet display marker, not part of the
  // market identity. Parse a derived title without it, while preserving the
  // exact accepted provider title in accepted_contract for audit/reconciliation.
- const parserMarketName=String(saved.providerMarketName).trim().replace(/^\\*\\s*/,'');
+ const parserMarketName=String(saved.providerMarketName).trim().replace(/^\*\s*/,'');
  const frozen={
   market_name:parserMarketName,
   outcome_name:saved.providerOutcomeName,
