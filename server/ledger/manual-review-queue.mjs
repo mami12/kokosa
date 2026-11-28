@@ -138,6 +138,7 @@ export async function manualReviewQueue({runQuery=query,limit=150,offset=0,revie
       and f.kind=c.kind and f.active=true
     where c.match_id=any($1::bigint[]) and c.provider=any($2::text[])
       and c.kind in ('goal','corner','card','foul')
+      and (c.provider<>'fotmob' or c.kind in ('corner','card'))
   )
   select * from confirmed where event_index<=250
   order by match_id,coverage_provider,minute,seconds nulls last,provider_event_id`,[matchIds,['zizobet','fotmob']])).rows;
