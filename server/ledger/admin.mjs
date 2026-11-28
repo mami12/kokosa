@@ -134,8 +134,7 @@ async function settlementCheckSelections(matchIds, refreshAll) {
   const ids = matchIds.map(value => Number(value));
   if (ids.some(id => !Number.isSafeInteger(id) || id <= 0) || new Set(ids).size !== 2) throw badRequest('Dy ndeshjet duhet të jenë të ndryshme.');
 
-  // Read only the two selected fixtures in parallel. This check is intentionally
-  // limited to primary board offers; it must not request every offer per match.
+  // Validate both selected fixtures in parallel before fetching their full market grids.
   const selectedRows = await Promise.all(ids.map(id => getMatchRow(id)));
   if (selectedRows.some(row => !row || isSyntheticFootballMatch(row) || overrides.isMatchHidden(row))) {
     throw badRequest('Një nga ndeshjet nuk është e disponueshme për këtë kontroll.');
