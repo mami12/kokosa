@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiClient } from '../../api/client';
-import { ChevronDown, ChevronUp, Ticket as TicketIcon, CheckCircle2, XCircle, Clock, RotateCcw, Search, X, Copy, Check, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronUp, Ticket as TicketIcon, CheckCircle2, XCircle, RotateCcw, Search, X, Copy, Check, RefreshCw } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { formatMarketSelectionLabel, formatTicketSelection, translateTicketStatus, translateTicketType } from '../../utils/sportsbookLabels';
 import { formatOdds } from '../../utils/formatOdds';
