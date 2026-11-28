@@ -122,8 +122,12 @@ export function gradeHeldNativeCombo(line,result){
  const rawPeriod=Number(saved.providerPeriod??0);
  if(![0,1,2].includes(rawPeriod)||
     (line.period!=null&&Number(line.period)!==rawPeriod))return null;
+ // A leading asterisk is a Zizobet display marker, not part of the
+ // market identity. Parse a derived title without it, while preserving the
+ // exact accepted provider title in accepted_contract for audit/reconciliation.
+ const parserMarketName=String(saved.providerMarketName).trim().replace(/^\\*\\s*/,'');
  const frozen={
-  market_name:saved.providerMarketName,
+  market_name:parserMarketName,
   outcome_name:saved.providerOutcomeName,
   outcome_key:saved.providerOutcomeKey,
   line:String(saved.line??''),period:rawPeriod,
