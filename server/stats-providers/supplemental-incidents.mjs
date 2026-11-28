@@ -96,10 +96,10 @@ export function fotMobIncidents(details){
    const label=String(e?.type??e?.eventType??'').trim()
     .replace(/([a-z])([A-Z])/g,'$1 $2').toLowerCase()
     .replace(/[_-]+/g,' ').replace(/\s+/g,' ');
-   const kind=/^(?:goal|own goal|score change|scoring)$/.test(label)?'goal':
-    /card|booking|caution|sending off|dismissal/.test(label)?'card':
-    /corner/.test(label)?'corner':
-    /foul/.test(label)?'foul':null;
+   // FotMob is intentionally limited to corner/card chronology.
+   // Goals, fouls and shot-map rows remain outside its financial evidence.
+   const kind=/card|booking|caution|sending off|dismissal/.test(label)?'card':
+    /corner/.test(label)?'corner':null;
    if(!kind)continue;
    const clock=minutes(e.time??e.timeStr??e.minute??e.clock);
    const added=count(e.addedTime??e.added_time??e.minuteAdded??e.minAdded??e.time?.added??e.time?.extra);
@@ -112,19 +112,6 @@ export function fotMobIncidents(details){
     cardColor:kind==='card'?/red/i.test(cardText)?'red':
      /yellow/i.test(cardText)?'yellow':null:null,
     onTarget:null,sourceOrder:i,raw:e});
-  }
- }
- if(Array.isArray(shots)){
-  for(const [i,s] of shots.entries()){
-   const clock=minutes(s.time??s.min??s.minute);
-   const added=count(s.minAdded??s.addedMinute??0);
-   if(added!==null&&added>0&&clock.minute!==null)clock.addedMinute=added;
-   result.push({kind:'shot',team:teamOf(s),...clock,
-    playerId:s.playerId??s.player?.id??null,
-    playerName:nameOf(s.playerName??s.player?.name??s.fullName),
-    providerEventId:eventId('fotmob','shot',i,s),
-    cardColor:null,onTarget:typeof s.isOnTarget==='boolean'?s.isOnTarget:null,
-    sourceOrder:i,raw:s});
   }
  }
  return result;
