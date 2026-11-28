@@ -214,7 +214,7 @@ export async function storeSupplementalIncidents(matchId,provider,fixtureId,rows
  const completeness=row=>identityFields.filter(field=>row[field]!=null).length;
  const uniqueByIdentity=new Map();
  for(const row of normalized){
-  const key=`${row.provider_event_id}\\u0000${row.kind}`;
+  const key=JSON.stringify([row.provider_event_id,row.kind]);
   const previous=uniqueByIdentity.get(key);
   if(!previous){uniqueByIdentity.set(key,row);continue;}
   const preferred=completeness(row)>=completeness(previous)?row:previous;
