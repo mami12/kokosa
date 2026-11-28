@@ -92,7 +92,8 @@ assert.deepEqual(actual.statistics.goalKicks,{home:8,away:6},
  'FotMob goal-kick totals are parsed as statistics, not event chronology or goals');
 assert.deepEqual(actual.statistics.possession,{home:61,away:39},
  'FotMob percentage strings such as 61% are parsed instead of discarded');
-assert.equal(actual.goalTimelineAvailable,true);
+assert.equal('goalEvents' in actual,false,'FotMob does not expose goal chronology to settlement');
+assert.equal('halfHomeScore' in actual,false,'FotMob does not supply half-time scores');
 assert.equal(actual.cornerTimelineAvailable,true);
 assert.equal(actual.cardTimelineAvailable,true);
 assert.deepEqual(actual.cornerEvents.map(event=>[event.minute,event.injury]),[[45,3],[90,4]],
