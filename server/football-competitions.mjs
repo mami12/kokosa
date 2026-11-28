@@ -37,7 +37,7 @@ export function isSyntheticFootballMatch(match={}) {
   // This includes provider names such as eAdriatic, ePremier and eChampions,
   // without matching real EFL competitions or the real Eredivisie.
   if(/\b(?:e\s?soccer(?:battle)?|e\s?football(?:battle)?|e\s?sports?(?:battle)?|e\s?(?:basketball|hockey|tennis|cricket|racing|adriatic)|cyber\w*|virtual|simulat(?:ed|ion)|srl|replays?|ereplays?|ehighlights|video games?|computer games?|vsport|volta|fantasy|short football|h2h gg)\b/.test(text))return true;
-  if(/\b(?:e[a-z]{4,}|e\s+[a-z]{3,})\s+(?:league|cup|championship|tournament|series)\b/.test(text))return true;
+  if(/\b(?:(?!european\b|english\b|eastern\b|euro\b)e[a-z]{4,}|e\s+(?!uropean\b|nglish\b|astern\b|uro\b)[a-z]{3,})\s+(?:league|cup|championship|tournament|series)\b/.test(text))return true;
   if(/\bfifa\s+e\s?(?:world|nations|club)\s+cup\b/.test(text))return true;
   const realFifa=/\bfifa(?:\s+\d{2}(?:\d{2})?)?\s+(?:(?:club|women s|womens|u\s?\d{2})\s+)?world cup\b|\bfifa(?:\s+\d{2}(?:\d{2})?)?\s+(?:world cup\s+)?(?:qualifiers?|qualifications?)\b/.test(competition);
   if(/\b(?:ea sports fc|ea fc)(?:\s*\d{2})?\b/.test(text)||(!realFifa&&/\bfifa\s*(?:1\d|2\d)\b/.test(text)))return true;
