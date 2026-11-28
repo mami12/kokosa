@@ -19,6 +19,8 @@ assert.equal(validateHistoricalGoals({...complete,events:[
  {...complete.events[0],own:true},complete.events[1]]}),null,
  'Unresolved own-goal attribution remains pending');
 assert.ok(validateHistoricalGoals(complete));
+assert.equal(validateHistoricalGoals({...complete,source:'fotmob'}),null,
+ 'FotMob must never enter goal chronology or goal-market settlement');
 assert.equal(validateHistoricalGoals({...complete,events:[
  {...complete.events[0],minute:10,phase:'H2'},complete.events[1]]}),null,
  'Second-half minute must be an absolute match clock, not the period-relative minute');
