@@ -64,3 +64,16 @@ assert.equal(isDecidedLiveNumberedGoalWindow(liveMatch({currentMinute:61,phase:'
 }),true,'a completed first-half interval is excluded after the half has ended');
 
 console.log('PASS settlement-check bulk quote freshness and active-status filters');
+
+
+// The admin settlement-check path must request each selected fixture's full
+// market snapshot, then serialize all stored offers (not the homepage subset).
+import fs from 'node:fs';
+const adminSource=fs.readFileSync(new URL('../server/ledger/admin.mjs',import.meta.url),'utf8');
+assert.match(adminSource,/await refreshAll\?\.\(ids\)/,
+ 'the settlement check must await a full-detail refresh for the selected fixtures');
+assert.match(adminSource,/withOdds\(rows,\s*Date\.now\(\),\s*\{\s*board:\s*false\s*\}\)/,
+ 'the settlement check must serialize all available markets, not the board projection');
+assert.match(adminSource,/loadMatchDetailsFully\s*\?\?/,
+ 'the two selected fixtures must use the shared full-market batch loader');
+console.log('PASS settlement-check fetches full markets for both selected fixtures');
