@@ -1,6 +1,5 @@
 import {displayTeamStatistics,displayGoalIntervals} from './display-stats.mjs';
-import {primaryGoalDisplay,matchedSupplementalScorers,displayOnlyFotMobScorers} from './primary-goal-display.mjs';
-import {enrichFotMobScorerNames} from './fotmob-scorer-enrichment.mjs';
+import {primaryGoalDisplay,matchedSupplementalScorers} from './primary-goal-display.mjs';
 import {enrichPrimaryActors} from './primary-actor-enrichment.mjs';
 import {SUPPLEMENTAL_INCIDENT_SQL,fotMobIncidents,backupIncidents,rawProviderIncidents,storeSupplementalIncidents} from './supplemental-incidents.mjs';
 import {teamStatisticsFromRow,verifiedFinalStatistics} from '../match-statistics.mjs';
@@ -24,15 +23,6 @@ const supplementalSnapshot=values=>Object.fromEntries(supplementalStats
  .filter(field=>values?.[field]!=null).map(field=>[field,values[field]]));
 const finished=row=>row.final===true||[row.status,row.service,row.feed_status].some(value=>/^(?:ft|full.?time|finished|ended|cancelled|canceled|after (?:match|penalt(?:y|ies)))(?:\b|$)/i.test(String(value??'')));
 const live=row=>!finished(row)&&String(row.service??row.status).toUpperCase()==='LIVE';
-/** Score-only Zizobet LIVE goals also need a source-matched scorer name on
- * opened fixtures when the independent primary incident archive lags.
- */
-export function needsFotMobScorerLookup(row,primaryGoal){
- if(row?.home_score==null||row?.away_score==null)return false;
- const h=Number(row.home_score),a=Number(row.away_score);
- return Number.isSafeInteger(h)&&Number.isSafeInteger(a)&&h>=0&&a>=0&&
-    h+a>0&&(!primaryGoal?.hasGoals||primaryGoal.missingScorers===true);
-}
 export const providerUrls=Object.fromEntries(Object.entries(specs).map(([k,v])=>[k,v.base]));
 export function createStatsService({runQuery=query,env=process.env,request=fetch,now=Date.now,saveEvidence,persistGoalFacts,persistTimedFacts,loadMatch,loadSnapshots,getWatchIds,getEventWatchIds}={}){
  let initFlight,busy=false,active=0;const offers=new Map(),inflight=new Map();
@@ -474,10 +464,9 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
      if(!final&&matchStatsReady(entry))break;
     }catch(e){unavailable[provider]=/^STATS_[A-Z_0-9]+$/.test(e.message)?e.message:'STATS_UNAVAILABLE';health.providers[provider]={...(health.providers[provider]??{}),lastError:unavailable[provider]};}
    }
-   // If the primary score has goals but the SQL event timeline is missing,
-   // a detail viewer still needs an advisory FotMob scorer lookup.
-   const missingGoalActors=needsFotMobScorerLookup(row,primaryGoal);
-   if(missingGoalActors||needsAnyActors()||!matchStatsReady(entry)||finalReviewNeeded||detailTimelineRefresh){
+   // FotMob is restricted to match statistics and corner/card incident
+   // verification. Goal chronology and scorer identity remain non-FotMob.
+   if(needsAnyActors()||!matchStatsReady(entry)||finalReviewNeeded||detailTimelineRefresh){
     if(detailTimelineRefresh)entry.fotmobTimelineAttemptedAt=now();
     if(finalReviewNeeded)attempted.push('fotmob');
     try{
@@ -503,14 +492,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
        const rawTimeline=details?.content?.matchFacts?.events?.events;
        if(final&&parsed.finished&&result&&Number(parsed.homeScore)===Number(result.home_score)&&
           Number(parsed.awayScore)===Number(result.away_score)&&Array.isArray(rawTimeline)){
-        if(finalTimelineNeeds.includes('goal')&&parsed.goalTimelineAvailable&&typeof persistGoalFacts==='function'){
-        try{
-         const saved=await persistGoalFacts(Number(id),{source:'fotmob',final:true,complete:true,
-          goalsAvailable:true,homeScore:parsed.homeScore,awayScore:parsed.awayScore,events:parsed.goalEvents});
-         if(saved?.stored===true||saved?.reason==='ALREADY_VERIFIED')persistedHistoricalKinds.add('goal');
-        }catch(error){console.warn('[historical goal fallback]',id,'fotmob',String(error?.message??error));}
-       }
-       for(const kind of finalTimelineNeeds.filter(kind=>kind!=='goal')){
+       for(const kind of finalTimelineNeeds.filter(kind=>['corner','card'].includes(kind))){
          const events=kind==='corner'?parsed.cornerEvents:parsed.cardEvents;
          // Never infer a provider's final total from the same event list we are
          // trying to validate. FotMob must supply explicit FT team counters too.
@@ -521,7 +503,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
         }
        }
        try{
-        const incidents=fotMobIncidents(details);
+        const incidents=fotMobIncidents(details).filter(item=>['corner','card'].includes(item.kind));
         const eventList=details?.content?.matchFacts?.events?.events;
         const shotList=details?.content?.shotmap?.shots;
         const completeKinds=[];
@@ -535,7 +517,6 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
         // A kind is marked complete only when its timed events reconcile with
         // independent team totals. This keeps corrections safe without erasing
         // valid corners/cards merely because another category was returned.
-        reconcileKind('goal',parsed.homeScore,parsed.awayScore,Array.isArray(eventList));
         reconcileKind('corner',parsed.cornersHome,parsed.cornersAway,Array.isArray(eventList));
         reconcileKind('card',parsed.cardsHome,parsed.cardsAway,Array.isArray(eventList));
         reconcileKind('foul',parsed.statistics?.fouls?.home,parsed.statistics?.fouls?.away,Array.isArray(eventList));
@@ -547,19 +528,6 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
         await refreshActors();
        }catch(error){
         console.warn('[supplemental incident archive]',String(error?.message??error));
-       }
-       if(!primaryGoal?.hasGoals&&parsed.goalEvents.length){
-        const names=displayOnlyFotMobScorers(row,parsed);
-        if(names.length){entry.scorers=names;entry.sources.scorers='fotmob-display-only';}
-       }
-       if(primaryGoal?.hasGoals&&parsed.goalEvents.length){
-        // FotMob may only enrich a one-to-one Zizobet scorer slot.
-        try{
-         await enrichFotMobScorerNames(Number(id),primaryFacts,parsed.goalEvents,{execute:runQuery});
-        }catch(error){
-         console.warn('[fotmob scorer enrichment]',Number(id),String(error?.message??error));
-        }
-        await refreshActors();
        }
        const fmValues={
         possession:parsed.statistics.possession,
@@ -614,6 +582,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
      if(backup&&Number(backup.homeScore)===Number(result.home_score)&&
         Number(backup.awayScore)===Number(result.away_score)){
       for(const kind of stillMissingTimelineKinds){
+       if(kind==='goal'&&String(backup.source??'').toLowerCase()==='fotmob')continue;
        if(kind==='goal'){
         if(typeof persistGoalFacts!=='function')continue;
         try{
