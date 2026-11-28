@@ -646,8 +646,6 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
        (player_name is not null and lower(player_name)=lower($7)) or
        (aiscore_verified=true and aiscore_player_name is not null
          and lower(aiscore_player_name)=lower($7)) or
-       (own_goal=false and fotmob_verified=true and fotmob_player_name is not null
-         and lower(fotmob_player_name)=lower($7)) or
        (own_goal=false and supplemental_verified=true and supplemental_player_name is not null
          and lower(supplemental_player_name)=lower($7))))))::int as player_goals,
     bool_or(same_time>1) as ambiguous_order,
