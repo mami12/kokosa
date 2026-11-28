@@ -68,7 +68,7 @@ export function nativeMarketPolicyKeys(m,match){
  * generically as "Over/Under". Non-total markets are left unchanged.
  */
 export function isAllowedTotalLine(m={}) {
- const type=String(m.market_type??m.marketType??'').trim().toLowerCase().replace(/[\\s-]+/g,'_');
+ const type=String(m.market_type??m.marketType??'').trim().toLowerCase().replace(/[\s-]+/g,'_');
  const names=[m.market_name,m.marketName,m.native_market_name,m.nativeMarketName,m.name]
   .filter(value=>value!==null&&value!==undefined).map(value=>String(value).trim()).filter(Boolean);
  const joined=names.join(' ').toLowerCase();
@@ -76,9 +76,9 @@ export function isAllowedTotalLine(m={}) {
   joined.includes('total')||joined.includes('over/under')||joined.includes('over under');
  if(!isTotal)return true;
  let rawLine=m.line??m.market_line??m.marketLine;
- if(rawLine===null||rawLine===undefined||!String(rawLine).trim()||/^#\\d+$/.test(String(rawLine).trim())){
+ if(rawLine===null||rawLine===undefined||!String(rawLine).trim()||/^#\d+$/.test(String(rawLine).trim())){
   for(const name of names){
-   const suffix=name.match(/\\s+(-?\\d+(?:[.,]\\d+)?)\\s*$/);
+   const suffix=name.match(/\s+(-?\d+(?:[.,]\d+)?)\s*$/);
    if(suffix){rawLine=suffix[1];break;}
   }
  }
