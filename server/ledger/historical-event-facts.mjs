@@ -10,7 +10,7 @@ import {pool} from '../db.mjs';
  * aggregate counts or from an API's unrelated player IDs.
  */
 export const HISTORICAL_GOAL_PROVIDERS=new Set([
- 'fotmob','apifootball','sportapi','goalapi','bsd','worldcup26'
+ 'apifootball','sportapi','goalapi','bsd','worldcup26'
 ]);
 
 export function validateHistoricalGoals(payload){
