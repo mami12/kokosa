@@ -324,11 +324,11 @@ try{
  };
  assert.deepEqual(timelineCounterMismatches({Match:mismatchMatch,TimeLines:[]}),['corner'],
   'The raw timeline/counter mismatch is identified without fabricating a corner minute');
- let at=Date.parse('2026-11-12T13:00:00Z'),detailReads=0,events=[];
+ let at=Date.parse('2026-11-12T13:00:00Z'),detailReads=0,events=[],homeCorners=0;
  const liveHeader=()=>({
   ID:34,Sport:1,Team1:1,Team2:2,Region:1,Champ:1,
   MatchStatusID:10,Score:'0:0',MatchTime:37,StartTime:'2026-11-12T12:23:00Z',
-  CornersTeam1:1,CornersTeam2:0,
+  CornersTeam1:homeCorners,CornersTeam2:0,
   YellowCardsTeam1:0,YellowCardsTeam2:0,RedCardsTeam1:0,RedCardsTeam2:0
  });
  const archiveCalls=[];
@@ -352,7 +352,8 @@ try{
  });
  try{
   await mismatchFeed.tick();
-  assert.equal(detailReads,1,'Initial raw timeline is captured');
+  assert.equal(detailReads,1,'Initial raw timeline is captured while counters are still zero');
+  homeCorners=1;
   at+=5000;
   await mismatchFeed.tick();
   assert.equal(detailReads,2,'A scoreboard counter change immediately requests the raw timeline');
