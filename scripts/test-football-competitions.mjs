@@ -63,6 +63,8 @@ assert.equal(isSyntheticFootballMatch({ tournament_name: 'Eredivisie', homeTeam:
   'the real Eredivisie must remain eligible');
 assert.equal(rankCompetitionRow({ tournament_name: 'Premier League', category_slug: 'england', isEsports: true }), null,
   'provider-level e-sports flags must survive competition ranking and block publication');
+assert.equal(rankCompetitionRow({ tournament: { name: 'Premier League', isEsports: true }, category_slug: 'england' }), null,
+  'nested tournament e-sports flags must block publication');
 assert.ok(rankCompetitionRow({ tournament_name: 'Premier League', category_slug: 'england', home: 'Arsenal', away: 'Chelsea' }),
   'ordinary real football remains published');
 
