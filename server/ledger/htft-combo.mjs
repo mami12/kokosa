@@ -23,16 +23,18 @@ const htFtGrade=(raw,hh,ha,fh,fa)=>{
  return gradeHtFt(selection,hh,ha,fh,fa);
 };
 const totalCondition=(condition,line,name,total)=>{
- const match=String(condition??'').trim().match(/^(over|under)(?:\s*(\d+(?:[.,]\d+)?))?$/i);
- if(!match||total===null)return null;
- const side=match[1].toLowerCase();
- let threshold=match[2]?Number(match[2].replace(',','.')):NaN;
- if(!Number.isFinite(threshold)&&line!=null&&line!=='')threshold=Number(line);
+ if(total===null)return null;
+ const raw=String(condition??'').trim().toLowerCase().replace(/,/g,'.');
+ const match=raw.match(/^(over|under|mbi|nen|lart|poshte|p_|l_|o|u|[+-])\s*(\d+(?:\.\d+)?)?$/i);
+ if(!match)return null;
+ const side=['over','mbi','lart','l','o','+'].includes(match[1])?'over':'under';
+ let threshold=match[2]?Number(match[2]):NaN;
+ if(!Number.isFinite(threshold)&&line!=null&&line!=='')threshold=Number(String(line).replace(',','.'));
  if(!Number.isFinite(threshold)){
   const fromTitle=String(name??'').match(/\((\d+(?:\.\d+)?)\)/);
   if(fromTitle)threshold=Number(fromTitle[1]);
  }
- if(!Number.isFinite(threshold))return null;
+ if(!Number.isFinite(threshold)||threshold<0||threshold>50||!Number.isSafeInteger(threshold*2))return null;
  if(total===threshold)return 'LOST';
  return (side==='over'?total>threshold:total<threshold)?'WON':'LOST';
 };
@@ -66,7 +68,7 @@ export function gradeHtFtCombo(line,result) {
  const isCorrectScore=/\bcorrect\s+score\b/i.test(name);
  const isBtts=/\b(?:both\s+teams?\s+(?:to\s+)?score|btts)\b/i.test(name);
  const totalFt=fh+fa;
- const totalHt=hh===null||ha===null?null:hh+ha;
+ const totalHt=hh===null||ha===null?null:hh+ha;\n const total2h=hh===null||ha===null?null:(fh-hh)+(fa-ha);
 
  if(isCorrectScore){
   // Format: "1/1 2:1" (HT/FT 1X2 + exact FT score).
@@ -92,7 +94,7 @@ export function gradeHtFtCombo(line,result) {
  if(isExact){
   // The exact-goals leg uses the final total unless the title explicitly
   // scopes it to the first half. FT total is an upper bound for 1H goals.
-  const target= isHalf1Total?totalHt:totalFt;
+  const target=isHalf1Total?totalHt:isHalf2Total?total2h:totalFt;
   let other=null;
   if(target!==null){
    if(condition.endsWith('+')){
@@ -102,7 +104,7 @@ export function gradeHtFtCombo(line,result) {
     const exact=Number(condition);
     if(Number.isFinite(exact))other=target===exact?'WON':'LOST';
    }
-  }else if(isHalf1Total&&condition.endsWith('+')){
+  }else if((isHalf1Total||isHalf2Total)&&condition.endsWith('+')){
    const minimum=Number(condition.slice(0,-1));
    if(Number.isFinite(minimum)&&totalFt<minimum)other='LOST';
   }
@@ -120,12 +122,12 @@ export function gradeHtFtCombo(line,result) {
  }
 
  // HT/FT + full-time or first-half Over/Under.
- const target=isHalf1Total?totalHt:totalFt;
+ const target=isHalf1Total?totalHt:isHalf2Total?total2h:totalFt;
  let other=totalCondition(condition,line?.line,name,target);
- if(other===null&&isHalf1Total&&totalHt===null){
+ if(other===null&&(isHalf1Total||isHalf2Total)&&target===null){
   const match=condition.match(/^over\s*(\d+(?:[.,]\d+)?)?$/i);
   const threshold=Number(match?.[1]?.replace(',','.')??line?.line??name.match(/\((\d+(?:\.\d+)?)\)/)?.[1]);
-  // If even the entire FT total cannot reach the 1H Over line, it is lost.
+  // A half's goal count cannot exceed the full-time total. If even that\n  // upper bound cannot reach the quoted Over line, the combined selection is lost.
   if(Number.isFinite(threshold)&&totalFt<=threshold)other='LOST';
  }
  return combine(htftStatus,other);
