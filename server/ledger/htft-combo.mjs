@@ -63,7 +63,7 @@ export function gradeHtFtCombo(line,result) {
  if(fh===null||fa===null||((hh!==null&&hh>fh)||(ha!==null&&ha>fa)))return null;
 
  const raw=String(line?.outcome_name??line?.outcome_key??'').trim();
- const isHalf1Total=/1st\s+half\s+total/i.test(name);
+ const isHalf1Total=/1st\s+half\s+total/i.test(name);\n const isHalf2Total=/2nd\s+half\s+total/i.test(name);
  const isExact=/\bexact\s+goals?\b/i.test(name);
  const isCorrectScore=/\bcorrect\s+score\b/i.test(name);
  const isBtts=/\b(?:both\s+teams?\s+(?:to\s+)?score|btts)\b/i.test(name);
