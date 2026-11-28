@@ -59,7 +59,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   if(Number.isFinite(providerStatus))signal.providerStatus=providerStatus;
   if(typeof info.feedStatus==='string'&&info.feedStatus.trim())
    signal.feedStatus=info.feedStatus.trim().toLowerCase();
-  const clock=String(game.MatchTimeExtended??'').match(/^(\\d{1,3}):([0-5]\\d)$/);
+  const clock=String(game.MatchTimeExtended??'').match(/^(\d{1,3}):([0-5]\d)$/);
   const clockMinute=clock?Number(clock[1])+Number(clock[2])/60:
    game.MatchTime==null?null:Number(game.MatchTime);
   if(Number.isFinite(clockMinute)&&clockMinute>=0)
