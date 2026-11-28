@@ -3,22 +3,28 @@ import {liveContract} from './live-contract-rules.mjs';
 import {SUPPORTED_FACT_KINDS} from './match-event-facts.mjs';
 
 /**
- * Recover corner contracts for older tickets placed from a real Zizobet offer
- * before a parser existed. Only the immutable accepted native quote is used;
- * display translations, AAMS labels and other providers are never inferred.
+ * Rebuild an old event contract only from its immutable accepted Zizobet quote.
+ * The provider title, outcome, line, period and purchase-time counters are
+ * re-read together. No translated/AAMS title or later scoreboard may replace
+ * the accepted quote. The grader still requires the matching confirmed event
+ * chronology before any financial decision.
  */
-export function recoverLegacyZizobetCornerContract(line){
+export function recoverLegacyZizobetEventContract(line){
  let accepted=line?.accepted_contract;
  if(typeof accepted==='string'){
   try{accepted=JSON.parse(accepted);}catch{return null;}
  }
  if(!accepted||typeof accepted!=='object')return null;
  const hold=String(accepted.settlementHold??'');
- if(hold&&!['NATIVE_PARAMETERS_UNMAPPED','NATIVE_FINAL_RULE_UNMAPPED'].includes(hold))return null;
- if(String(accepted.sourceProviderId??'').toUpperCase()!=='ZIZOBET')return null;
- const nativeName=String(accepted.nativeMarketName??'').trim();
- if(!nativeName||!/\b(?:corner|corners|corner kicks|kornera)\b/i.test(nativeName))return null;
- if(/\baams(?:[-\s]?logic)?\b/i.test(nativeName))return null;
+ const recoverable=new Set([
+  '','NATIVE_PARAMETERS_UNMAPPED','NATIVE_FINAL_RULE_UNMAPPED',
+  'NATIVE_PERIOD_GOAL_UNMAPPED','NATIVE_STATISTIC_UNMAPPED',
+  'NATIVE_INTERVAL_BASELINE_UNVERIFIED','NATIVE_CONTRACT_REVIEW'
+ ]);
+ if(!recoverable.has(hold)||String(accepted.sourceProviderId??'').toUpperCase()!=='ZIZOBET')return null;
+ const nativeName=String(accepted.nativeMarketName??accepted.providerMarketName??'')
+  .trim().replace(/^\*\s*/,'');
+ if(!nativeName||/\baams(?:[-\s]?logic)?\b/i.test(nativeName))return null;
  const row={
   provider_id:'ZIZOBET',
   market_key:accepted.providerMarketKey??line.market_key,
@@ -34,7 +40,12 @@ export function recoverLegacyZizobetCornerContract(line){
   native_parameters:accepted.nativeParameters??null
  };
  let normalized;
- try{normalized=nativeZizobetContractRow(row);}catch{return null;}
+ try{
+  normalized=nativeZizobetContractRow(row,{competitors:{
+   home:accepted.homeTeamName??line.home_team,
+   away:accepted.awayTeamName??line.away_team
+  }});
+ }catch{return null;}
  const quoted={
   ...line,...normalized,
   market_name:normalized?.market_name??nativeName,
@@ -46,6 +57,13 @@ export function recoverLegacyZizobetCornerContract(line){
  const counts=accepted.acceptedLiveSnapshot?.counters??{};
  let contract;
  try{contract=liveContract(quoted,{counts});}catch{return null;}
- if(!contract||contract.event!=='corner'||!SUPPORTED_FACT_KINDS.has(contract.kind))return null;
+ if(!contract||!SUPPORTED_FACT_KINDS.has(contract.kind)||
+    !['goal','corner','card','foul'].includes(contract.event)||
+    String(contract.kind).startsWith('player-'))return null;
  return contract;
+}
+
+export function recoverLegacyZizobetCornerContract(line){
+ const contract=recoverLegacyZizobetEventContract(line);
+ return contract?.event==='corner'?contract:null;
 }
