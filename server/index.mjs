@@ -44,6 +44,7 @@ import { decodePushBatch } from './push-decode.mjs';
 import { startPusher } from './pusher.mjs';
 import {startYbetsFeed} from './ybets-feed.mjs';
 import {startZizoFeed,isZizoId} from './zizobet-feed.mjs';
+import {archiveZizobetDashboardIncidents} from './ledger/zizobet-match-history.mjs';
 import {startLegacyYbetsResults} from './legacy-ybets-results.mjs';
 import {isYbetsMatchId} from './ybets-normalize.mjs';
 import { startCollector, withOdds, buildMarkets, toDbOddsShape, statsFromRow } from './collector.mjs';
@@ -1167,6 +1168,7 @@ async function boot() {
     if(config.oddsStore==='db'||config.matchStore==='db')throw new Error('Ybets requires MATCH_STORE=memory and ODDS_STORE=memory; the financial database remains local.');
     collector=(config.sportsProvider==='zizobet'?startZizoFeed:startYbetsFeed)({
       pollMs:config.pollIntervalMs,
+      archiveDashboard:config.sportsProvider==='zizobet'?archiveZizobetDashboardIncidents:undefined,
       onMatch:row=>{
         // Lightweight registration only. External info refresh runs in its
         // own bounded loop, not inside the odds/feed callback.

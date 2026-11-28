@@ -5,6 +5,7 @@ import {parseTeamGoalMarket} from './live-contract-rules.mjs';
 import {classifyZizobetCardEvents} from '../zizobet/card-events.mjs';
 import {isRegularTimeEvent} from './event-contract.mjs';
 import {zizobetEventIdentities} from '../zizobet/event-identity.mjs';
+import {zizobetEventTime} from '../zizobet/event-time.mjs';
 export const needsEvents=m=>!!eventMarketRequirement(m)||/header|headed|own goal|scoring method|method of.*goal/i.test(m.market_name??m.name??'');
 /** One bounded snapshot per fixture, only while a matching ticket needs it.
  * Only Zizobet event evidence is eligible for financial settlement. */
@@ -71,26 +72,7 @@ function zizobetMinute(value){
  const minute=Number(match[1])+Number(match[2]??0);
  return Number.isSafeInteger(minute)&&minute>=0&&minute<=130?minute:null;
 }
-function zizobetEventTime(value,clock){
- const raw=String(value??'').trim();
- const match=raw.match(/^(\d{1,3})(?:\s*\+\s*(\d{1,2}))?$/);
- if(!match)return {minute:null,seconds:null,phase:null,label:raw||null};
- const base=Number(match[1]);
- let added=Number(match[2]??0);
- const clockMatch=String(clock??'').match(/^(\d{1,3}):([0-5]\d)$/);
- const clockMinute=clockMatch?Number(clockMatch[1]):null;
- // Some Zizobet timeline records keep gt/minute at 90 but put the actual
- // stoppage-time clock in clk (for example 94:06). Preserve that time.
- if(added===0&&(base===45||base===90)&&clockMinute!==null&&
-    clockMinute>base&&clockMinute<=base+15)
-  added=clockMinute-base;
- const minute=base+added;
- const seconds=clockMatch?Number(clockMatch[1])*60+Number(clockMatch[2]):null;
- const preciseSeconds=seconds!==null&&Math.abs(seconds/60-minute)<=1?seconds:null;
- return {minute,seconds:preciseSeconds,added,
-  phase:added>0?(base===45?'1st half':base===90?'2nd half':null):null,
-  label:added>0?base+'+'+added:raw};
-}
+
 
 export function normalizeEvents(data,source){
  let events=[];
@@ -118,7 +100,7 @@ export function normalizeEvents(data,source){
  const zizoCardEvents=source==='zizobet'?classifyZizobetCardEvents(zizoRows,data.Match??{}):null;
  if(source==='zizobet')events=zizoRows.map((e,index)=>{
   const type=String(e.type??'').toLowerCase();
-  const eventTime=zizobetEventTime(e.gt??e.minute??e.time,e.clk),minute=eventTime.minute;
+  const eventTime=zizobetEventTime(e.gt??e.minute??e.time,e.clk,e.injury),minute=eventTime.minute;
   const card=zizoCardEvents?.cardIndices.has(index)===true;
   return {disabled:!active(e)||cornerNotTaken(e),id:zizoIdentities[index].id,sequence:zizoIdentities[index].sequence,
    type:type==='score_change'?'goal':(type==='corner_kick'||type==='corner')?'corner':card?'card':/foul/.test(type)?'foul':/offside/.test(type)?'offside':e.type,

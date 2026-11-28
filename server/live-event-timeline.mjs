@@ -1,10 +1,12 @@
 import {classifyZizobetCardEvents} from './zizobet/card-events.mjs';
 import {zizobetEventIdentities} from './zizobet/event-identity.mjs';
+import {zizobetEventTime} from './zizobet/event-time.mjs';
 
 /** Display only provider-timed incidents; reception time is never an event minute. */
 export function providerTimeline(matchId,rows,match={}){
  if(!Array.isArray(rows))return undefined;
  const events=new Map();
+ const ordinals=new Map();
  const identities=zizobetEventIdentities(rows);
  const cardEvents=classifyZizobetCardEvents(rows,match);
  for(const [index,row] of rows.entries()){
@@ -12,17 +14,10 @@ export function providerTimeline(matchId,rows,match={}){
    events.delete(identities[index].id);
    continue;
   }
-  const rawTime=String(row.gt??row.minute??row.time??'').trim();
-  const clock=rawTime.match(/^(\d{1,3})(?:\s*\+\s*(\d{1,2}))?$/);
-  if(!clock)continue;
-  const minute=Number(clock[1]);
-  let added=Number(clock[2]??row.injury??0);
-  const eventClock=String(row.clk??row.clock??'').match(/^(\d{1,3}):([0-5]\d)$/);
-  const clockMinute=eventClock?Number(eventClock[1]):null;
-  if(added===0&&(minute===45||minute===90)&&clockMinute!==null&&
-     clockMinute>minute&&clockMinute<=minute+15)
-   added=clockMinute-minute;
-  if(minute>120||!Number.isInteger(added)||added<0)continue;
+  const eventTime=zizobetEventTime(row.gt??row.minute??row.time,row.clk??row.clock,row.injury);
+  if(!Number.isFinite(eventTime.minute)||eventTime.minute>120)continue;
+  const minute=eventTime.minute-eventTime.added;
+  const added=eventTime.added;
   const team=/^(?:home|h|1)$/i.test(String(row.team))?'home':/^(?:away|a|2)$/i.test(String(row.team))?'away':null;
   if(!team)continue;
   const sourceType=String(row.type??'').toLowerCase();
@@ -34,6 +29,9 @@ export function providerTimeline(matchId,rows,match={}){
    cardEvents.cardIndices.has(index)?'card':
    /foul/.test(sourceType)?'foul':null;
   if(!type)continue;
+  const ordinalKey=type+':'+team;
+  const counterOrdinal=(ordinals.get(ordinalKey)??0)+1;
+  ordinals.set(ordinalKey,counterOrdinal);
   const text={goal:'Goal',corner:'Corner',yellow_card:'Yellow card',
    red_card:'Red card',card:'Card (colour unknown)',foul:'Foul'}[type];
   // Zizobet incidents may carry a player as "pl", a structured "player",
@@ -45,9 +43,80 @@ export function providerTimeline(matchId,rows,match={}){
     .map(playerName).find(Boolean)??'';
   const identity=identities[index];
   const id=identity.id;
-  events.set(id,{id,sequence:identity.sequence,matchId:String(matchId),type,minute,addedMinute:added,minuteLabel:added?minute+'+'+added:String(minute),team,text,...(player?{player}:{})});
+  events.set(id,{id,sequence:identity.sequence,matchId:String(matchId),type,minute,addedMinute:added,
+   minuteLabel:eventTime.label,phase:row.phase??row.period??row.periodName??row.period_name??row.half??eventTime.phase,
+   team,text,counterOrdinal,...(player?{player}:{})});
  }
  return [...events.values()].sort((a,b)=>a.minute-b.minute||a.addedMinute-b.addedMinute||a.sequence-b.sequence);
+}
+
+
+const timelineKind=event=>event?.type==='goal'?'goal':
+ event?.type==='corner'?'corner':
+ ['yellow_card','red_card','card'].includes(event?.type)?'card':
+ event?.type==='foul'?'foul':null;
+const compareTimelineEvents=(a,b)=>
+ Number(a.minute)-Number(b.minute)||Number(a.addedMinute??0)-Number(b.addedMinute??0)||
+ Number(a.sequence??0)-Number(b.sequence??0)||String(a.id??'').localeCompare(String(b.id??''));
+function withTimelineOrdinals(events){
+ const counts=new Map();
+ return [...events].sort(compareTimelineEvents).map(event=>{
+  const key=String(event.type??'')+':'+String(event.team??'');
+  const next=(counts.get(key)??0)+1;
+  const ordinal=Number.isSafeInteger(Number(event.counterOrdinal))&&Number(event.counterOrdinal)>0
+   ?Number(event.counterOrdinal):next;
+  counts.set(key,Math.max(next,ordinal));
+  return {...event,counterOrdinal:ordinal};
+ });
+}
+/** Add Dashboard-observed incidents without duplicating a previously stored event. */
+export function mergeDashboardTimelineEvents(previous,incoming){
+ const byId=new Map();
+ for(const event of Array.isArray(previous)?previous:[])if(event?.id!=null)byId.set(String(event.id),event);
+ for(const event of Array.isArray(incoming)?incoming:[])if(event?.id!=null)byId.set(String(event.id),event);
+ return [...byId.values()].sort(compareTimelineEvents);
+}
+/**
+ * A blank/partial TimeLines response must not erase incidents already observed
+ * from the dashboard or a previous provider snapshot. Only a category whose
+ * event list reconciles with the same Match counters may replace that category.
+ */
+export function mergeProviderTimeline(previous,incoming,{verifiedKinds=[],rawTimelineTruncated=false}={}){
+ if(!Array.isArray(incoming))return Array.isArray(previous)?previous:undefined;
+ if(!Array.isArray(previous)||!previous.length)return incoming;
+ const verified=new Set(rawTimelineTruncated?[]:verifiedKinds);
+ const oldEvents=withTimelineOrdinals(previous),newEvents=withTimelineOrdinals(incoming);
+ const oldByKey=new Map(oldEvents.map(event=>[
+  [event.type,event.team,event.counterOrdinal].join('|'),event
+ ]));
+ const newKeys=new Set(newEvents.map(event=>
+  [event.type,event.team,event.counterOrdinal].join('|')
+ ));
+ const output=[];
+ // A reconciled category is replaced by the provider's authoritative list.
+ for(const event of newEvents)if(verified.has(timelineKind(event)))output.push(event);
+ // For incomplete categories, update matching provisional/previous entries
+ // and preserve every prior incident not present in the partial response.
+ for(const event of newEvents){
+  if(verified.has(timelineKind(event)))continue;
+  const key=[event.type,event.team,event.counterOrdinal].join('|');
+  const old=oldByKey.get(key);
+  output.push(old
+   ?{...old,...event,source:'zizobet-timeline',provisional:false,timestampQuality:'provider-timeline'}
+   :event);
+ }
+ for(const event of oldEvents){
+  if(verified.has(timelineKind(event)))continue;
+  const key=[event.type,event.team,event.counterOrdinal].join('|');
+  if(!newKeys.has(key))output.push(event);
+ }
+ const unique=new Map();
+ for(const event of output){
+  const key=event?.id!=null?String(event.id):
+   [event?.type,event?.team,event?.counterOrdinal,event?.minute,event?.addedMinute].join('|');
+  unique.set(key,event);
+ }
+ return [...unique.values()].sort(compareTimelineEvents);
 }
 
 /** Reuse only player labels for the exact same provider incident.
