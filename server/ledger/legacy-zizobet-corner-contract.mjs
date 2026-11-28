@@ -18,7 +18,7 @@ export function recoverLegacyZizobetEventContract(line){
  const hold=String(accepted.settlementHold??'');
  const recoverable=new Set([
   '','NATIVE_PARAMETERS_UNMAPPED','NATIVE_FINAL_RULE_UNMAPPED',
-  'NATIVE_PERIOD_GOAL_UNMAPPED','NATIVE_STATISTIC_UNMAPPED',
+  'NATIVE_PERIOD_GOAL_UNMAPPED','NATIVE_STATISTIC_UNMAPPED','NATIVE_HTFT_UNMAPPED',
   'NATIVE_INTERVAL_BASELINE_UNVERIFIED','NATIVE_CONTRACT_REVIEW'
  ]);
  if(!recoverable.has(hold)||String(accepted.sourceProviderId??'').toUpperCase()!=='ZIZOBET')return null;
