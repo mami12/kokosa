@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {isAllowedTotalLine} from '../server/market-catalog.mjs';
 import {isCurrentSettlementCheckQuote} from '../server/ledger/settlement-check.mjs';
 import {isDecidedLiveNumberedGoalWindow} from '../server/ledger/decided-markets.mjs';
 import {isSettlementCheckFixture} from '../server/fixture-dates.mjs';
@@ -81,4 +82,31 @@ assert.match(serverSource,/loadMatchDetailsFully=async values/,
  'the server must expose a batch loader for full match details');
 assert.match(serverSource,/Promise\.all\(ids\.map\(id=>collector\?\.focus\?\.\(id\)\)\)/,
  'the full-market snapshots for both selected matches must load concurrently');
+
+const totalFamilies=[
+ {market_name:'Total Goals'},
+ {market_name:'Total Corners'},
+ {market_name:'Total Cards'},
+ {market_name:'Total Fouls'},
+ {market_name:'Over/Under',native_market_name:'Total Corners Over/Under'},
+ {market_name:'Over/Under',native_market_name:'Total Cards Over/Under'},
+ {market_name:'Over/Under',native_market_name:'Total Fouls Over/Under'},
+];
+for(const market of totalFamilies){
+ for(const line of ['0.5','1.5','2.5','7.5','10.5'])
+  assert.equal(isAllowedTotalLine({...market,line}),true,market.native_market_name??market.market_name+' '+line+' should remain available');
+ for(const line of ['1','2','3','4','5','6','7','8','0.25','0.75','1.25','1.75','2.25','2.75'])
+  assert.equal(isAllowedTotalLine({...market,line}),false,(market.native_market_name??market.market_name)+' '+line+' must be hidden');
+}
+assert.equal(isAllowedTotalLine({market_name:'Correct Score',line:'3'}),true,
+ 'integer selections in non-total markets are not affected');
+assert.equal(isAllowedTotalLine({market_name:'Total Goals',line:''}),true,
+ 'an offer with no identifiable total line is not guessed or rewritten');
+const collectorSource=fs.readFileSync(new URL('../server/collector.mjs',import.meta.url),'utf8');
+assert.match(collectorSource,/if\(!isAllowedTotalLine\(o\)\)continue;/,
+ 'the full-market serializer must remove integer and quarter totals');
+assert.match(collectorSource,/if\(!isAllowedTotalLine\(o\)\|\|o\.price==null&&o\.suspended===true\)return;/,
+ 'the homepage market-count path must use the same total-line rule');
+
+console.log('PASS only half-step Over/Under totals survive for goals, corners, cards and fouls on board and settlement reads');
 console.log('PASS settlement-check fetches full markets for both selected fixtures');
