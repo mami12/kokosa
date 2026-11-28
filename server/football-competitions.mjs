@@ -186,7 +186,7 @@ export function rankCompetitionRow(row, { allowUnlisted = false } = {}) {
   const categorySlug = row.category_slug ?? row.tournament?.category?.slug ?? '';
   const tournamentName = row.tournament_name ?? row.tournament?.name ?? '';
   const decision = competitionDecision(
-    { ...row, name: tournamentName, categorySlug, tournament: row.tournament, category: row.category },
+    { ...(row.tournament ?? {}), ...row, name: tournamentName, categorySlug, tournament: row.tournament, category: row.category },
     { ...(row.category ?? {}), slug: categorySlug },
   );
   if (!decision.allowed) {
