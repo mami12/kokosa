@@ -104,16 +104,21 @@ app.locals.loadMatchDetail=createMatchDetailRefresh({
 });
 // Full-market consumers await both the provider snapshot and the local odds commit.
 // The normal helper above remains fire-and-forget for fast public responses.
-app.locals.loadMatchDetailFully=async id=>{
-  boostMatch(id);
+app.locals.loadMatchDetailsFully=async values=>{
+  const ids=[...new Set((Array.isArray(values)?values:[values]).map(Number)
+    .filter(id=>Number.isSafeInteger(id)&&id>0))];
+  if(!ids.length)return;
+  for(const id of ids)boostMatch(id);
   if(['ybets','zizobet'].includes(String(config.sportsProvider).toLowerCase())) {
-    await collector?.focus?.(id);
-    await flushFeedBuffer();
+    // Each provider snapshot is fetched concurrently; one shared flush commits
+    // all selected fixtures before the caller reads their complete market grids.
+    await Promise.all(ids.map(id=>collector?.focus?.(id)));
   } else {
-    pusher?.subscribeFull?.(id);
-    await flushFeedBuffer();
+    for(const id of ids)pusher?.subscribeFull?.(id);
   }
+  await flushFeedBuffer();
 };
+app.locals.loadMatchDetailFully=async id=>app.locals.loadMatchDetailsFully([id]);
 let oddsStatus = { connected: false };
 let shuttingDown = false;
 // One ordered feed stream per process. Client detects missed broadcasts and
@@ -719,24 +724,39 @@ const oddsBuffer = [];
 const infoBuffer = new Map();
 let flushing = false;
 
+let flushPromise = null;
 async function flushFeedBuffer() {
-  if (shuttingDown || flushing || (!oddsBuffer.length && !infoBuffer.size)) return;
-  flushing = true;
-  try {
-    if (oddsBuffer.length) {
-      const rows = oddsBuffer.splice(0, oddsBuffer.length);
-      broadcastOdds(await applyOddsRows(rows)).catch((e) => console.warn('[feed] broadcast error:', e.message));
-    }
-    if (infoBuffer.size) {
-      const infos = [...infoBuffer.values()];
-      infoBuffer.clear();
-      for (const info of infos) await applyInfoFromFeed(info);
-    }
-  } catch (e) {
-    console.error('[feed] flush failed:', e.message);
-  } finally {
-    flushing = false;
+  if (shuttingDown) return;
+  // A concurrent full-market request must wait for an active feed flush, then
+  // drain anything that arrived after that flush took its snapshot.
+  if (flushing) {
+    await flushPromise;
+    if (oddsBuffer.length || infoBuffer.size) await flushFeedBuffer();
+    return;
   }
+  if (!oddsBuffer.length && !infoBuffer.size) return;
+  flushing = true;
+  flushPromise = (async () => {
+    try {
+      while (oddsBuffer.length || infoBuffer.size) {
+        if (oddsBuffer.length) {
+          const rows = oddsBuffer.splice(0, oddsBuffer.length);
+          broadcastOdds(await applyOddsRows(rows)).catch((e) => console.warn('[feed] broadcast error:', e.message));
+        }
+        if (infoBuffer.size) {
+          const infos = [...infoBuffer.values()];
+          infoBuffer.clear();
+          for (const info of infos) await applyInfoFromFeed(info);
+        }
+      }
+    } catch (e) {
+      console.error('[feed] flush failed:', e.message);
+    } finally {
+      flushing = false;
+      flushPromise = null;
+    }
+  })();
+  await flushPromise;
 }
 const feedFlushTimer = setInterval(() => trackBackground(flushFeedBuffer()), 1000);
 
