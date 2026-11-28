@@ -1135,7 +1135,7 @@ export async function loadVerifiedHalfTimeScore(matchId,result,{execute}={}){
  const {rows}=await execute(\`select c.provider,c.count_home,c.count_away,c.complete,c.confirmed_at,
     f.provider_event_id,f.team,f.minute,f.phase
    from app_match_event_coverage c
-   join app_match_event_fact f on f.match_id=c.match_id and f.provider=c.provider
+   left join app_match_event_fact f on f.match_id=c.match_id and f.provider=c.provider
     and f.kind=c.kind and f.active=true
    where c.match_id=$1 and c.kind='goal'
     and c.provider=any($2::text[]) and c.complete=true and c.confirmed_at is not null
