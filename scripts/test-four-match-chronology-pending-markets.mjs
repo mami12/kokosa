@@ -4,6 +4,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {LEDGER_SQL} from '../server/ledger/schema.mjs';
 import {recoverLegacyZizobetEventContract} from '../server/ledger/legacy-zizobet-corner-contract.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
+import {gradeHeldNativeCombo} from '../server/ledger/settler.mjs';
 
 const db=new PGlite();
 const run=(sql,params=[])=>db.query(sql,params);
@@ -168,6 +169,53 @@ try{
   cardColor:yellow.contract.cardColor,threshold:yellow.contract.threshold},
   {kind:'over',event:'card',cardColor:'yellow',threshold:1.5});
  assert.equal(yellow.status,'WON','Both yellow cards are counted independently');
+
+ // NOTTINGHAM FOREST - CHELSEA: 3-2 FT. The Under 1.5 leg is
+ // mathematically lost even if the half-time result is not yet available.
+ const frozenCombo=(marketId,marketName,selection,line,hold='NATIVE_HTFT_UNMAPPED')=>{
+  const marketKey='zz'+marketId+'@e30';
+  return {
+   id:'00000000-0000-4000-8000-'+String(marketId).padStart(12,'0'),
+   match_id:990105,market_key:marketKey,market_name:marketName,
+   outcome_key:selection,outcome_name:selection,line,period:0,
+   accepted_contract:{
+    sourceProviderId:'ZIZOBET',providerMarketKey:marketKey,
+    providerMarketName:marketName,providerOutcomeKey:selection,
+    providerOutcomeName:selection,nativeMarketId:marketId,
+    nativeMarketName:marketName,nativeOutcomeName:selection,
+    nativeParameters:{},providerPeriod:0,line,settlementHold:hold
+   }
+  };
+ };
+ const nottingham={home_score:3,away_score:2,half_home_score:null,half_away_score:null};
+ const nottUnder=frozenCombo(91001,'Halftime/fulltime & total goals (1.5)','1/1 and Under','1.5');
+ assert.equal(gradeHeldNativeCombo(nottUnder,nottingham),'LOST',
+  '3-2 FT makes the quoted Under 1.5 leg impossible without reconstructing HT');
+ const nottOver=frozenCombo(91002,'Halftime/fulltime & total goals (1.5)','1/1 and Over','1.5');
+ assert.equal(gradeHeldNativeCombo(nottOver,nottingham),null,
+  'A possible HT/FT winner waits for the Zizobet halftime score');
+ assert.equal(gradeHeldNativeCombo(nottOver,{...nottingham,half_home_score:1,half_away_score:0}),'WON',
+  'Zizobet HT 1-0 plus FT 3-2 verifies 1/1 and Over 1.5');
+ assert.equal(gradeHeldNativeCombo(frozenCombo(91003,
+  'Halftime/fulltime correct score','1/1 3:2',''),{...nottingham,half_home_score:1,half_away_score:0}),'WON',
+  'A correct-score HT/FT ticket checks both archived scorelines');
+ assert.equal(gradeHeldNativeCombo(frozenCombo(91004,
+  'Halftime/fulltime & exact goals (5)','1/1 and 5',''),{...nottingham,half_home_score:1,half_away_score:0}),'WON',
+  'HT/FT exact-goal combo uses the actual full-time total');
+
+ // BREST - PARIS: 1-0 FT. Under 1.5 is a possible winning total leg,
+ // but only Zizobet's archived 1-0 halftime score proves the 1/1 part.
+ const brest={home_score:1,away_score:0,half_home_score:1,half_away_score:0};
+ assert.equal(gradeHeldNativeCombo(frozenCombo(91005,
+  'Halftime/fulltime & total goals (1.5)','1/1 and Under','1.5'),brest),'WON');
+ assert.equal(gradeHeldNativeCombo(frozenCombo(91006,
+  'Halftime/fulltime & total goals (2.5)','1/1 and Over','2.5'),brest),'LOST',
+  '1-0 FT makes Over 2.5 impossible even before checking HT/FT');
+ assert.equal(gradeHeldNativeCombo(frozenCombo(91007,
+  'Halftime/fulltime & total goals (2.5)','1/1 and Under','2.5'),brest),'WON');
+ assert.equal(gradeHeldNativeCombo(frozenCombo(91008,
+  'Halftime/fulltime & total goals (1.5)','X/1 and Under','1.5'),brest),'LOST',
+  'The confirmed 1-0 HT result disproves X/1');
 
  console.log('PASS four-match legacy pending markets: goal interval, Nth corner, race to X, last corner, corner interval and separate yellow/red cards');
 }finally{
