@@ -14,10 +14,10 @@ import {supplementalRefreshMs,fixtureLive,prematchSoon,sportingFingerprint} from
 const query=async(...a)=>(await import('../db.mjs')).query(...a);
 const specs={bsd:{base:'https://sports.bzzoiro.com/api/v2',env:'BSD_API_KEY',header:'Authorization',prefix:'Token ',day:1000,month:14000},worldcup26:{base:'https://worldcup26.ir',day:500,month:10000},sportapi:{base:'https://sportapi.ai/api',env:'SPORTAPI_API_KEY',header:'X-Api-Key',day:2000,month:14000},goalapi:{base:'https://api.goal-api.com/v1',env:'GOALAPI_API_KEY',header:'Authorization',prefix:'Bearer ',day:1000,month:31000},apifootball:{base:'https://v3.football.api-sports.io',env:'APIFOOTBALL_API_KEY',header:'x-apisports-key',day:100,month:3100}};
 const refreshMs=10*60*1000;
-// Zizobet owns the bookmaker offers, prices, live status and primary score.
-// Configured football-data providers independently recover missing final statistics
-// and complete goal/corner/card timelines for market-specific settlement.
-const supplementalStats=['shotsOnTarget','fouls','shots','possession','corners','yellow','red','cards'];
+// Zizobet owns the bookmaker offers, prices, live status, score and goal chronology.
+// FotMob supplies statistics plus an independently checked corner/card fallback only;
+// other configured providers may recover missing Zizobet goal chronology.
+const supplementalStats=['shotsOnTarget','fouls','shots','possession','corners','goalKicks','yellow','red','cards'];
 const requiredStats=['shotsOnTarget','fouls','shots'];
 const supplementalSnapshot=values=>Object.fromEntries(supplementalStats
  .filter(field=>values?.[field]!=null).map(field=>[field,values[field]]));
@@ -539,6 +539,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
         shots:parsed.statistics.shots,
         shotsOnTarget:parsed.statistics.shotsOnTarget,
         fouls:parsed.statistics.fouls,
+        goalKicks:parsed.statistics.goalKicks,
         corners:(parsed.cornersHome!=null&&parsed.cornersAway!=null)
          ?{home:parsed.cornersHome,away:parsed.cornersAway}:null,
         cards:(parsed.cardsHome!=null&&parsed.cardsAway!=null)
