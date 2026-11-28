@@ -2060,6 +2060,7 @@ export async function settleVerifiedEventFacts({
          and (
            e.provider='zizobet'
            or (e.provider in ('fotmob','apifootball','sportapi','goalapi','bsd','worldcup26')
+             and (l.live_contract->>'event'<>'goal' or e.provider<>'fotmob')
              and e.complete=true and e.confirmed_at is not null
              and exists(select 1 from app_match_result mr where mr.match_id=l.match_id
                and mr.source in ('ZIZOBET','ADMIN','RECOVERY')
