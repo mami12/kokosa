@@ -45,8 +45,8 @@ import {cornerTotalContract} from './corner-total-contract.mjs';
 import {parseTeamCountMarket} from './live-contract-rules.mjs';
 import {statisticsNeedReview,settlementStatisticFields} from './settlement-review.mjs';
 import {createLiveSettlementPreviews} from './live-shadow-settlement.mjs';
-import {gradeStoredEventContract,SUPPORTED_FACT_KINDS} from './match-event-facts.mjs';
-import {recoverLegacyZizobetCornerContract} from './legacy-zizobet-corner-contract.mjs';
+import {gradeStoredEventContract,SUPPORTED_FACT_KINDS,loadVerifiedHalfTimeScore} from './match-event-facts.mjs';
+import {recoverLegacyZizobetCornerContract,recoverLegacyZizobetEventContract} from './legacy-zizobet-corner-contract.mjs';
 import {backfillPendingTeamGoalContracts} from './live-contract-backfill.mjs';
 import {settleVerifiedLiveProposals} from './verified-live-settlement.mjs';
 import {nativeZizobetContractRow} from './native-zizobet-contract.mjs';
@@ -108,7 +108,7 @@ export function unverifiedCompositeLine(line={},result={}){
  */
 export function gradeHeldNativeCombo(line,result){
  const saved=line?.accepted_contract,reason=String(saved?.settlementHold??'');
- if(!['NATIVE_PARAMETERS_UNMAPPED','NATIVE_FINAL_RULE_UNMAPPED','NATIVE_HALF_COMBO_UNMAPPED',
+ if(!['NATIVE_PARAMETERS_UNMAPPED','NATIVE_FINAL_RULE_UNMAPPED','NATIVE_HTFT_UNMAPPED','NATIVE_HALF_COMBO_UNMAPPED',
       'NATIVE_PERIOD_GOAL_UNMAPPED','NATIVE_CONTRACT_REVIEW',
       'NATIVE_LIVE_HANDICAP_UNMAPPED','NATIVE_HANDICAP_UNMAPPED'].includes(reason))return null;
  if(String(saved?.sourceProviderId??'').toUpperCase()!=='ZIZOBET')return null;
@@ -133,6 +133,23 @@ export function gradeHeldNativeCombo(line,result){
   line:String(saved.line??''),period:rawPeriod,
   accepted_contract:saved
  };
+ // Old quotes held before the HT/FT parser was added can still be recovered
+ // from the immutable native selection. A final-result mismatch is already
+ // a certain loss; a possible winner waits for confirmed halftime evidence.
+ if(reason==='NATIVE_HTFT_UNMAPPED'){
+  if(isHtFtComboMarket(parserMarketName)){
+   const status=gradeHtFtCombo(frozen,result);
+   return status==='WON'||status==='LOST'?status:null;
+  }
+  if(isHtFtMarket(parserMarketName)){
+   const selection=parseHtFtOutcome(saved.providerOutcomeName,saved.providerOutcomeKey);
+   const home=scoreValue(result?.home_score),away=scoreValue(result?.away_score);
+   if(!selection||home===null||away===null)return null;
+   const full=home>away?'1':away>home?'2':'X';
+   if(selection.full!==full)return 'LOST';
+   return gradeHtFt(selection,result?.half_home_score,result?.half_away_score,home,away);
+  }
+ }
  // The accepted Zizobet title plus its frozen line and Yes/No selection
  // are sufficient for this explicitly unmapped full-time OR-total family.
  if(reason==='NATIVE_PARAMETERS_UNMAPPED'||reason==='NATIVE_FINAL_RULE_UNMAPPED'){
@@ -141,6 +158,19 @@ export function gradeHeldNativeCombo(line,result){
   // Older catalog versions did not classify Cornerbet or some native corner totals.
   if(/corner/i.test(String(frozen.market_name??''))){
    const repaired={...line,...frozen,accepted_contract:{...saved,settlementHold:null}};
+   const status=gradeLine(repaired,result);
+   if(['WON','LOST','VOID'].includes(status))return status;
+  }
+ }
+ // Re-run exact, now-supported parsers against the frozen native quote for
+ // old final/statistic/period-goal parser holds. The standard evidence gate
+ // still rejects missing timelines, unresolved baselines, ambiguous periods,
+ // and unsupported composite selections.
+ if(['NATIVE_FINAL_RULE_UNMAPPED','NATIVE_PERIOD_GOAL_UNMAPPED',
+     'NATIVE_STATISTIC_UNMAPPED'].includes(reason)){
+  const repaired={...line,...frozen,
+   accepted_contract:{...saved,settlementHold:null}};
+  if(hasRequiredSettlementEvidence(repaired,result)){
    const status=gradeLine(repaired,result);
    if(['WON','LOST','VOID'].includes(status))return status;
   }
@@ -1889,7 +1919,7 @@ async function recordPendingReasons(items,runQuery=query){
 }
 
 export async function settleMatch(matchId) {
-  const result = await getResult(matchId);
+  let result = await getResult(matchId);
   if (!result) return { matchId: String(matchId), settled: 0, reason: 'no result stored yet' };
 
   if (result.home_score != null && result.away_score != null) {
@@ -1924,6 +1954,24 @@ export async function settleMatch(matchId) {
     await query(`select l.* from app_ticket_line l where match_id = $1 and l.status = 'PENDING' and not exists(select 1 from app_settlement_override o where o.line_id=l.id)`, [Number(matchId)])
   ).rows;
   if (!lines.length) return { matchId: String(matchId), settled: 0 };
+  if((result.half_home_score==null||result.half_away_score==null)&&
+     lines.some(line=>{
+      const title=String(line.market_name??'').toLowerCase();
+      const hasHalfScope=/\b(?:1st|first|2nd|second)\s+half\b|\b(?:halftime|half[ -]time)\b/.test(title);
+      return isHtFtMarket(title)||hasHalfScope||[1,2].includes(Number(line.period??0));
+     })) {
+    try{
+      const half=await loadVerifiedHalfTimeScore(matchId,result,{execute:query});
+      if(half&&
+         (result.half_home_score==null||Number(result.half_home_score)===half.home)&&
+         (result.half_away_score==null||Number(result.half_away_score)===half.away)){
+        result={...result,half_home_score:half.home,half_away_score:half.away,
+          _halfTimeEvidenceSource:half.source};
+      }
+    }catch(error){
+      console.warn('[settle] verified halftime reconstruction failed for',matchId,error?.message);
+    }
+  }
 
   const unresolved=[];
   const proposals=[];
@@ -1934,20 +1982,21 @@ export async function settleMatch(matchId) {
       unresolved.push({line,result});
       continue;
     }
-    // Recover old native corner contracts from the immutable accepted quote
-    // before the generic hold guard. Only known parser-migration holds qualify.
-    const recoveredCornerContract=!line.live_contract?
-      recoverLegacyZizobetCornerContract(line):null;
+    // Recover old event contracts from the immutable accepted Zizobet quote
+    // before the generic hold guard. The parser may rebuild a goal/corner/card
+    // contract, but the grader still requires the matching provider chronology.
+    const recoveredEventContract=!line.live_contract?
+      recoverLegacyZizobetEventContract(line):null;
     if(line?.accepted_contract?.settlementHold&&
-       gradeHeldNativeCombo(line,result)===null&&!recoveredCornerContract){
+       gradeHeldNativeCombo(line,result)===null&&!recoveredEventContract){
       unresolved.push({line,result});
       continue;
     }
     let status=null;
-    const accepted=recoveredCornerContract&&typeof line.accepted_contract==='string'
+    const accepted=recoveredEventContract&&typeof line.accepted_contract==='string'
       ?JSON.parse(line.accepted_contract):line.accepted_contract;
-    const settlementLine=recoveredCornerContract?
-      {...line,live_contract:recoveredCornerContract,
+    const settlementLine=recoveredEventContract?
+      {...line,live_contract:recoveredEventContract,
        accepted_contract:{...accepted,settlementHold:null}}:line;
     // A frozen event contract is graded against PostgreSQL provider facts,
     // never parsed from a translated/displayed name at settlement time.
@@ -2015,6 +2064,7 @@ export async function settleVerifiedEventFacts({
          and (
            e.provider='zizobet'
            or (e.provider in ('fotmob','apifootball','sportapi','goalapi','bsd','worldcup26')
+             and (l.live_contract->>'event'<>'goal' or e.provider<>'fotmob')
              and e.complete=true and e.confirmed_at is not null
              and exists(select 1 from app_match_result mr where mr.match_id=l.match_id
                and mr.source in ('ZIZOBET','ADMIN','RECOVERY')

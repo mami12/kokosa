@@ -73,6 +73,7 @@ const liveDetails={
     {title:'Shots on Target',stats:['5','2']}
    ]},
    {title:'Fouls',stats:['9','13']},
+   {title:'Goal Kicks',stats:['8','6']},
    {title:'Possession',stats:['61%','39%']}
   ]}}}
  }
@@ -87,9 +88,12 @@ assert.deepEqual([actual.cardsHome,actual.cardsAway],[1,1]);
 assert.deepEqual(actual.statistics.shots,{home:12,away:7});
 assert.deepEqual(actual.statistics.shotsOnTarget,{home:5,away:2});
 assert.deepEqual(actual.statistics.fouls,{home:9,away:13});
+assert.deepEqual(actual.statistics.goalKicks,{home:8,away:6},
+ 'FotMob goal-kick totals are parsed as statistics, not event chronology or goals');
 assert.deepEqual(actual.statistics.possession,{home:61,away:39},
  'FotMob percentage strings such as 61% are parsed instead of discarded');
-assert.equal(actual.goalTimelineAvailable,true);
+assert.equal('goalEvents' in actual,false,'FotMob does not expose goal chronology to settlement');
+assert.equal('halfHomeScore' in actual,false,'FotMob does not supply half-time scores');
 assert.equal(actual.cornerTimelineAvailable,true);
 assert.equal(actual.cardTimelineAvailable,true);
 assert.deepEqual(actual.cornerEvents.map(event=>[event.minute,event.injury]),[[45,3],[90,4]],

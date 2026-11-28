@@ -483,6 +483,12 @@ function gradeOfficialCornerPeriodContract(contract,result){
    const side=winner(half);
    return side==='none'&&contract.drawOffered!==true?'VOID':side===contract.side?'WON':'LOST';
   }
+  if(contract.mode==='half-full-result'){
+   if(!['home','away','none'].includes(contract.halfSide)||
+      !['home','away','none'].includes(contract.fullSide))return null;
+   const winner=pair=>pair.home>pair.away?'home':pair.away>pair.home?'away':'none';
+   return winner(first)===contract.halfSide&&winner(full)===contract.fullSide?'WON':'LOST';
+  }
   if(contract.mode==='most-half'){
    if(![0,1,2].includes(contract.choice)||
       contract.scope!=null&&!['home','away'].includes(contract.scope))return null;
@@ -640,8 +646,6 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
        (player_name is not null and lower(player_name)=lower($7)) or
        (aiscore_verified=true and aiscore_player_name is not null
          and lower(aiscore_player_name)=lower($7)) or
-       (own_goal=false and fotmob_verified=true and fotmob_player_name is not null
-         and lower(fotmob_player_name)=lower($7)) or
        (own_goal=false and supplemental_verified=true and supplemental_player_name is not null
          and lower(supplemental_player_name)=lower($7))))))::int as player_goals,
     bool_or(same_time>1) as ambiguous_order,
@@ -1120,6 +1124,79 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
  return null;
 }
 
+/**
+ * Reconstruct a missing HT score only from one provider's complete, confirmed
+ * goal timeline whose per-team totals reconcile to the authoritative FT score.
+ * Only ZIZOBET goal facts are eligible. FotMob is a statistics/corner/card
+ * source and is never used to reconstruct goals or the half-time score.
+ */
+export async function loadVerifiedHalfTimeScore(matchId,result,{execute}={}){
+ const id=Number(matchId);
+ const whole=value=>value!=null&&value!==''&&Number.isSafeInteger(Number(value))&&Number(value)>=0?Number(value):null;
+ const finalHome=whole(result?.home_score),finalAway=whole(result?.away_score);
+ if(!Number.isSafeInteger(id)||id<=0||finalHome===null||finalAway===null||
+    typeof execute!=='function')return null;
+ const {rows}=await execute(`select c.provider,c.count_home,c.count_away,c.complete,c.confirmed_at,
+    f.provider_event_id,f.team,f.minute,f.phase
+   from app_match_event_coverage c
+   left join app_match_event_fact f on f.match_id=c.match_id and f.provider=c.provider
+    and f.kind=c.kind and f.active=true
+   where c.match_id=$1 and c.kind='goal'
+    and c.provider=any($2::text[]) and c.complete=true and c.confirmed_at is not null
+   order by case c.provider when 'zizobet' then 0 when 'fotmob' then 1 else 2 end,
+    f.minute,f.seconds nulls last,f.provider_event_id`,[
+    id,['zizobet']
+   ]);
+ const groups=new Map();
+ for(const row of rows){
+  const provider=String(row.provider??'').toLowerCase();
+  if(!groups.has(provider))groups.set(provider,{
+   countHome:Number(row.count_home),countAway:Number(row.count_away),events:[]
+  });
+  if(row.provider_event_id!=null)groups.get(provider).events.push(row);
+ }
+ const valid=[];
+ const firstPhases=new Set(['1','h1','1h','1sthalf','firsthalf','half1','firstperiod','1stperiod','period1']);
+ const secondPhases=new Set(['2','h2','2h','2ndhalf','secondhalf','half2','secondperiod','2ndperiod','period2']);
+ const regularPhases=new Set(['regular','regulartime','ft','fulltime','normal','normaltime',
+  'regulation','regulationtime','90','stoppage','stoppagetime','injurytime']);
+ for(const [provider,group] of groups){
+  const events=group.events;
+  if(group.countHome!==finalHome||group.countAway!==finalAway||
+     events.length!==finalHome+finalAway||
+     events.filter(event=>event.team==='home').length!==finalHome||
+     events.filter(event=>event.team==='away').length!==finalAway||
+     events.some(event=>!['home','away'].includes(event.team))||
+     new Set(events.map(event=>String(event.provider_event_id))).size!==events.length)continue;
+  let home=0,away=0,usable=true;
+  for(const event of events){
+   const minute=Number(event.minute);
+   const phase=String(event.phase??'').toLowerCase().replace(/[^a-z0-9]/g,'');
+   let half=null;
+   if(!Number.isSafeInteger(minute)||minute<0||minute>130||
+      /extra|shootout|penalt/.test(phase)){usable=false;break;}
+   if(firstPhases.has(phase))half=1;
+   else if(secondPhases.has(phase))half=2;
+   else if(regularPhases.has(phase)){
+    if(minute<=45)half=1;
+    else if(minute<=105)half=2;
+    else {usable=false;break;}
+   }else if(!phase){
+    if(minute<45)half=1;
+    else if(minute>45&&minute<=90)half=2;
+    else {usable=false;break;}
+   }else {usable=false;break;}
+   if(half===1){
+    if(event.team==='home')home++;else away++;
+   }
+  }
+  if(usable)valid.push({provider,home,away});
+ }
+ const primary=valid.find(item=>item.provider==='zizobet');
+ if(primary)return {home:primary.home,away:primary.away,source:'ZIZOBET_EVENT_TIMELINE'};
+ return null;
+}
+
 function freezeRelativeNextGoal(line){
  const title=String(line?.market_name??line?.accepted_contract?.providerMarketName??'')
   .split(' · ')[0].toLowerCase().replace(/\s+/g,' ').trim();
@@ -1172,18 +1249,21 @@ export async function gradeStoredEventContract(line,result,{execute}={}){
   }
   return primary;
  }
- // A present Zizobet period-corner snapshot is authoritative even when its
- // internal totals do not reconcile. Such a contradiction is a hard hold:
- // do not bypass it with a secondary event timeline.
+ // A present native Zizobet period-corner breakdown is authoritative. If it
+ // is malformed or contradicts the final counters, a secondary timeline must
+ // not overrule that conflict.
  const resultStats=typeof result?.statistics==='string'?(()=>{
   try{return JSON.parse(result.statistics);}catch{return null;}
  })():result?.statistics;
- const isOfficialPeriodCornerContract=c?.event==='corner'&&(
+ const officialPeriodCorner=c?.event==='corner'&&(
   ['half-total','half-exact-count','half-parity','corner-comparison'].includes(c.kind)||
   c.kind==='score-handicap'&&[1,2].includes(c.half));
- if(isOfficialPeriodCornerContract&&
-    String(result?.source??'').toUpperCase()==='ZIZOBET'&&
+ if(officialPeriodCorner&&String(result?.source??'').toUpperCase()==='ZIZOBET'&&
     resultStats?.cornerPeriods!=null)return null;
+ // If Zizobet cannot prove a period/sequence contract from its own event list,
+ // the separately verified historical provider timeline may do so. That
+ // alternate chronology must independently reconcile to the same FT totals;
+ // facts from different providers are never merged.
  // Never combine two different event sequences. A complete secondary-provider
  // timeline may stand in for a missing/incomplete Zizobet chronology only after
  // it is validated against this fixture's final score and any available FT counters.
@@ -1206,13 +1286,16 @@ export async function gradeStoredEventContract(line,result,{execute}={}){
   c.event==='corner'?[result?.corners_home,result?.corners_away]:
    [result?.cards_home,result?.cards_away];
  const validTotal=value=>value!=null&&Number.isSafeInteger(Number(value))&&Number(value)>=0;
+ const eligibleProviders=c.event==='goal'
+  ?[...HISTORICAL_TIMED_EVENT_PROVIDERS].filter(provider=>provider!=='fotmob')
+  :[...HISTORICAL_TIMED_EVENT_PROVIDERS];
  const {rows}=await execute(`select provider from app_match_event_coverage
   where match_id=$1 and kind=$2 and provider=any($3::text[])
     and complete=true and confirmed_at is not null
     and ($4::int is null or count_home=$4)
     and ($5::int is null or count_away=$5)
   order by case provider when 'fotmob' then 0 else 1 end,provider`,
- [line.match_id,c.event,[...HISTORICAL_TIMED_EVENT_PROVIDERS],
+ [line.match_id,c.event,eligibleProviders,
   validTotal(totals[0])?Number(totals[0]):null,
   validTotal(totals[1])?Number(totals[1]):null]);
  const verdicts=[];

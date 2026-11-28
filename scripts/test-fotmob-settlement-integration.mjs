@@ -9,8 +9,8 @@ import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
 import {gradeStatisticLine} from '../server/ledger/statistic-markets.mjs';
 import {gradeLine} from '../server/ledger/settler.mjs';
 
-// One complete, provider-shaped FotMob match is taken through parsing,
-// fixture-final counter reconciliation, durable evidence storage and grading.
+// FotMob is used for statistics plus corner/card event verification only.
+// Legacy FotMob goal rows must never authorize goal-market payouts.
 const matchId=92820261;
 const summary={status:{scoreStr:'1 - 0',finished:true},home:{score:1},away:{score:0}};
 const details={
@@ -47,7 +47,7 @@ assert.equal(parsed.finished,true);
 assert.deepEqual([parsed.homeScore,parsed.awayScore],[1,0]);
 assert.deepEqual([parsed.cornersHome,parsed.cornersAway],[2,1]);
 assert.deepEqual([parsed.cardsHome,parsed.cardsAway],[1,1]);
-assert.equal(parsed.goalTimelineAvailable,true);
+assert.equal('goalEvents' in parsed,false,'FotMob does not expose goal chronology');
 assert.equal(parsed.cornerTimelineAvailable,true);
 assert.equal(parsed.cardTimelineAvailable,true);
 
@@ -62,9 +62,10 @@ try{
 
  const goalEvidence=await persistHistoricalGoalFacts(matchId,{
   source:'fotmob',final:true,complete:true,goalsAvailable:true,
-  homeScore:parsed.homeScore,awayScore:parsed.awayScore,events:parsed.goalEvents
+  homeScore:parsed.homeScore,awayScore:parsed.awayScore,
+  events:[{id:'not-eligible',type:'goal',team:'home',minute:22,own:false}]
  },{database});
- assert.equal(goalEvidence.stored,true,'complete FotMob goal chronology is persisted only against matching Zizobet FT score');
+ assert.equal(goalEvidence.stored,false,'FotMob goal facts are rejected at the persistence boundary');
 
  const cornerEvidence=await persistHistoricalTimedEvents(matchId,{
   source:'fotmob',kind:'corner',final:true,complete:true,timelineAvailable:parsed.cornerTimelineAvailable,
@@ -87,9 +88,9 @@ try{
   cards_home:1,cards_away:1
  },{execute:run});
 
- // Goal sequence + timed interval.
- assert.equal(await grade('goal','sequence',{target:1,side:'home'}),'WON');
- assert.equal(await grade('goal','window',{from:20,to:25,choice:true}),'WON');
+ // FotMob goal chronology is deliberately ignored for goal-market settlement.
+ assert.equal(await grade('goal','sequence',{target:1,side:'home'}),null);
+ assert.equal(await grade('goal','window',{from:20,to:25,choice:true}),null);
 
  // First/next/race/90+ corners.
  assert.equal(await grade('corner','sequence',{target:1,side:'home'}),'WON');
@@ -121,5 +122,5 @@ try{
  assert.equal(gradeStatisticLine({market_name:'Total Red Cards',line:'0.5',outcome_name:'Over'},result),'WON');
  assert.equal(gradeStatisticLine({market_name:'Total Shots on Target',line:'6.5',outcome_name:'Over'},result),'WON');
 
- console.log('PASS FotMob-to-settlement integration: final stats, full goal/corner/card timelines, 90+ corners, first/next/race/interval and aggregate market grading');
+ console.log('PASS FotMob statistics-only integration: corners/cards chronology, 90+ events, intervals, and no FotMob goal settlement');
 }finally{await db.close();}

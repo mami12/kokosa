@@ -1,6 +1,5 @@
 import {displayTeamStatistics,displayGoalIntervals} from './display-stats.mjs';
-import {primaryGoalDisplay,matchedSupplementalScorers,displayOnlyFotMobScorers} from './primary-goal-display.mjs';
-import {enrichFotMobScorerNames} from './fotmob-scorer-enrichment.mjs';
+import {primaryGoalDisplay} from './primary-goal-display.mjs';
 import {enrichPrimaryActors} from './primary-actor-enrichment.mjs';
 import {SUPPLEMENTAL_INCIDENT_SQL,fotMobIncidents,backupIncidents,rawProviderIncidents,storeSupplementalIncidents} from './supplemental-incidents.mjs';
 import {teamStatisticsFromRow,verifiedFinalStatistics} from '../match-statistics.mjs';
@@ -15,24 +14,15 @@ import {supplementalRefreshMs,fixtureLive,prematchSoon,sportingFingerprint} from
 const query=async(...a)=>(await import('../db.mjs')).query(...a);
 const specs={bsd:{base:'https://sports.bzzoiro.com/api/v2',env:'BSD_API_KEY',header:'Authorization',prefix:'Token ',day:1000,month:14000},worldcup26:{base:'https://worldcup26.ir',day:500,month:10000},sportapi:{base:'https://sportapi.ai/api',env:'SPORTAPI_API_KEY',header:'X-Api-Key',day:2000,month:14000},goalapi:{base:'https://api.goal-api.com/v1',env:'GOALAPI_API_KEY',header:'Authorization',prefix:'Bearer ',day:1000,month:31000},apifootball:{base:'https://v3.football.api-sports.io',env:'APIFOOTBALL_API_KEY',header:'x-apisports-key',day:100,month:3100}};
 const refreshMs=10*60*1000;
-// Zizobet owns the bookmaker offers, prices, live status and primary score.
-// Configured football-data providers independently recover missing final statistics
-// and complete goal/corner/card timelines for market-specific settlement.
-const supplementalStats=['shotsOnTarget','fouls','shots','possession','corners','yellow','red','cards'];
+// Zizobet owns the bookmaker offers, prices, live status, score and goal chronology.
+// FotMob supplies statistics plus an independently checked corner/card fallback only;
+// other configured providers may recover missing Zizobet goal chronology.
+const supplementalStats=['shotsOnTarget','fouls','shots','possession','corners','goalKicks','yellow','red','cards'];
 const requiredStats=['shotsOnTarget','fouls','shots'];
 const supplementalSnapshot=values=>Object.fromEntries(supplementalStats
  .filter(field=>values?.[field]!=null).map(field=>[field,values[field]]));
 const finished=row=>row.final===true||[row.status,row.service,row.feed_status].some(value=>/^(?:ft|full.?time|finished|ended|cancelled|canceled|after (?:match|penalt(?:y|ies)))(?:\b|$)/i.test(String(value??'')));
 const live=row=>!finished(row)&&String(row.service??row.status).toUpperCase()==='LIVE';
-/** Score-only Zizobet LIVE goals also need a source-matched scorer name on
- * opened fixtures when the independent primary incident archive lags.
- */
-export function needsFotMobScorerLookup(row,primaryGoal){
- if(row?.home_score==null||row?.away_score==null)return false;
- const h=Number(row.home_score),a=Number(row.away_score);
- return Number.isSafeInteger(h)&&Number.isSafeInteger(a)&&h>=0&&a>=0&&
-    h+a>0&&(!primaryGoal?.hasGoals||primaryGoal.missingScorers===true);
-}
 export const providerUrls=Object.fromEntries(Object.entries(specs).map(([k,v])=>[k,v.base]));
 export function createStatsService({runQuery=query,env=process.env,request=fetch,now=Date.now,saveEvidence,persistGoalFacts,persistTimedFacts,loadMatch,loadSnapshots,getWatchIds,getEventWatchIds}={}){
  let initFlight,busy=false,active=0;const offers=new Map(),inflight=new Map();
@@ -331,6 +321,9 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
       row.kind==='card'&&(/yellow|red/i.test(String(row.market_name??''))||['yellow','red'].includes(String(row.card_color).toLowerCase())));
      return !coverageRows.some(row=>{
       if(row.kind!==kind||row.complete!==true||row.confirmed_at==null)return false;
+      // Older releases may have stored FotMob goal coverage. It is not
+      // eligible for goal recovery or settlement under the current policy.
+      if(kind==='goal'&&row.provider==='fotmob')return false;
       if(totals.home!=null&&Number(row.count_home)!==totals.home)return false;
       if(totals.away!=null&&Number(row.count_away)!==totals.away)return false;
       if(colorRequired&&row.card_colors_verified!==true)return false;
@@ -343,6 +336,8 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    const requiredForMatch=[...new Set([...(final?[]:requiredStats),...settlementFields])];
    const matchStatsReady=entry=>statsReady(entry,requiredForMatch);
    const finalReviewNeeded=final&&(settlementFields.length>0||finalTimelineNeeds.length>0);
+   const fotmobReviewNeeded=final&&(settlementFields.length>0||
+    finalTimelineNeeds.some(kind=>['corner','card'].includes(kind)));
    const eventKindsKey=JSON.stringify(finalTimelineNeeds.slice().sort());
    const old=cached??await read('display:'+id);
    // Opening a fixture is itself a request for the complete FotMob incident
@@ -396,11 +391,10 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    // Zizobet remains first choice. A complete fallback timeline is stored
    // separately and is considered only when the primary event kind is missing.
    let primaryFacts=[],primaryGoal=null,primaryActors=[],goalCoverage=null;
-   const actorSQL="select provider_event_id,kind,minute,team,card_color,player_name,aiscore_player_name,aiscore_verified,own_goal,fotmob_player_name,fotmob_verified,supplemental_player_name,supplemental_verified from app_match_event_fact where match_id=$1 and provider='zizobet' and kind in ('goal','card','foul','corner') and active=true";
+   const actorSQL="select provider_event_id,kind,minute,team,card_color,player_name,aiscore_player_name,aiscore_verified,own_goal,supplemental_player_name,supplemental_verified from app_match_event_fact where match_id=$1 and provider='zizobet' and kind in ('goal','card','foul','corner') and active=true";
    const refreshActors=async()=>{primaryActors=(await runQuery(actorSQL,[Number(id)])).rows;return primaryActors;};
    const needsActors=()=>primaryActors.some(f=>['goal','card','foul'].includes(f.kind)&&
      !f.player_name&&!(f.aiscore_verified&&f.aiscore_player_name)&&
-     !(f.fotmob_verified&&f.fotmob_player_name)&&
      !(f.supplemental_verified&&f.supplemental_player_name));
    try{
     const coverage=(await runQuery(
@@ -412,7 +406,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
      goalCoverage=coverage;
      primaryFacts=(await runQuery(
        "select provider_event_id,minute,team,phase,player_name,aiscore_player_name,aiscore_verified, "+
-       "own_goal,fotmob_player_name,fotmob_verified,supplemental_player_name,supplemental_verified "+  
+       "own_goal,supplemental_player_name,supplemental_verified "+  
        "from app_match_event_fact where match_id=$1 and provider='zizobet' and kind='goal' and active=true",
        [Number(id)])).rows;
      primaryGoal=primaryGoalDisplay(coverage,primaryFacts,row);
@@ -430,6 +424,9 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    // an opened match still needs a source-labelled scorer history.
    // Enrichment attaches only to a Zizobet incident, never an inferred goal.
    const needsAnyActors=()=>needsActors();
+   const needsFotMobActors=()=>primaryActors.some(f=>f.kind==='card'&&
+     !f.player_name&&!(f.aiscore_verified&&f.aiscore_player_name)&&
+     !(f.supplemental_verified&&f.supplemental_player_name));
    const observations=[],attempted=[],unavailable={};
    if(final&&result)observations.push({provider:'ZIZOBET',final:true,observedAt:new Date(now()).toISOString(),values:{...primaryArchive}});
    const state=await read('match:'+id),mapping={...(state?.identity===identity?state.mapping??{}:{}),...(old?.identity===identity?old.mapping??{}:{})};
@@ -474,19 +471,18 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
      if(!final&&matchStatsReady(entry))break;
     }catch(e){unavailable[provider]=/^STATS_[A-Z_0-9]+$/.test(e.message)?e.message:'STATS_UNAVAILABLE';health.providers[provider]={...(health.providers[provider]??{}),lastError:unavailable[provider]};}
    }
-   // If the primary score has goals but the SQL event timeline is missing,
-   // a detail viewer still needs an advisory FotMob scorer lookup.
-   const missingGoalActors=needsFotMobScorerLookup(row,primaryGoal);
-   if(missingGoalActors||needsAnyActors()||!matchStatsReady(entry)||finalReviewNeeded||detailTimelineRefresh){
+   // FotMob is restricted to match statistics and corner/card incident
+   // verification. Goal chronology and scorer identity remain non-FotMob.
+   if(needsFotMobActors()||!matchStatsReady(entry)||fotmobReviewNeeded||detailTimelineRefresh){
     if(detailTimelineRefresh)entry.fotmobTimelineAttemptedAt=now();
-    if(finalReviewNeeded)attempted.push('fotmob');
+    if(fotmobReviewNeeded)attempted.push('fotmob');
     try{
      const targetDate=row.start_at||row.startAt||new Date().toISOString();
      const dates=candidateDateStrings(targetDate);
      const fm=await findFotMobFixture(row.home,row.away,dates,row.start_at??row.startAt);
      if(!fm?.match){
       const issue=fotMobTransportStatus().lastError??'FOTMOB_FIXTURE_NOT_UNIQUELY_MATCHED';
-      if(finalReviewNeeded)unavailable.fotmob=issue;
+      if(fotmobReviewNeeded)unavailable.fotmob=issue;
       health.providers.fotmob={...health.providers.fotmob,lastError:issue};
      }else{
       const details=await fetchFotMobDetails(fm.match.id,{force:urgent.has(id)});
@@ -495,7 +491,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
        lastError:details?null:(fotMobTransportStatus().lastError??'FOTMOB_DETAILS_UNAVAILABLE'),
        ...(details?{lastSuccessAt:new Date(now()).toISOString()}:{})};
       if(!details){
-       if(finalReviewNeeded)unavailable.fotmob=fotMobTransportStatus().lastError??'FOTMOB_DETAILS_UNAVAILABLE';
+       if(fotmobReviewNeeded)unavailable.fotmob=fotMobTransportStatus().lastError??'FOTMOB_DETAILS_UNAVAILABLE';
       }else{
        const parsed=parseFotMobPayload(fm.match,details);
        // FotMob may fill a missing Zizobet corner/card chronology only when
@@ -503,14 +499,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
        const rawTimeline=details?.content?.matchFacts?.events?.events;
        if(final&&parsed.finished&&result&&Number(parsed.homeScore)===Number(result.home_score)&&
           Number(parsed.awayScore)===Number(result.away_score)&&Array.isArray(rawTimeline)){
-        if(finalTimelineNeeds.includes('goal')&&parsed.goalTimelineAvailable&&typeof persistGoalFacts==='function'){
-        try{
-         const saved=await persistGoalFacts(Number(id),{source:'fotmob',final:true,complete:true,
-          goalsAvailable:true,homeScore:parsed.homeScore,awayScore:parsed.awayScore,events:parsed.goalEvents});
-         if(saved?.stored===true||saved?.reason==='ALREADY_VERIFIED')persistedHistoricalKinds.add('goal');
-        }catch(error){console.warn('[historical goal fallback]',id,'fotmob',String(error?.message??error));}
-       }
-       for(const kind of finalTimelineNeeds.filter(kind=>kind!=='goal')){
+       for(const kind of finalTimelineNeeds.filter(kind=>['corner','card'].includes(kind))){
          const events=kind==='corner'?parsed.cornerEvents:parsed.cardEvents;
          // Never infer a provider's final total from the same event list we are
          // trying to validate. FotMob must supply explicit FT team counters too.
@@ -521,7 +510,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
         }
        }
        try{
-        const incidents=fotMobIncidents(details);
+        const incidents=fotMobIncidents(details).filter(item=>['corner','card'].includes(item.kind));
         const eventList=details?.content?.matchFacts?.events?.events;
         const shotList=details?.content?.shotmap?.shots;
         const completeKinds=[];
@@ -535,7 +524,6 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
         // A kind is marked complete only when its timed events reconcile with
         // independent team totals. This keeps corrections safe without erasing
         // valid corners/cards merely because another category was returned.
-        reconcileKind('goal',parsed.homeScore,parsed.awayScore,Array.isArray(eventList));
         reconcileKind('corner',parsed.cornersHome,parsed.cornersAway,Array.isArray(eventList));
         reconcileKind('card',parsed.cardsHome,parsed.cardsAway,Array.isArray(eventList));
         reconcileKind('foul',parsed.statistics?.fouls?.home,parsed.statistics?.fouls?.away,Array.isArray(eventList));
@@ -548,24 +536,12 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
        }catch(error){
         console.warn('[supplemental incident archive]',String(error?.message??error));
        }
-       if(!primaryGoal?.hasGoals&&parsed.goalEvents.length){
-        const names=displayOnlyFotMobScorers(row,parsed);
-        if(names.length){entry.scorers=names;entry.sources.scorers='fotmob-display-only';}
-       }
-       if(primaryGoal?.hasGoals&&parsed.goalEvents.length){
-        // FotMob may only enrich a one-to-one Zizobet scorer slot.
-        try{
-         await enrichFotMobScorerNames(Number(id),primaryFacts,parsed.goalEvents,{execute:runQuery});
-        }catch(error){
-         console.warn('[fotmob scorer enrichment]',Number(id),String(error?.message??error));
-        }
-        await refreshActors();
-       }
        const fmValues={
         possession:parsed.statistics.possession,
         shots:parsed.statistics.shots,
         shotsOnTarget:parsed.statistics.shotsOnTarget,
         fouls:parsed.statistics.fouls,
+        goalKicks:parsed.statistics.goalKicks,
         corners:(parsed.cornersHome!=null&&parsed.cornersAway!=null)
          ?{home:parsed.cornersHome,away:parsed.cornersAway}:null,
         cards:(parsed.cardsHome!=null&&parsed.cardsAway!=null)
@@ -589,13 +565,13 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
           fixtureId:fm.match.id,observedAt:new Date(now()).toISOString()
          });
         }
-       }else if(finalReviewNeeded){
+       }else if(fotmobReviewNeeded){
         unavailable.fotmob='STATS_NOT_FINAL';
        }
       }
      }
     }catch(error){
-     if(finalReviewNeeded)unavailable.fotmob='FOTMOB_ENRICHMENT_ERROR';
+     if(fotmobReviewNeeded)unavailable.fotmob='FOTMOB_ENRICHMENT_ERROR';
      health.providers.fotmob={...health.providers.fotmob,lastError:'FOTMOB_ENRICHMENT_ERROR'};
      console.warn('[fotmob] verified fixture enrichment failed:',String(error?.message??error));
     }
@@ -614,6 +590,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
      if(backup&&Number(backup.homeScore)===Number(result.home_score)&&
         Number(backup.awayScore)===Number(result.away_score)){
       for(const kind of stillMissingTimelineKinds){
+       if(kind==='goal'&&String(backup.source??'').toLowerCase()==='fotmob')continue;
        if(kind==='goal'){
         if(typeof persistGoalFacts!=='function')continue;
         try{
@@ -635,9 +612,8 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
      }
     }catch(error){console.warn('[historical event recovery]',id,String(error?.message??error));}
    }
-   // Identity rotation: FotMob first (above), then a confirmed AiScore mapping,
-   // then the configured daily-quota providers. Stop once known primary actors
-   // are identified. All offers, goals, clocks and prices remain Zizobet.
+   // Goal actors stay with the primary timeline/AiScore path. FotMob is used
+   // only for aggregate statistics and independently verified corner/card facts.
    if(needsAnyActors()){
     try{
      const {footballInformation}=await import('./football-information.mjs');
@@ -673,7 +649,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
     try{
      const {rows:fresh}=await runQuery(
       "select provider_event_id,minute,team,phase,player_name,own_goal,"+
-      "aiscore_player_name,aiscore_verified,fotmob_player_name,fotmob_verified,"+
+      "aiscore_player_name,aiscore_verified,"+
       "supplemental_player_name,supplemental_verified "+
       "from app_match_event_fact where match_id=$1 and provider='zizobet' "+
       "and kind='goal' and active=true",[Number(id)]);
@@ -768,7 +744,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
     };
     const corners=validPair('corners'),yellow=validPair('yellow'),red=validPair('red');
     const cards=yellow&&red?{home:yellow.home+red.home,away:yellow.away+red.away}:null;
-    const statistics=Object.fromEntries(['shots','shotsOnTarget','fouls','possession']
+    const statistics=Object.fromEntries(['shots','shotsOnTarget','fouls','possession','goalKicks']
       .map(field=>[field,validPair(field)]).filter(([,pair])=>pair));
     const candidate={source:provider,homeScore:Number(evidence.homeScore),awayScore:Number(evidence.awayScore),
       cornersHome:corners?.home??null,cornersAway:corners?.away??null,

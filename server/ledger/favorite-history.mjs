@@ -46,7 +46,8 @@ export function archivedFavorite(row,now=Date.now()){
  // must never be presented as an authoritative chronology of an FT fixture.
  const history=parse(row.event_evidence);
  const historicGoals=history?.complete===true&&history?.final===true&&
-   ['fotmob','apifootball','sportapi','goalapi','bsd','worldcup26'].includes(history.source)&&
+   history?.goalsAvailable===true&&
+   ['apifootball','sportapi','goalapi','bsd','worldcup26'].includes(history.source)&&
    Array.isArray(history.events)&&history.events.length<=40?
    history.events.filter(e=>e.type==='goal'&&['home','away'].includes(e.team)&&
      Number.isInteger(Number(e.minute))&&Number(e.minute)>=0&&Number(e.minute)<=130):[];

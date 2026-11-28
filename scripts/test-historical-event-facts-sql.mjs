@@ -5,7 +5,7 @@ import {LEDGER_SQL} from '../server/ledger/schema.mjs';
 import {validateHistoricalGoals,persistHistoricalGoalFacts} from '../server/ledger/historical-event-facts.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
 
-const complete={source:'fotmob',complete:true,final:true,goalsAvailable:true,
+const complete={source:'apifootball',complete:true,final:true,goalsAvailable:true,
  homeScore:1,awayScore:1,events:[
   {type:'goal',id:'g12',team:'home',minute:12,player:'Home Scorer',own:false},
   {type:'goal',id:'g23',team:'away',minute:23,player:'Away Scorer',own:false}
@@ -19,6 +19,8 @@ assert.equal(validateHistoricalGoals({...complete,events:[
  {...complete.events[0],own:true},complete.events[1]]}),null,
  'Unresolved own-goal attribution remains pending');
 assert.ok(validateHistoricalGoals(complete));
+assert.equal(validateHistoricalGoals({...complete,source:'fotmob'}),null,
+ 'FotMob must never enter goal chronology or goal-market settlement');
 assert.equal(validateHistoricalGoals({...complete,events:[
  {...complete.events[0],minute:10,phase:'H2'},complete.events[1]]}),null,
  'Second-half minute must be an absolute match clock, not the period-relative minute');
@@ -28,7 +30,7 @@ for(const base of [45,90])for(let added=1;added<=15;added++){
  const checked=validateHistoricalGoals({...complete,homeScore:1,awayScore:0,events:[
   {type:'goal',id:`goal-${base}-plus-${added}`,team:'home',minute:base,injury:added,own:false}
  ]});
- assert.ok(checked,`FotMob goal ${base}+${added} is valid regular-time stoppage evidence`);
+ assert.ok(checked,`API-Football goal ${base}+${added} is valid regular-time stoppage evidence`);
  assert.equal(checked.events[0].minute,base+added);
  assert.equal(checked.events[0].phase,base===45?'H1':'H2');
 }
@@ -50,10 +52,10 @@ try{
  const conflicting={...complete,events:[{...complete.events[0],minute:13},complete.events[1]]};
  assert.equal((await persistHistoricalGoalFacts(id,conflicting,{database})).reason,'HISTORY_CHANGED');
  const facts=(await run('select provider,minute from app_match_event_fact where match_id=$1 order by minute',[id])).rows;
- assert.deepEqual(facts.map(x=>[x.provider,x.minute]),[['fotmob',12],['fotmob',23]]);
+ assert.deepEqual(facts.map(x=>[x.provider,x.minute]),[['apifootball',12],['apifootball',23]]);
  const coverage=(await run("select provider,complete,confirmed_at from app_match_event_coverage where match_id=$1 and kind='goal'",[id])).rows;
  assert.equal(coverage.length,1);
- assert.equal(coverage[0].provider,'fotmob');
+ assert.equal(coverage[0].provider,'apifootball');
  assert.equal(coverage[0].complete,true);
  assert.ok(coverage[0].confirmed_at);
 
@@ -85,14 +87,14 @@ try{
  const stoppageMatch=id+10;
  await run(`insert into app_match_result(match_id,home_team,away_team,home_score,away_score,source)
   values($1,'Home','Away',1,1,'RECOVERY')`,[stoppageMatch]);
- const stoppagePayload={source:'fotmob',complete:true,final:true,goalsAvailable:true,
+ const stoppagePayload={source:'apifootball',complete:true,final:true,goalsAvailable:true,
   homeScore:1,awayScore:1,events:[
    {type:'goal',id:'home-90-plus-3',team:'home',minute:90,injury:3,own:false},
    {type:'goal',id:'away-90-plus-6',team:'away',minute:90,injury:6,own:false}
   ]};
  assert.equal((await persistHistoricalGoalFacts(stoppageMatch,stoppagePayload,{database})).stored,true);
  const stoppageRows=(await run(`select minute,phase from app_match_event_fact
-  where match_id=$1 and provider='fotmob' and kind='goal' order by minute`,[stoppageMatch])).rows;
+  where match_id=$1 and provider='apifootball' and kind='goal' order by minute`,[stoppageMatch])).rows;
  assert.deepEqual(stoppageRows,[{minute:93,phase:'H2'},{minute:96,phase:'H2'}]);
  const stoppageLine=(kind,rest)=>({id:uuid,match_id:stoppageMatch,
   live_contract:{version:1,kind,event:'goal',...rest}});
@@ -106,7 +108,7 @@ try{
  const firstHalfStoppageMatch=id+11;
  await run(`insert into app_match_result(match_id,home_team,away_team,home_score,away_score,source)
   values($1,'Home','Away',1,0,'RECOVERY')`,[firstHalfStoppageMatch]);
- const firstHalfAdded={source:'fotmob',complete:true,final:true,goalsAvailable:true,
+ const firstHalfAdded={source:'apifootball',complete:true,final:true,goalsAvailable:true,
   homeScore:1,awayScore:0,events:[
    {type:'goal',id:'home-45-plus-15',team:'home',minute:45,injury:15,own:false}
   ]};
@@ -116,7 +118,7 @@ try{
  assert.equal(await gradeStoredEventContract(firstHalfLine,{home_score:1,away_score:0},
   {execute:run}),'WON','45+15 is included in the closing first-half interval');
  const firstHalfStored=(await run(`select minute,phase from app_match_event_fact
-  where match_id=$1 and provider='fotmob' and kind='goal'`,[firstHalfStoppageMatch])).rows[0];
+  where match_id=$1 and provider='apifootball' and kind='goal'`,[firstHalfStoppageMatch])).rows[0];
  assert.deepEqual(firstHalfStored,{minute:60,phase:'H1'});
 
  const other=91822882;

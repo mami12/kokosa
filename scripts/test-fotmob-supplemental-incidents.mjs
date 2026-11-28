@@ -21,12 +21,9 @@ const details={
 };
 
 const incidents=fotMobIncidents(details);
-assert.equal(incidents.length,6,'Goals, corners, both card colours, fouls and shotmap shots are all extracted');
+assert.equal(incidents.length,3,'FotMob incident archive contains corners and cards only');
 const find=(kind,id)=>incidents.find(item=>item.kind===kind&&item.providerEventId===id);
-assert.deepEqual(
- [find('goal','goal-1')?.team,find('goal','goal-1')?.minute,find('goal','goal-1')?.playerName],
- ['home',12,'Home Scorer']
-);
+assert.equal(find('goal','goal-1'),undefined,'FotMob goals are excluded from the incident archive');
 assert.deepEqual(
  [find('corner','corner-1')?.team,find('corner','corner-1')?.minute,find('corner','corner-1')?.addedMinute],
  ['away',45,2]
@@ -39,29 +36,23 @@ assert.deepEqual(
  [find('card','red-1')?.team,find('card','red-1')?.minute,find('card','red-1')?.cardColor],
  ['away',88,'red']
 );
-assert.deepEqual(
- [find('foul','foul-1')?.team,find('foul','foul-1')?.minute,find('foul','foul-1')?.addedMinute],
- ['home',90,4]
-);
-assert.deepEqual(
- [find('shot','shot-1')?.team,find('shot','shot-1')?.minute,find('shot','shot-1')?.onTarget],
- ['home',77,true]
-);
+assert.equal(find('foul','foul-1'),undefined,'FotMob fouls are aggregate statistics, not event evidence');
+assert.equal(find('shot','shot-1'),undefined,'FotMob shots are aggregate statistics, not incident evidence');
 
 const calls=[];
 const stored=await storeSupplementalIncidents(101,'fotmob','fotmob-9001',incidents,{
  execute:async(sql,params=[])=>{calls.push({sql,params});return {rowCount:1};},
  payload:details,
- completeKinds:['goal','corner','card','foul','shot']
+ completeKinds:['corner','card']
 });
-assert.deepEqual(stored,{stored:6});
+assert.deepEqual(stored,{stored:3});
 assert.equal(calls.length,3,'Archive reconciles active rows, inserts incidents and stores the source snapshot');
 const deactivation=calls.find(call=>call.sql.startsWith('update app_supplemental_match_incident'));
-assert.deepEqual(deactivation.params[3],['goal','corner','card','foul','shot'],
+assert.deepEqual(deactivation.params[3],['corner','card'],
  'Corners and cards participate in completeness/reconciliation, not only shots');
 const insertion=calls.find(call=>call.sql.includes('insert into app_supplemental_match_incident'));
 const savedRows=JSON.parse(insertion.params[3]);
-assert.deepEqual(new Set(savedRows.map(row=>row.kind)),new Set(['goal','corner','card','foul','shot']));
+assert.deepEqual(new Set(savedRows.map(row=>row.kind)),new Set(['corner','card']));
 assert.ok(savedRows.every(row=>typeof row.provider_event_id==='string'&&row.provider_event_id.length>0),
  'Every stored event retains a stable provider event identity');
 
@@ -98,4 +89,4 @@ assert.match(service,/reconcileKind\('card'/,
 assert.match(service,/entry\.fotmobTimelineChecked=true/,
  'Successful archive refresh is cached to prevent repeated upstream calls');
 
-console.log('PASS FotMob supplemental archive: goals, shots, corners, yellow/red cards, fouls, stoppage time, durable storage and awaited detail delivery');
+console.log('PASS FotMob supplemental archive: separate corner/card chronology, stoppage time and durable source-labelled storage');

@@ -20,6 +20,7 @@ type PlacementSnapshot = {
 };
 type TimelineEvent = {
   id: string;
+  provider?: string;
   kind: 'goal' | 'corner' | 'card' | 'foul' | string;
   team: 'home' | 'away' | string;
   minute: number;
@@ -32,6 +33,7 @@ type TimelineEvent = {
   verified?: boolean;
 };
 type EventCoverage = {
+  provider?: string;
   kind: string;
   throughMinute: number;
   complete: boolean;
@@ -283,93 +285,125 @@ function MatchTimeline({ item }: { item: ReviewItem }) {
   const snapshot = item.placementSnapshot ?? (item.liveContract?.acceptedLiveSnapshot as PlacementSnapshot | undefined) ?? null;
   const coverage = item.eventCoverage ?? [];
   const coverageLabels: Record<string, string> = { goal: 'Gola', corner: 'Kornera', card: 'Kartona', foul: 'Faulle' };
+  const providerLabels: Record<string, string> = { zizobet: 'ZIZOBET · burimi kryesor', fotmob: 'FOTMOB · verifikim alternativ' };
+  const providers = [...new Set([
+    ...coverage.map(entry => String(entry.provider ?? 'zizobet').toLowerCase()),
+    ...events.map(event => String(event.provider ?? 'zizobet').toLowerCase()),
+  ])].sort((a,b) => (a === 'zizobet' ? -1 : b === 'zizobet' ? 1 : a.localeCompare(b)));
   const eventOrdinals = new Map<string, number>();
   const scoreAfterGoal = new Map<string, string>();
-  for (const kind of ['goal', 'corner', 'card', 'foul']) {
-    const proof = coverage.find(entry => entry.kind === kind);
-    const kindEvents = events.filter(event => event.kind === kind);
-    if (proof?.confirmed && proof.complete &&
-        proof.countHome + proof.countAway === kindEvents.length && kindEvents.length > 0) {
-      kindEvents.forEach((event, index) => eventOrdinals.set(event.id, index + 1));
-      if (kind === 'goal' && !kindEvents.some(event => event.ownGoal === true)) {
-        let homeGoals = 0, awayGoals = 0;
-        for (const event of kindEvents) {
-          if (event.team === 'home') homeGoals++;
-          else if (event.team === 'away') awayGoals++;
-          scoreAfterGoal.set(event.id, `${homeGoals} – ${awayGoals}`);
+  for (const provider of providers) {
+    const sourceEvents = events.filter(event => String(event.provider ?? 'zizobet').toLowerCase() === provider);
+    const sourceCoverage = coverage.filter(entry => String(entry.provider ?? 'zizobet').toLowerCase() === provider);
+    for (const kind of ['goal', 'corner', 'card', 'foul']) {
+      const proof = sourceCoverage.find(entry => entry.kind === kind);
+      const kindEvents = sourceEvents.filter(event => event.kind === kind);
+      if (proof?.confirmed && proof.complete &&
+          proof.countHome + proof.countAway === kindEvents.length && kindEvents.length > 0) {
+        kindEvents.forEach((event, index) => eventOrdinals.set(provider + ':' + event.id, index + 1));
+        if (kind === 'goal' && !kindEvents.some(event => event.ownGoal === true)) {
+          let homeGoals = 0, awayGoals = 0;
+          for (const event of kindEvents) {
+            if (event.team === 'home') homeGoals++;
+            else if (event.team === 'away') awayGoals++;
+            scoreAfterGoal.set(provider + ':' + event.id, `${homeGoals} – ${awayGoals}`);
+          }
         }
       }
     }
   }
 
   return (
-    <section className="rounded-xl border border-tertiary bg-primary/60 p-4 space-y-3">
+    <section className="rounded-xl border border-tertiary bg-primary/60 p-4 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-bold text-white">
           <History size={16} className="text-sky-400" />
           Kronologjia e ndeshjes
         </div>
-        <span className="text-[11px] text-text-secondary">{events.length} ngjarje në arkiv</span>
+        <span className="text-[11px] text-text-secondary">{events.length} ngjarje të arkivuara</span>
       </div>
-      {coverage.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {coverage.map(entry => (
-            <span key={entry.kind} className="inline-flex items-center gap-1.5 rounded-md border border-tertiary bg-secondary/70 px-2 py-1 text-[10px] text-text-secondary">
-              <span className="font-semibold text-white">{coverageLabels[entry.kind] ?? entry.kind}</span>
-              <span>{entry.countHome}–{entry.countAway}</span>
-              <span>deri në {entry.throughMinute}′</span>
-              <span className={entry.complete ? 'text-emerald-300' : 'text-amber-300'}>{entry.complete ? 'E plotë' : 'Pjesore'}</span>
-              <span className={entry.confirmed ? 'text-emerald-300' : 'text-amber-300'}>{entry.confirmed ? 'Konfirmuar' : 'Pakonfirmuar'}</span>
-            </span>
-          ))}
-        </div>
-      )}
-      {events.length > 0 ? (
-        <div className="relative space-y-2 before:absolute before:bottom-3 before:left-[17px] before:top-3 before:w-px before:bg-tertiary">
-          {events.map(event => {
-            const relation = eventRelation(event, snapshot);
-            const isHome = event.team === 'home';
-            return (
-              <div key={event.id} className="relative flex items-start gap-3">
-                <span className="z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-tertiary bg-secondary text-[10px] font-black tabular-nums text-white">
-                  {eventMinuteLabel(event)}′
-                </span>
-                <div className="min-w-0 flex-1 rounded-lg border border-tertiary/80 bg-secondary/50 px-3 py-2">
-                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                    <span className="text-xs font-bold text-white">{eventTitle(event, eventOrdinals.get(event.id))}</span>
-                    <span className="text-[10px] text-text-secondary">{eventTime(event)}</span>
-                  </div>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-secondary">
-                    <span>{isHome ? (item.homeTeamName || 'Vendasit') : (item.awayTeamName || 'Miqtë')}</span>
-                    {scoreAfterGoal.has(event.id) && (
-                      <span className="font-semibold text-white">Rezultati: {scoreAfterGoal.get(event.id)}</span>
-                    )}
-                    {event.playerName && <span className="font-medium text-white">{event.playerName}</span>}
-                    {event.phase && <span>· {event.phase}</span>}
-                    {relation && (
-                      <span className={relation === 'Pas bastit' ? 'font-semibold text-emerald-300' : 'text-sky-300'}>
-                        · {relation}
+      {providers.length > 0 ? providers.map(provider => {
+        const sourceEvents = events.filter(event => String(event.provider ?? 'zizobet').toLowerCase() === provider);
+        const sourceCoverage = coverage.filter(entry => String(entry.provider ?? 'zizobet').toLowerCase() === provider);
+        return (
+          <div key={provider} className="space-y-3 rounded-lg border border-tertiary/70 bg-secondary/30 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-bold text-white">{providerLabels[provider] ?? provider.toUpperCase()}</span>
+              <span className="text-[10px] text-text-secondary">{sourceEvents.length} ngjarje</span>
+            </div>
+            {sourceCoverage.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {sourceCoverage.map(entry => (
+                  <span key={provider + ':' + entry.kind} className="inline-flex items-center gap-1.5 rounded-md border border-tertiary bg-primary/70 px-2 py-1 text-[10px] text-text-secondary">
+                    <span className="font-semibold text-white">{coverageLabels[entry.kind] ?? entry.kind}</span>
+                    <span>{entry.countHome}–{entry.countAway}</span>
+                    <span>deri në {entry.throughMinute}′</span>
+                    <span className={entry.complete ? 'text-emerald-300' : 'text-amber-300'}>{entry.complete ? 'E plotë' : 'Pjesore'}</span>
+                    <span className={entry.confirmed ? 'text-emerald-300' : 'text-amber-300'}>{entry.confirmed ? 'Konfirmuar' : 'Pakonfirmuar'}</span>
+                    {entry.cardColorsVerified !== undefined && (
+                      <span className={entry.cardColorsVerified ? 'text-emerald-300' : 'text-amber-300'}>
+                        {entry.cardColorsVerified ? 'Ngjyra të verifikuara' : 'Ngjyra të paverifikuara'}
                       </span>
                     )}
-                    <span className={event.verified ? 'text-emerald-300' : 'text-amber-300'}>
-                      · {event.verified ? 'E konfirmuar' : 'E arkivuar, pa konfirmim'}
-                    </span>
-                  </div>
-                </div>
+                  </span>
+                ))}
               </div>
-            );
-          })}
-        </div>
-      ) : (
+            )}
+            {sourceEvents.length > 0 ? (
+              <div className="relative space-y-2 before:absolute before:bottom-3 before:left-[17px] before:top-3 before:w-px before:bg-tertiary">
+                {sourceEvents.map(event => {
+                  const key = provider + ':' + event.id;
+                  const relation = eventRelation(event, snapshot);
+                  const isHome = event.team === 'home';
+                  return (
+                    <div key={key} className="relative flex items-start gap-3">
+                      <span className="z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-tertiary bg-primary text-[10px] font-black tabular-nums text-white">
+                        {eventMinuteLabel(event)}′
+                      </span>
+                      <div className="min-w-0 flex-1 rounded-lg border border-tertiary/80 bg-primary/70 px-3 py-2">
+                        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                          <span className="text-xs font-bold text-white">{eventTitle(event, eventOrdinals.get(key))}</span>
+                          <span className="text-[10px] text-text-secondary">{eventTime(event)}</span>
+                        </div>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-secondary">
+                          <span>{isHome ? (item.homeTeamName || 'Vendasit') : (item.awayTeamName || 'Miqtë')}</span>
+                          {scoreAfterGoal.has(key) && (
+                            <span className="font-semibold text-white">Rezultati: {scoreAfterGoal.get(key)}</span>
+                          )}
+                          {event.playerName && <span className="font-medium text-white">{event.playerName}</span>}
+                          {event.cardColor && <span>{event.cardColor === 'red' ? 'I kuq' : 'I verdhë'}</span>}
+                          {event.phase && <span>· {event.phase}</span>}
+                          {relation && (
+                            <span className={relation === 'Pas bastit' ? 'font-semibold text-emerald-300' : 'text-sky-300'}>
+                              · {relation}
+                            </span>
+                          )}
+                          <span className={event.verified ? 'text-emerald-300' : 'text-amber-300'}>
+                            · {event.verified ? 'E konfirmuar' : 'E arkivuar, pa konfirmim'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="rounded-md border border-dashed border-tertiary px-3 py-2 text-[11px] text-text-secondary">
+                Nuk ka ngjarje të ruajtura nga ky burim për këtë lloj kronologjie.
+              </p>
+            )}
+          </div>
+        );
+      }) : (
         <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-3">
-          <div className="text-xs font-semibold text-amber-200">Nuk ka ngjarje të arkivuara për këtë ndeshje.</div>
+          <div className="text-xs font-semibold text-amber-200">Nuk ka kronologji të arkivuara për këtë ndeshje.</div>
           <p className="mt-1 text-[11px] text-text-secondary">
-            Kjo nuk do të thotë se nuk pati ngjarje. Sistemi nuk shfaq ngjarje pa prova të ruajtura nga burimi kryesor.
+            Kjo nuk provon se nuk pati ngjarje. Pa një kronologji të verifikuar, tregjet që varen nga renditja mbeten në pritje.
           </p>
         </div>
       )}
       <p className="text-[10px] leading-relaxed text-text-secondary">
-        Kronologjia përfshin ngjarjet e arkivuara të Zizobet. Çdo rresht shënohet si i konfirmuar ose jo; vetëm ngjarjet e konfirmuara janë prova të verifikuara. Gjuajtjet dhe pozicioni ruhen si numërues në snapshot, jo si ngjarje individuale.
+        ZIZOBET dhe FotMob shfaqen si kronologji të ndara. FotMob përdoret si burim alternativ vetëm kur lista e tij e plotë përputhet me numëruesit finalë; ngjarjet nuk përzihen mes burimeve.
       </p>
     </section>
   );

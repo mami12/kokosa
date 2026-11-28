@@ -14,8 +14,8 @@ const {FINISHED_RESULT_INSERT,finishedResultParameters,getResult}=await import('
 const {createMatchSnapshotStore}=await import('../server/ledger/match-snapshots.mjs');
 const {pool}=await import('../server/db.mjs');
 const now=Date.now(),at=new Date(now).toISOString(),old=new Date(now-300000).toISOString(),staleAt=new Date(now-4*60*60*1000).toISOString();
-const raw=normalizeTeamStatistics({shotsOnTarget:'3',shots:'9',foulsCommitted:'12',yellowCards:'0',redCards:'0',corners:'0',offTarget:6,freeKicks:20,attacks:90},{observedAt:at});
-assert.equal(raw.shotsOnTarget,3);assert.equal(raw.shots,9);assert.equal(raw.fouls,12);assert.equal(raw.corners,0);assert.equal(raw.yellow,0);assert.equal(raw.freeKicks,undefined);assert.equal(raw.offTarget,undefined);
+const raw=normalizeTeamStatistics({shotsOnTarget:'3',shots:'9',foulsCommitted:'12',yellowCards:'0',redCards:'0',corners:'0',goalKicks:'8',offTarget:6,freeKicks:20,attacks:90},{observedAt:at});
+assert.equal(raw.shotsOnTarget,3);assert.equal(raw.shots,9);assert.equal(raw.fouls,12);assert.equal(raw.corners,0);assert.equal(raw.goalKicks,8);assert.equal(raw.yellow,0);assert.equal(raw.freeKicks,undefined);assert.equal(raw.offTarget,undefined);
 for(const invalid of [null,undefined,'',false,true,{},-1,1.5,Infinity])assert.equal(normalizeTeamStatistics({shotsOnTarget:invalid}).shotsOnTarget,undefined);
 const first={home:normalizeTeamStatistics({shotsOnTarget:3,corners:0},{observedAt:old})};
 const merged=mergeTeamStats(first,{home:{fouls:4,shotsOnTarget:null,corners:undefined}},{observedAt:at});
@@ -26,11 +26,11 @@ assert.equal(decoded.stats['10'].shotsOnTarget,2);assert.equal(decoded.stats['10
 const replayed=decodePushMessage({messageType:'match-info',data:{matchId:900,ts:now-300000,scoreBoard:{results:{10:{shotsOnTarget:'3'}}}}}).info;
 assert.equal(replayed.stats['10']._observedAt.shotsOnTarget,old,'delayed source packet neverbecomes fresh justbecause itarrivednow');
 const base={match_id:900,home:'Home',away:'Away',home_score:7,away_score:4,score_at:at,feed_status:'Finished',feed_status_at:at,raw:{homeTeam:{id:10},awayTeam:{id:20}}};
-const row={...base,stats:{10:normalizeTeamStatistics({shotsOnTarget:3,shots:10,fouls:8,offsides:2},{observedAt:at}),20:normalizeTeamStatistics({shotsOnTarget:5,shots:12,fouls:11,offsides:1},{observedAt:at})}};
+const row={...base,stats:{10:normalizeTeamStatistics({shotsOnTarget:3,shots:10,fouls:8,offsides:2,goalKicks:8},{observedAt:at}),20:normalizeTeamStatistics({shotsOnTarget:5,shots:12,fouls:11,offsides:1,goalKicks:6},{observedAt:at})}};
 assert.equal(teamStatisticsFromRow(row).home.shotsOnTarget,3);
 assert.equal(teamStatisticsFromRow({...row,raw:{competitors:[{id:10},{id:20}]}}).away.fouls,11);
 assert.equal(trackerTeamStatistics({}).home.shotsOnTarget,null,'unknown never displays aszero');
-assert.deepEqual(verifiedFinalStatistics(row),{shots:{home:10,away:12},shotsOnTarget:{home:3,away:5},fouls:{home:8,away:11},offsides:{home:2,away:1}});
+assert.deepEqual(verifiedFinalStatistics(row),{shots:{home:10,away:12},shotsOnTarget:{home:3,away:5},fouls:{home:8,away:11},offsides:{home:2,away:1},goalKicks:{home:8,away:6}});
 const stale={...base,stats:{home:normalizeTeamStatistics({shotsOnTarget:4},{observedAt:staleAt}),away:normalizeTeamStatistics({fouls:2},{observedAt:at})}};
 assert.deepEqual(verifiedFinalStatistics(stale),{fouls:{away:2}},'a final-phase flag does not refresh an oldstat');
 const recentBeforeFinal={...base,stats:{
@@ -75,6 +75,12 @@ assert.equal(isAggregateStatisticSettlement(fullCorners,{...cornerResult,corners
  'Missing full-time corner counters must allow verified event chronology fallback');
 
 const total={market_name:'Total Shots on Target - Over/Under',line:'8.5',outcome_key:'over',outcome_name:'Over'};
+const goalKicks={market_name:'Total Goal Kicks',line:'10.5',outcome_key:'over',outcome_name:'Over'};
+assert.equal(isStatisticMarket(goalKicks),true);
+assert.equal(statisticMarketContract(goalKicks).stat,'goalKicks');
+assert.equal(hasStatisticEvidence(goalKicks,result),true);
+assert.equal(gradeStatisticLine(goalKicks,result),'WON');
+assert.deepEqual(settlementStatisticFields(goalKicks),['goalKicks']);
 assert.equal(statisticMarketContract({market_name:'Full time result'}),null);
 assert.equal(statisticMarketContract(total).stat,'shotsOnTarget');assert.equal(gradeStatisticLine(total,result),'LOST','eightshots, not elevengoals');
 assert.equal(gradeStatisticLine({...total,line:'7.5'},result),'WON');
@@ -129,12 +135,13 @@ assert.deepEqual(primaryColorResult.statistics.cards,{home:3,away:1},
 assert.equal(statisticsNeedReview({market_name:'Total Cards',line:'3.5'},primaryColorResult),false);
 const missingZizoReview=compareFinalStatistics([{
  provider:'fotmob',final:true,fixtureId:'fm-900',observedAt:at,
- values:{corners:{home:6,away:4},shotsOnTarget:{home:3,away:2},
+ values:{corners:{home:6,away:4},shotsOnTarget:{home:3,away:2},goalKicks:{home:8,away:6},
   yellow:{home:2,away:1},red:{home:1,away:0}}
 }]);
 const fallbackResult=resolveSettlementStatistics({...zizoStatResult,statistics_review:missingZizoReview});
 assert.deepEqual([fallbackResult.corners_home,fallbackResult.corners_away],[6,4]);
 assert.deepEqual(fallbackResult.statistics.shotsOnTarget,{home:3,away:2});
+assert.deepEqual(fallbackResult.statistics.goalKicks,{home:8,away:6});
 assert.deepEqual(fallbackResult.statistics.cards,{home:3,away:1},
  'generic cards may be derived only from same-provider yellow+red facts');
 assert.equal(fallbackResult._settlementSources.corners[0].provider,'fotmob');
