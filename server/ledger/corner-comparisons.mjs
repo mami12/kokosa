@@ -28,6 +28,17 @@ export function parseCornerComparison(line){
   title=title.slice(a[0].length);
  }
  const raw=line.outcome_name??line.outcomeName??line.outcome_key??line.outcomeKey;
+ // HT/FT corner result: first code is the half-time corner leader,
+ // second code is the full-time corner leader (1/X/2). Both periods
+ // must come from one complete, provider-confirmed corner chronology.
+ if(/^(?:corners? halftime fulltime|halftime fulltime corners?|half time full time corners?)$/.test(title)){
+  if(explicit!==0)return null;
+  const pair=String(raw??'').trim().match(/^([12xX])\s*[/\\-]\s*([12xX])$/);
+  if(!pair)return null;
+  const pick=value=>value.toUpperCase()==='1'?'home':value.toUpperCase()==='2'?'away':'none';
+  return {version:1,kind:'corner-comparison',event:'corner',
+   mode:'half-full-result',halfSide:pick(pair[1]),fullSide:pick(pair[2])};
+ }
  if(/^(?:half with (?:the )?most corners?|half most corners?|most corners? (?:in|by) (?:the )?half|highest scoring half in corners?)$/.test(title)){
   if(explicit!==0)return null;
   const choice=periodOption(raw);
@@ -78,6 +89,13 @@ export function gradeCornerComparisonFacts(contract,facts,{complete=false}={}){
  }
  const result=(h,a)=>h>a?'home':a>h?'away':'none';
  const decision=(isWinner)=>isWinner?'WON':'LOST';
+ if(contract.mode==='half-full-result'){
+  if(!['home','away','none'].includes(contract.halfSide)||
+     !['home','away','none'].includes(contract.fullSide))return null;
+  const halfWinner=result(count[1].home,count[1].away);
+  const fullWinner=result(count[1].home+count[2].home,count[1].away+count[2].away);
+  return halfWinner===contract.halfSide&&fullWinner===contract.fullSide?'WON':'LOST';
+ }
  if(contract.mode==='most-half'){
   if(![0,1,2].includes(contract.choice)||contract.scope!=null&&
      !['home','away'].includes(contract.scope))return null;
