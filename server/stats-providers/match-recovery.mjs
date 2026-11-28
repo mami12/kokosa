@@ -2,9 +2,9 @@
  * Multi-API Match Recovery & Result Historical Collector.
  * Automatically resolves finished matches that were missed during server downtime
  * or lack live FT signals from the primary provider.
- * Uses FotMob for historical results, then the configured secondary providers
- * through their own verified, quota-aware fixture matching. Zizobet remains
- * the sole bookmaker odds and live-market source.
+ * FotMob is used only for final statistics and corner/card verification.
+ * Other configured providers may recover historical goal facts when needed.
+ * Zizobet remains the sole bookmaker odds, live score and goal-timeline source.
  */
 import { query } from '../db.mjs';
 import { teamsMatch, canonical } from './adapters.mjs';
@@ -64,7 +64,7 @@ export async function fetchFotMobDate(dateStr) {
 }
 
 /**
- * Fetch detailed match facts (corners, cards, fouls, shots, goalscorers) from FotMob.
+ * Fetch detailed match statistics and corner/card incidents from FotMob.
  */
 export async function fetchFotMobDetails(matchId,{force=false}={}) {
  const id=String(matchId??'').trim();
@@ -166,7 +166,7 @@ export async function findFotMobFixture(home,away,targetDates,expectedKickoff=nu
 }
 
 /**
- * Extract normalized score, half-time, corners, cards, stats, and goal events from FotMob.
+ * Extract fixture score for identity/reconciliation, aggregate statistics, and corner/card incidents only.
  */
 export function parseFotMobPayload(summary, details = null) {
   const header = details?.header;
@@ -189,8 +189,6 @@ export function parseFotMobPayload(summary, details = null) {
   const homeScore = scoreNumber(scoreParts?.[1] ?? summary?.home?.score);
   const awayScore = scoreNumber(scoreParts?.[2] ?? summary?.away?.score);
 
-  let halfHome = null;
-  let halfAway = null;
   let cornersH = null;
   let cornersA = null;
   let yellowH = 0;
@@ -213,10 +211,6 @@ export function parseFotMobPayload(summary, details = null) {
   const timed=fotMobTimedIncidents(rawEvents);
   let yellowVerified=false,redVerified=false;
   for (const ev of events) {
-    if (ev.type === 'Half' && (ev.halfStrShort === 'HT' || ev.time === 45)) {
-      if (Number.isInteger(ev.homeScore)) halfHome = ev.homeScore;
-      if (Number.isInteger(ev.awayScore)) halfAway = ev.awayScore;
-    }
     if (ev.type === 'Card') {
       const isRed = /red/i.test(ev.card ?? '');
       if (ev.isHome) {
@@ -292,33 +286,10 @@ export function parseFotMobPayload(summary, details = null) {
   const totalCardsH = yellowH + redH;
   const totalCardsA = yellowA + redA;
 
-  // Normalized goal events for player scorer grading
-  const goalEvents = events
-    .filter(e => e.type === 'Goal' && e.isPenaltyShootoutEvent !== true &&
-      e.isDisallowed!==true && e.cancelled!==true && e.canceled!==true &&
-      !/cancel|disallow|overturn/i.test(String(e.status??e.goalDescription??'')))
-    .map((e, idx) => ({
-      disabled: false,
-      id: String(e.eventId || `goal-${e.time}-${idx}`),
-      type: 'goal',
-      team: e.isHome ? 'home' : 'away',
-      minute: /^\d{1,3}(?:\s*\+\s*\d{1,2})?$/.test(String(e.time??''))?parseInt(String(e.time),10):NaN,
-      injury: Number(String(e.time??'').match(/\+\s*(\d{1,2})/)?.[1]??0),
-      player: e.player?.name || e.nameStr || e.fullName || null,
-      playerId: e.player?.id || e.playerId || null,
-      own: e.ownGoal === true || e.shotmapEvent?.isOwnGoal === true,
-      header: e.shotmapEvent?.shotType === 'Header',
-      penalty: e.penalty === true || /penalty/i.test(e.goalDescription ?? ''),
-      shootout: false
-    }))
-    .filter(e => Number.isInteger(e.minute) && e.minute>=0 && e.minute<=130);
-
   return {
     finished: isFinished,
     homeScore,
     awayScore,
-    halfHomeScore: halfHome,
-    halfAwayScore: halfAway,
     cornersHome: cornersH,
     cornersAway: cornersA,
     cardsHome: yellowVerified&&redVerified ? totalCardsH : null,
@@ -332,9 +303,7 @@ export function parseFotMobPayload(summary, details = null) {
       goalKicks: (goalKicksH != null && goalKicksA != null) ? { home: goalKicksH, away: goalKicksA } : {},
       possession: (possessionH != null && possessionA != null) ? { home: possessionH, away: possessionA } : {}
     },
-    goalEvents,
     ...timed,
-    goalTimelineAvailable: Array.isArray(rawEvents)
   };
 }
 
