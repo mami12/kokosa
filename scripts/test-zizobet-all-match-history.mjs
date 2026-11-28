@@ -169,20 +169,112 @@ const feed=startZizoFeed({
 });
 try{
  await feed.tick();
- assert.deepEqual(detailReads,[1,2,3,4],
-  'Background all-match history is bounded to four details per flush');
+ assert.deepEqual(detailReads,[1,2,3,4,5],
+  'The larger bounded batch polls every fixture without leaving a growing queue');
  await feed.tick();
  assert.deepEqual(detailReads,[1,2,3,4,5],
-  'The fifth unbet fixture must not starve');
+  'The same fixtures are not fetched again before their next history interval');
  assert.equal(archiveCalls.length,5);
  assert.equal(oddsCalls.length,0,
   'Archive-only refresh must never publish new market odds');
  assert.ok(archiveCalls.every(v=>!('gmk' in v.raw)&&!('hprs' in v.raw)));
- now+=61000;
+ now+=31000;
  await feed.tick();
- await feed.tick();
- assert.equal(archiveCalls.length,10,'Scheduled background history continues after 60 seconds');
+ assert.equal(archiveCalls.length,10,'Background chronology is re-polled on the shorter 30-second interval');
 }finally{feed.stop();await feed.drain();}
+
+{
+ // A status/period transition must refresh the full timeline immediately,
+ // even when score, corners and cards have not changed at half-time.
+ let at=Date.parse('2026-11-12T12:45:00Z');
+ let status=10,clock=45,events=[];
+ let detailReads=0;
+ const publishedInfos=[];
+ const liveHeader=()=>({
+  ID:32,Sport:1,Team1:1,Team2:2,Region:1,Champ:1,
+  MatchStatusID:status,Score:'0:0',MatchTime:clock,MatchTimeExtended:String(clock).padStart(2,'0')+':00',
+  StartTime:'2026-11-12T12:00:00Z',
+  CornersTeam1:0,CornersTeam2:0,
+  YellowCardsTeam1:0,YellowCardsTeam2:0,RedCardsTeam1:0,RedCardsTeam2:0
+ });
+ const request=async url=>{
+  if(url.includes('getheader/teams'))return teams;
+  if(url.includes('getlivemarkets'))return {StatusNames:[
+   {it:'1_10',nm:'1st half'},{it:'1_12',nm:'Half time'},{it:'1_20',nm:'2nd half'}
+  ],PositionNames:[],MarketNames:[]};
+  if(url.includes('getprematchmarketsbysport'))return [Object.fromEntries(Array.from({length:11},(_,i)=>[i+1,{ID:i+1,Name:'Result'}]))];
+  if(url.includes('headerformobilenew'))return {Games:[liveHeader()],Teams:teams,Regions:regions,Championats:champs};
+  if(url.includes('sport/getheader/en'))return {EN:{Sports:{1:{Regions:{}}}}};
+  if(url.includes('live/gamenew/32')){
+   detailReads++;
+   return {Match:{...liveHeader(),GameID:32,EventStatus:status},TimeLines:events,gmk:[]};
+  }
+  throw Error('Unexpected phase-change request '+url);
+ };
+ const phaseFeed=startZizoFeed({
+  autoStart:false,historyEnabled:true,now:()=>at,request,
+  archiveHistory:async()=>({stored:true,confirmedKinds:[]}),
+  connectMqtt:()=>({setLiveIds(){},stop(){},pause(){},resume(){}}),
+  onMatch(){},onInfo:info=>publishedInfos.push(info),onOdds(){}
+ });
+ try{
+  await phaseFeed.tick();
+  assert.equal(detailReads,1,'Initial live history snapshot is fetched');
+  status=12; // Half-time status, with no score/statistic delta.
+  events=[{id:'goal-32a',type:'score_change',gt:45,team:1}];
+  at+=5000;
+  await phaseFeed.tick();
+  assert.equal(detailReads,2,'Entering half-time forces a new TimeLines request');
+  assert.ok(publishedInfos.at(-1).events.some(event=>event.id==='goal-32a'),
+   'The updated event list is published immediately after the phase transition');
+  status=20;clock=46;
+  events.push({id:'goal-32b',type:'score_change',gt:46,team:2});
+  at+=5000;
+  await phaseFeed.tick();
+  assert.equal(detailReads,3,'Entering the second half also forces a new TimeLines request');
+  assert.ok(publishedInfos.at(-1).events.some(event=>event.id==='goal-32b'),
+   'Second-half events reach the published live chronology');
+ }finally{phaseFeed.stop();await phaseFeed.drain();}
+}
+
+{
+ // Pending-ticket matches use a short dedicated history cadence, independent
+ // of the slower all-match archive rotation.
+ let at=Date.parse('2026-11-12T13:00:00Z'),detailReads=0;
+ const id=33;
+ const liveHeader=()=>({
+  ID:id,Sport:1,Team1:1,Team2:2,Region:1,Champ:1,
+  MatchStatusID:10,Score:'0:0',MatchTime:35,StartTime:'2026-11-12T12:25:00Z',
+  CornersTeam1:0,CornersTeam2:0,YellowCardsTeam1:0,YellowCardsTeam2:0,
+  RedCardsTeam1:0,RedCardsTeam2:0
+ });
+ const request=async url=>{
+  if(url.includes('getheader/teams'))return teams;
+  if(url.includes('getlivemarkets'))return {StatusNames:[{it:'1_10',nm:'1st half'}],PositionNames:[],MarketNames:[]};
+  if(url.includes('getprematchmarketsbysport'))return [Object.fromEntries(Array.from({length:11},(_,i)=>[i+1,{ID:i+1,Name:'Result'}]))];
+  if(url.includes('headerformobilenew'))return {Games:[liveHeader()],Teams:teams,Regions:regions,Championats:champs};
+  if(url.includes('sport/getheader/en'))return {EN:{Sports:{1:{Regions:{}}}}};
+  if(url.includes('live/gamenew/33')){
+   detailReads++;
+   return {Match:{...liveHeader(),GameID:id,EventStatus:10},TimeLines:[],gmk:[]};
+  }
+  throw Error('Unexpected watched-match request '+url);
+ };
+ const watchedFeed=startZizoFeed({
+  autoStart:false,historyEnabled:true,now:()=>at,request,
+  getWatchedIds:()=>[8000000000000+id],
+  archiveHistory:async()=>({stored:true,confirmedKinds:[]}),
+  connectMqtt:()=>({setLiveIds(){},stop(){},pause(){},resume(){}}),
+  onMatch(){},onInfo(){},onOdds(){}
+ });
+ try{
+  await watchedFeed.tick();
+  assert.equal(detailReads,1,'Watched match receives its initial full timeline');
+  at+=9000;
+  await watchedFeed.tick();
+  assert.equal(detailReads,2,'Pending-ticket timeline is re-polled inside 10 seconds');
+ }finally{watchedFeed.stop();await watchedFeed.drain();}
+}
 
 {
  // A goal/corner change in the fast live header must bypass the 60-second
