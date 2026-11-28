@@ -52,6 +52,26 @@ assert.deepEqual(JSON.parse(calls[0].args[3]).map(x=>x.player_name).slice(0,3),
 assert.match(calls[1].sql,/app_supplemental_match_snapshot/);
 assert.equal((await storeSupplementalIncidents(11,'unknown',55,incidents,{execute})).stored,0);
 
+// Repeated source IDs in one provider response must be collapsed before the
+// INSERT ... ON CONFLICT statement, otherwise PostgreSQL rejects the batch.
+const duplicateCalls=[];
+const duplicateRows=[
+ {providerEventId:'same-corner',kind:'corner',team:'home',minute:12,sourceOrder:1,raw:{id:'same-corner'}},
+ {providerEventId:'same-corner',kind:'corner',team:'home',minute:12,sourceOrder:1,
+  playerName:'Corner taker',raw:{id:'same-corner',player:'Corner taker'}},
+ {providerEventId:'other-corner',kind:'corner',team:'away',minute:13,sourceOrder:2,raw:{id:'other-corner'}}
+];
+assert.deepEqual(await storeSupplementalIncidents(8000000000001,'fotmob',555,duplicateRows,{
+ execute:async(sql,args)=>{duplicateCalls.push({sql,args});return {rowCount:1};}
+}),{stored:2});
+const duplicateInsert=duplicateCalls.find(call=>call.sql.includes('insert into app_supplemental_match_incident'));
+const duplicateSaved=JSON.parse(duplicateInsert.args[3]);
+assert.equal(duplicateSaved.length,2);
+assert.equal(new Set(duplicateSaved.map(row=>row.provider_event_id+'|'+row.kind)).size,2,
+ 'No INSERT batch may contain duplicate primary-key identities');
+assert.equal(duplicateSaved.find(row=>row.provider_event_id==='same-corner').player_name,'Corner taker',
+ 'Duplicate copies retain the most complete event representation');
+
 const primary=(overrides={})=>({
  provider_event_id:'zz1',kind:'goal',team:'home',minute:23,own_goal:false,
  player_name:null,aiscore_verified:false,fotmob_verified:false,
