@@ -1,5 +1,5 @@
 import {statsProviders} from './stats-providers/index.mjs';
-import {observeMarket,marketIsEnabled} from './market-catalog.mjs';
+import {observeMarket,marketIsEnabled,isAllowedTotalLine} from './market-catalog.mjs';
 import {isBoardOddsRow} from './ledger/board-projection.mjs';
 import {isExcludedOfferMarket} from './market-policy.mjs';
 import { config, dbErrorHint } from './config.mjs';
@@ -571,10 +571,11 @@ export async function withOdds(rows, now = Date.now(),{board=false,displayStats=
   // prices are served from memory by default (no DB read on the board path);
   // ODDS_STORE=db restores the previous behaviour
   const byMatch = new Map(),counts=new Map(),decisions=new Map(),rowsById=new Map(rows.map((r)=>[r.match_id,r]));
-  const inspect=board?o=>{if(o.price==null&&o.suspended===true)return;const key=o.match_id+'|'+o.market_key+'|'+o.market_name;let allowed=decisions.get(key);if(allowed===undefined){allowed=!isExcludedOfferMarket(o)&&marketIsEnabled(o,rowsById.get(o.match_id));decisions.set(key,allowed);}if(allowed){if(!counts.has(o.match_id))counts.set(o.match_id,new Set());counts.get(o.match_id).add(o.market_key+'|'+o.line);}}:undefined;
+  const inspect=board?o=>{if(!isAllowedTotalLine(o)||o.price==null&&o.suspended===true)return;const key=o.match_id+'|'+o.market_key+'|'+o.market_name;let allowed=decisions.get(key);if(allowed===undefined){allowed=!isExcludedOfferMarket(o)&&marketIsEnabled(o,rowsById.get(o.match_id));decisions.set(key,allowed);}if(allowed){if(!counts.has(o.match_id))counts.set(o.match_id,new Set());counts.get(o.match_id).add(o.market_key+'|'+o.line);}}:undefined;
   const odds = skipOdds?[]:config.oddsStore === 'db' ? await getOddsFromDb(ids) : getOddsFromMemory(ids,board?isBoardOddsRow:undefined,inspect);
   decisions.clear();
   for (const o of odds) {
+    if(!isAllowedTotalLine(o))continue;
     const key=o.match_id+'|'+o.market_key+'|'+o.market_name,decision=decisions.get(key)??{allowed:!isExcludedOfferMarket(o)&&marketIsEnabled(o,rowsById.get(o.match_id)),board:isBoardOddsRow(o)};decisions.set(key,decision);
     if(!decision.allowed||o.price==null&&o.suspended===true)continue;
     if(!counts.has(o.match_id))counts.set(o.match_id,new Set());counts.get(o.match_id).add(o.market_key+'|'+o.line);
