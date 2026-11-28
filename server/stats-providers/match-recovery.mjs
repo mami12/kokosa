@@ -369,6 +369,7 @@ export async function recoverPendingMatch(matchId, { matchName = null, placedAt 
       if(home==null||away==null){allVerified=false;break;}
       const confirmed=(await runQuery(`select 1 from app_match_event_coverage
         where match_id=$1 and kind=$2 and complete=true and confirmed_at is not null
+          and ($2::text<>'goal' or provider<>'fotmob')
           and count_home=$3 and count_away=$4 limit 1`,
         [id,kind,Number(home),Number(away)])).rows.length>0;
       if(!confirmed){allVerified=false;break;}
@@ -393,66 +394,41 @@ export async function recoverPendingMatch(matchId, { matchName = null, placedAt 
   if(!targetDate||!Number.isFinite(Date.parse(targetDate)))return {recovered:false,reason:'KICKOFF_DATE_NOT_VERIFIED'};
   // Historical APIs must not be polled for matches still in progress.
   if(Date.now()-Date.parse(targetDate)<2*60*60*1000)return {recovered:false,reason:'MATCH_NOT_YET_FINISHED'};
-  const dates = candidateDateStrings(targetDate);
-
-  // 1. FotMob is the historical fallback, never an odds source.
-  const found = await findFotMobFixture(home, away, dates, targetDate);
-  let parsed=null, source=null;
-  if(found?.match){
-    const details=await fetchFotMobDetails(found.match.id);
-    const candidate=parseFotMobPayload(found.match,details);
-    if(candidate.finished&&candidate.homeScore!==null&&candidate.awayScore!==null){
-      parsed=candidate;source='fotmob';
-    }
-  }
-
-  // 2. Query pending incident kinds, then ask a backup source for evidence
-  // FotMob lacks. A valid FT score alone must not end the fallback cascade.
-  const requested=(await runQuery(`select distinct l.live_contract->>'event' as kind
+  // FotMob is deliberately excluded from score and goal recovery. Its
+  // statistics/corner/card fallback runs in the stats service against an
+  // already identified Zizobet fixture and never authorizes a goal result.
+  const requested=(await runQuery(\`select distinct l.live_contract->>'event' as kind
     from app_ticket_line l join app_ticket t on t.id=l.ticket_id
     where l.match_id=$1 and l.status='PENDING' and t.status='PENDING'
-      and l.live_contract->>'event' in ('goal','corner','card')`,[id]))
+      and l.live_contract->>'event' in ('goal','corner','card')\`,[id]))
     .rows.map(row=>row.kind);
-  const hasTimeline=(candidate,kind)=>{
-    if(!candidate)return false;
-    if(kind==='goal'){
-      const goals=candidate.goalEvents??[];
-      return candidate.goalTimelineAvailable===true&&
-        goals.filter(e=>e.type==='goal'&&e.team==='home').length===Number(candidate.homeScore)&&
-        goals.filter(e=>e.type==='goal'&&e.team==='away').length===Number(candidate.awayScore);
-    }
-    const prefix=kind==='corner'?'corners':'cards';
-    const events=candidate[kind+'Events']??[];
-    return candidate[kind+'TimelineAvailable']===true&&
-      candidate[prefix+'Home']!=null&&candidate[prefix+'Away']!=null&&
-      events.length===Number(candidate[prefix+'Home'])+Number(candidate[prefix+'Away']);
-  };
-  const missing=requested.filter(kind=>!hasTimeline(parsed,kind));
+  let parsed=null,source=null;
   const supplemental=[];
-  if(!parsed||missing.length){
-    try{
-      const {statsProviders}=await import('./index.mjs');
-      const backup=await statsProviders.recoverHistoricalMatch?.(
-        {home,away,start_at:targetDate,service:'PREMATCH'},
-        {neededKinds:missing,expectedScore:parsed?{home:parsed.homeScore,away:parsed.awayScore}:
-          alreadyHasFt?{home:priorResult.home_score,away:priorResult.away_score}:null}
-      );
-      if(backup){
-        const candidate={homeScore:backup.homeScore,awayScore:backup.awayScore,
-          halfHomeScore:null,halfAwayScore:null,
-          cornersHome:backup.cornersHome,cornersAway:backup.cornersAway,
-          cardsHome:backup.cardsHome,cardsAway:backup.cardsAway,
-          statistics:backup.statistics??{},
-          cornerEvents:backup.cornerEvents??[],cardEvents:backup.cardEvents??[],
-          cornerTimelineAvailable:backup.cornerTimelineAvailable===true,
-          cardTimelineAvailable:backup.cardTimelineAvailable===true,
-          goalEvents:backup.evidence.events.filter(event=>event.type==='goal'&&!event.shootout),
-          goalTimelineAvailable:backup.evidence.complete===true&&backup.evidence.goalsAvailable===true};
-        if(!parsed){parsed=candidate;source=backup.source;}
-        else if(backup.source!==source&&backup.homeScore===parsed.homeScore&&
-          backup.awayScore===parsed.awayScore)supplemental.push({source:backup.source,parsed:candidate});
-      }
-    }catch(error){console.warn('[recovery] configured history providers unavailable:',error.message);}
+  try{
+    const {statsProviders}=await import('./index.mjs');
+    const backup=await statsProviders.recoverHistoricalMatch?.(
+      {home,away,start_at:targetDate,service:'PREMATCH'},
+      {neededKinds:requested,
+       expectedScore:alreadyHasFt?{home:priorResult.home_score,away:priorResult.away_score}:null}
+    );
+    if(backup&&Number.isSafeInteger(Number(backup.homeScore))&&
+       Number.isSafeInteger(Number(backup.awayScore))){
+      parsed={
+       homeScore:Number(backup.homeScore),awayScore:Number(backup.awayScore),
+       halfHomeScore:null,halfAwayScore:null,
+       cornersHome:backup.cornersHome,cornersAway:backup.cornersAway,
+       cardsHome:backup.cardsHome,cardsAway:backup.cardsAway,
+       statistics:backup.statistics??{},
+       cornerEvents:backup.cornerEvents??[],cardEvents:backup.cardEvents??[],
+       cornerTimelineAvailable:backup.cornerTimelineAvailable===true,
+       cardTimelineAvailable:backup.cardTimelineAvailable===true,
+       goalEvents:(backup.evidence?.events??[]).filter(event=>event.type==='goal'&&!event.shootout),
+       goalTimelineAvailable:backup.evidence?.complete===true&&backup.evidence?.goalsAvailable===true
+      };
+      source=String(backup.source??'').toLowerCase();
+    }
+  }catch(error){
+    console.warn('[recovery] configured historical providers unavailable:',error?.message??error);
   }
   if(!parsed)return {recovered:false,reason:'MATCH_NOT_FINISHED_OR_FOUND'};
   // Preserve independent provider identities. Fill only wholly missing FT
