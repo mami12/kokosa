@@ -6,6 +6,7 @@
 import './fixtures/isolated-casino-env.mjs';
 import assert from 'node:assert/strict';
 import {gradeLine,hasRequiredSettlementEvidence,unverifiedCompositeLine,gradeHeldNativeCombo} from '../server/ledger/settler.mjs';
+import {loadVerifiedHalfTimeScore} from '../server/ledger/match-event-facts.mjs';
 import {isHalfComboFamily,parseHalfCombination,gradeHalfCombination} from '../server/ledger/half-combinations.mjs';
 
 const title='Double Chance And Total Goals';
@@ -193,4 +194,40 @@ assert.equal(unverifiedCompositeLine(simple('Unknown Special','A + B')),false);
 assert.equal(gradeLine(simple('Double Chance','12'),live),'WON');
 assert.equal(gradeLine(simple('Total Goals','Over','1.5'),live),'WON');
 assert.equal(gradeLine(simple('Total Goals','Under','1.5'),live),'LOST');
+// Held HT/FT native quotes recover against the immutable accepted title/outcome.
+// Full-time mismatch or a losing total is enough to settle LOST without HT;
+// a possible winner waits for a separately verified Zizobet halftime score.
+const htftTitle='Halftime/fulltime & total goals (1.5)';
+const noHalf={...result(3,2),half_home_score:null,half_away_score:null};
+const htftRow=selection=>historical(simple(htftTitle,selection,'1.5'),'NATIVE_HTFT_UNMAPPED');
+assert.equal(gradeHeldNativeCombo(htftRow('1/1 and Under'),noHalf),'LOST',
+ 'Under 1.5 is already lost from the 3-2 FT total');
+assert.equal(gradeHeldNativeCombo(htftRow('1/2 and Under'),noHalf),'LOST',
+ 'FT away win mismatch settles without requiring HT');
+assert.equal(gradeHeldNativeCombo(htftRow('1/1 and Over'),noHalf),null,
+ 'A possible HT/FT winner cannot be guessed without halftime evidence');
+assert.equal(gradeLine(htftRow('1/1 and Over'),noHalf),null);
+
+// Rebuild 1H score only from a complete, confirmed Zizobet goal timeline.
+// Even if a legacy FotMob goal coverage row exists, it is not eligible here.
+const goalHistory=[
+ {provider:'zizobet',count_home:3,count_away:2,provider_event_id:'g1',team:'home',minute:5,phase:'H1'},
+ {provider:'zizobet',count_home:3,count_away:2,provider_event_id:'g2',team:'home',minute:51,phase:'H2'},
+ {provider:'zizobet',count_home:3,count_away:2,provider_event_id:'g3',team:'away',minute:54,phase:'H2'},
+ {provider:'zizobet',count_home:3,count_away:2,provider_event_id:'g4',team:'home',minute:73,phase:'H2'},
+ {provider:'zizobet',count_home:3,count_away:2,provider_event_id:'g5',team:'away',minute:89,phase:'H2'},
+];
+let inspectedProviders=null;
+const half=await loadVerifiedHalfTimeScore(880001,noHalf,{
+ execute:async(_sql,params)=>{inspectedProviders=params[1];return {rows:goalHistory};}
+});
+assert.deepEqual(inspectedProviders,['zizobet'],'Halftime reconstruction queries Zizobet only');
+assert.deepEqual(half,{home:1,away:0,source:'ZIZOBET_EVENT_TIMELINE'});
+const reconstructed={...noHalf,half_home_score:half.home,half_away_score:half.away};
+assert.equal(gradeHeldNativeCombo(htftRow('1/1 and Over'),reconstructed),'WON');
+assert.equal(gradeHeldNativeCombo(htftRow('2/1 and Over'),reconstructed),'LOST');
+assert.equal(gradeHeldNativeCombo(htftRow('1/2 and Over'),reconstructed),'LOST');
+
+// FotMob is allowed for statistics and corner/card evidence, never goal
+// timelines. A provider query for a goal market explicitly excludes FotMob.
 console.log('PASS '+cases+' DC-total plus '+matchbetCases+' Matchbet scoring-grid/half-score complementary DC+totals invariants, frozen terms, unknown composite PENDING, independent markets unchanged.');
