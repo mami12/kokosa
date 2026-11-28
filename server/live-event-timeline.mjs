@@ -89,36 +89,34 @@ export function mergeProviderTimeline(previous,incoming,{verifiedKinds=[],rawTim
  const oldByKey=new Map(oldEvents.map(event=>[
   [event.type,event.team,event.counterOrdinal].join('|'),event
  ]));
- const retained=new Map();
- for(const event of oldEvents){
-  const kind=timelineKind(event);
-  if(!verified.has(kind)){
-   retained.set([event.type,event.team,event.counterOrdinal].join('|'),event);
-  }
- }
- for(const event of newEvents){
-  const kind=timelineKind(event);
-  const key=[event.type,event.team,event.counterOrdinal].join('|');
-  if(verified.has(kind)){
-   retained.set('complete|'+key,event);
-   continue;
-  }
-  const old=oldByKey.get(key);
-  retained.set(key,old?{...old,...event,provisional:false}:event);
- }
+ const newKeys=new Set(newEvents.map(event=>
+  [event.type,event.team,event.counterOrdinal].join('|')
+ ));
  const output=[];
- for(const [key,event] of retained){
-  if(key.startsWith('complete|'))output.push(event);
-  else if(!newEvents.some(candidate=>[candidate.type,candidate.team,candidate.counterOrdinal].join('|')===key)||
-          newEvents.some(candidate=>[candidate.type,candidate.team,candidate.counterOrdinal].join('|')===key))
-   output.push(event);
+ // A reconciled category is replaced by the provider's authoritative list.
+ for(const event of newEvents)if(verified.has(timelineKind(event)))output.push(event);
+ // For incomplete categories, update matching provisional/previous entries
+ // and preserve every prior incident not present in the partial response.
+ for(const event of newEvents){
+  if(verified.has(timelineKind(event)))continue;
+  const key=[event.type,event.team,event.counterOrdinal].join('|');
+  const old=oldByKey.get(key);
+  output.push(old
+   ?{...old,...event,source:'zizobet-timeline',provisional:false,timestampQuality:'provider-timeline'}
+   :event);
  }
- // Complete categories are exclusively replaced by their incoming provider list.
- for(const event of newEvents)if(verified.has(timelineKind(event))){
-  const key='complete|'+[event.type,event.team,event.counterOrdinal].join('|');
-  if(retained.has(key)&&!output.includes(retained.get(key)))output.push(retained.get(key));
+ for(const event of oldEvents){
+  if(verified.has(timelineKind(event)))continue;
+  const key=[event.type,event.team,event.counterOrdinal].join('|');
+  if(!newKeys.has(key))output.push(event);
  }
- return output.sort(compareTimelineEvents);
+ const unique=new Map();
+ for(const event of output){
+  const key=event?.id!=null?String(event.id):
+   [event?.type,event?.team,event?.counterOrdinal,event?.minute,event?.addedMinute].join('|');
+  unique.set(key,event);
+ }
+ return [...unique.values()].sort(compareTimelineEvents);
 }
 
 /** Reuse only player labels for the exact same provider incident.

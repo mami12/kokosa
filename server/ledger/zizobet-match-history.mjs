@@ -163,7 +163,8 @@ export const archiveZizobetMatchHistory=createZizobetHistoryArchive();
 const dashboardPairs=match=>{
  const score=String(match?.Score??'').match(/^(\d+):(\d+)$/);
  const goals=score?{home:Number(score[1]),away:Number(score[2])}:null;
- const corners=providerResultPair(match,'Corners')??pair(match,'Corners');
+ const finished=Number(match?.EventStatus??match?.MatchStatusID)===40;
+ const corners=(finished?providerResultPair(match,'RESULT_CORNERFT'):null)??providerResultPair(match,'Corners')??pair(match,'Corners');
  return {
   'goal:home':goals?.home??null,'goal:away':goals?.away??null,
   'corner:home':corners?.home??whole(match?.CornersTeam1),

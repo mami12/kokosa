@@ -2,10 +2,10 @@ import './fixtures/isolated-casino-env.mjs';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
 import {LEDGER_SQL} from '../server/ledger/schema.mjs';
-import {projectZizobetHistory,createZizobetHistoryArchive} from '../server/ledger/zizobet-match-history.mjs';
+import {projectZizobetHistory,createZizobetHistoryArchive,createZizobetDashboardIncidentArchive} from '../server/ledger/zizobet-match-history.mjs';
 import {normalizeLiveFrame} from '../server/ledger/live-observation-store.mjs';
 import {startZizoFeed,timelineCounterMismatches} from '../server/zizobet-feed.mjs';
-import {providerTimeline} from '../server/live-event-timeline.mjs';
+import {providerTimeline,mergeProviderTimeline} from '../server/live-event-timeline.mjs';
 
 const game=(score,clock,events,extra={})=>({
  Match:{GameID:7,Score:score,MatchTimeExtended:clock,MatchStatusID:10,EventStatus:10,
@@ -24,6 +24,26 @@ assert.equal(projected.events[0].playerName,'First Scorer',
  'The financial/parser path must recognize the same actor fields as the live UI');
 assert.equal(projected.events[0].minute,10);
 assert.equal(projected.events[0].minuteLabel,'10');
+
+{
+ const previous=[
+  {id:'dashboard:corner:home:1',type:'corner',team:'home',minute:22,counterOrdinal:1,source:'dashboard',provisional:true},
+  {id:'dashboard:corner:home:2',type:'corner',team:'home',minute:35,counterOrdinal:2,source:'dashboard',provisional:true}
+ ];
+ const blank=mergeProviderTimeline(previous,[],{verifiedKinds:[]});
+ assert.equal(blank.length,2,'An empty but unreconciled TimeLines response must preserve dashboard incidents');
+ const partial=mergeProviderTimeline(previous,[
+  {id:'provider-corner-1',type:'corner',team:'home',minute:22,counterOrdinal:1,sequence:1}
+ ],{verifiedKinds:[]});
+ assert.equal(partial.length,2,'A partial TimeLines response must preserve missing prior incidents');
+ assert.ok(partial.some(event=>event.id==='provider-corner-1'&&event.provisional===false),
+  'A matching provider event enriches its dashboard-observed incident');
+ assert.ok(partial.some(event=>event.id==='dashboard:corner:home:2'),
+  'The dashboard incident absent from the partial list remains in chronology');
+ const completeEmpty=mergeProviderTimeline(previous,[],{verifiedKinds:['corner']});
+ assert.equal(completeEmpty.length,0,'A fully reconciled zero-count provider list may clear corrected incidents');
+}
+
 const lateCorners=normalizeLiveFrame({
  Match:{...game('0:0','90:00',[]).Match,MatchStatusID:40,EventStatus:40,
   MatchTimeExtended:'90:00',CornersTeam1:1,CornersTeam2:1},
@@ -181,7 +201,7 @@ const games=Array.from({length:5},(_,i)=>({
  ID:i+1,Sport:1,Team1:1,Team2:2,Region:1,Champ:1,
  MatchStatusID:10,Score:'0:0',MatchTime:15,StartTime:'2026-11-12T12:00:00Z'
 }));
-const archiveCalls=[],detailReads=[],oddsCalls=[];
+const archiveCalls=[],detailReads=[],oddsCalls=[],dashboardCalls=[];
 let now=Date.parse('2026-11-12T12:15:00Z');
 const request=async url=>{
  if(url.includes('getheader/teams'))return teams;
@@ -200,6 +220,7 @@ const request=async url=>{
 const feed=startZizoFeed({
  autoStart:false,historyEnabled:true,now:()=>now,request,
  archiveHistory:async (id,raw)=>{archiveCalls.push({id,raw});},
+ archiveDashboard:async(id,match)=>{dashboardCalls.push({id,match});return {events:[]};},
  connectMqtt:()=>({setLiveIds(){},stop(){},pause(){},resume(){}}),
  getWatchedIds:()=>[],onMatch:()=>{},onInfo:()=>{},onOdds:rows=>oddsCalls.push(rows)
 });
@@ -207,9 +228,11 @@ try{
  await feed.tick();
  assert.deepEqual(detailReads,[1,2,3,4,5],
   'The larger bounded batch polls every fixture without leaving a growing queue');
+ assert.equal(dashboardCalls.length,5,'Every live fixture seeds dashboard counters without a visitor or pending ticket');
  await feed.tick();
  assert.deepEqual(detailReads,[1,2,3,4,5],
   'The same fixtures are not fetched again before their next history interval');
+ assert.equal(dashboardCalls.length,5,'Unchanged dashboard counters do not create duplicate observations');
  assert.equal(archiveCalls.length,5);
  assert.equal(oddsCalls.length,0,
   'Archive-only refresh must never publish new market odds');
@@ -366,7 +389,7 @@ try{
   events=[{id:'corner-34',type:'corner_kick',team:1,gt:'37',clk:'37:10'}];
   at+=6000;
   await mismatchFeed.tick();
-  assert.equal(detailReads,4,'The next poll sees the provider's corrected incident list');
+  assert.equal(detailReads,4,'The next poll sees the provider correction to its incident list');
   assert.ok(archiveCalls.at(-1).raw.TimeLines.some(event=>event.id==='corner-34'),
    'The newly published provider incident reaches the history archive');
   at+=6000;
@@ -494,6 +517,127 @@ try{
   await feed.tick();
   assert.equal(detailReads,5,'Post-FT polling stops after the fixed 45-minute bound');
  }finally{feed.stop();await feed.drain();}
+}
+
+
+{
+ // Dashboard counter changes remain archivable after FT; final status must not
+ // make the lightweight header path discard late stoppage-time corrections.
+ const id=79;
+ let corners=4,at=Date.parse('2026-11-12T14:00:00Z'),detailReads=0;
+ const dashboardSnapshots=[];
+ const finishedHeader=()=>({
+  ID:id,Sport:1,Team1:1,Team2:2,Region:1,Champ:1,MatchStatusID:40,
+  Score:'1:0',MatchTime:90,MatchTimeExtended:'90:00',StartTime:'2026-11-12T12:00:00Z',
+  CornersTeam1:corners,CornersTeam2:3,
+  YellowCardsTeam1:1,YellowCardsTeam2:0,RedCardsTeam1:0,RedCardsTeam2:0
+ });
+ const request=async url=>{
+  if(url.includes('getheader/teams'))return teams;
+  if(url.includes('getlivemarkets'))return {StatusNames:[{it:'1_10',nm:'1st half'}],PositionNames:[],MarketNames:[]};
+  if(url.includes('getprematchmarketsbysport'))return [Object.fromEntries(Array.from({length:11},(_,i)=>[i+1,{ID:i+1,Name:'Result'}]))];
+  if(url.includes('headerformobilenew'))return {Games:[finishedHeader()],Teams:teams,Regions:regions,Championats:champs};
+  if(url.includes('sport/getheader/en'))return {EN:{Sports:{1:{Regions:{}}}}};
+  if(url.includes('live/gamenew/79')){
+   detailReads++;
+   return {Match:{...finishedHeader(),GameID:id,EventStatus:40},TimeLines:[],gmk:[]};
+  }
+  throw Error('Unexpected post-FT dashboard request '+url);
+ };
+ const postFtFeed=startZizoFeed({
+  autoStart:false,historyEnabled:true,now:()=>at,request,
+  archiveHistory:async()=>({stored:true,verifiedKinds:[],confirmedKinds:[]}),
+  archiveDashboard:async(matchId,match)=>{dashboardSnapshots.push({matchId,corners:match.CornersTeam1});return {events:[]};},
+  connectMqtt:()=>({setLiveIds(){},stop(){},pause(){},resume(){}}),
+  getWatchedIds:()=>[],onMatch(){},onInfo(){},onOdds(){}
+ });
+ try{
+  await postFtFeed.tick();
+  assert.deepEqual(dashboardSnapshots.map(row=>row.corners),[4]);
+  corners=5;at+=5000;
+  await postFtFeed.tick();
+  assert.deepEqual(dashboardSnapshots.map(row=>row.corners),[4,5],
+   'A post-FT dashboard counter increase must be archived instead of ignored');
+  assert.ok(detailReads>=2,'The late FT counter change also triggers a fresh TimeLines detail request');
+ }finally{postFtFeed.stop();await postFtFeed.drain();}
+}
+
+{
+ // Dashboard counter snapshots create durable provisional events. A reconciled
+ // TimeLines snapshot replaces their approximate minute/player with provider data.
+ const databaseMatchId=8000000000099;
+ const dashboardPg=new PGlite();
+ try{
+  await dashboardPg.exec(LEDGER_SQL);
+  const database={connect:async()=>({query:(sql,args=[])=>dashboardPg.query(sql,args),release(){}})};
+  let observed=Date.parse('2026-11-12T15:00:00Z');
+  const recordDashboard=createZizobetDashboardIncidentArchive({database,now:()=>new Date(observed)});
+  const initialMatch={
+   GameID:99,Score:'0:0',EventStatus:10,MatchStatusID:10,
+   MatchTime:21,MatchTimeExtended:'21:00',
+   CornersTeam1:0,CornersTeam2:0,
+   YellowCardsTeam1:0,YellowCardsTeam2:0,
+   RedCardsTeam1:0,RedCardsTeam2:0
+  };
+  const baseline=await recordDashboard(databaseMatchId,initialMatch,{observedAt:new Date(observed)});
+  assert.equal(baseline.baseline,true);
+  assert.equal(baseline.events.length,0,'The first snapshot seeds counters; it does not invent old incidents');
+  observed+=5000;
+  const oneCorner=await recordDashboard(databaseMatchId,{...initialMatch,MatchTime:22,MatchTimeExtended:'22:12',CornersTeam1:1},{observedAt:new Date(observed)});
+  assert.equal(oneCorner.created,1);
+  assert.deepEqual(oneCorner.events.map(event=>[event.type,event.team,event.minuteLabel,event.provisional]),
+   [['corner','home','22',true]],'The first dashboard delta becomes an immediate provisional timeline event');
+  observed+=5000;
+  const moreEvents=await recordDashboard(databaseMatchId,{
+   ...initialMatch,MatchTime:36,MatchTimeExtended:'36:05',CornersTeam1:3,
+   YellowCardsTeam2:1,RedCardsTeam1:1
+  },{observedAt:new Date(observed)});
+  assert.equal(moreEvents.created,4,'Two further corners, one yellow and one red card are recorded');
+  assert.equal(moreEvents.events.filter(event=>event.type==='corner').length,3);
+  assert.ok(moreEvents.events.some(event=>event.type==='yellow_card'&&event.team==='away'));
+  assert.ok(moreEvents.events.some(event=>event.type==='red_card'&&event.team==='home'));
+
+  const historyArchive=createZizobetHistoryArchive({database,now:()=>new Date(observed)});
+  const detailedMatch={
+   GameID:99,Score:'0:0',EventStatus:10,MatchStatusID:10,
+   MatchTime:52,MatchTimeExtended:'52:00',
+   CornersTeam1:3,CornersTeam2:0,
+   YellowCardsTeam1:0,YellowCardsTeam2:1,
+   RedCardsTeam1:1,RedCardsTeam2:0
+  };
+  const providerTimeline=[
+   {id:'db-corner-1',type:'corner_kick',team:1,gt:22,clk:'22:10',pl:'Player A'},
+   {id:'db-corner-2',type:'corner_kick',team:1,gt:35,clk:'35:22',pl:'Player B'},
+   {id:'db-corner-3',type:'corner_kick',team:1,gt:50,clk:'50:04',pl:'Player C'},
+   {id:'db-yellow-away',type:'yellow_card',team:2,gt:36,clk:'36:02'},
+   {id:'db-red-home',type:'red_card',team:1,gt:37,clk:'37:30'}
+  ];
+  const archived=await historyArchive(databaseMatchId,{Match:detailedMatch,TimeLines:providerTimeline},fixture,
+   {observedAt:new Date(observed)});
+  assert.ok(archived.verifiedKinds.includes('corner'));
+  const incidentRows=(await dashboardPg.query(
+   "select counter_key,counter_ordinal,minute,minute_label,provisional,provider_event_id,detail from app_zizobet_dashboard_incident where match_id=$1 and active=true order by counter_key,counter_ordinal",
+   [databaseMatchId])).rows;
+  const corners=incidentRows.filter(row=>row.counter_key==='corner:home');
+  assert.deepEqual(corners.map(row=>[row.counter_ordinal,row.minute,row.minute_label,row.provisional,row.provider_event_id]),[
+   [1,22,'22',false,'db-corner-1'],
+   [2,35,'35',false,'db-corner-2'],
+   [3,50,'50',false,'db-corner-3']
+  ],'TimeLines enriches the same Dashboard records rather than creating duplicates');
+  assert.equal(corners[0].detail.playerName,'Player A');
+
+  const afterRestart=createZizobetDashboardIncidentArchive({database,now:()=>new Date(observed+1000)});
+  const restored=await afterRestart(databaseMatchId,detailedMatch,{observedAt:new Date(observed+1000)});
+  assert.equal(restored.events.filter(event=>event.type==='corner').length,3,
+   'A new process can restore the dashboard chronology from PostgreSQL');
+  assert.ok(restored.events.filter(event=>event.type==='corner').every(event=>event.provisional===false),
+   'Provider-enriched event times survive a process restart');
+
+  observed+=2000;
+  const corrected=await afterRestart(databaseMatchId,{...detailedMatch,MatchTime:54,MatchTimeExtended:'54:00',CornersTeam1:2},{observedAt:new Date(observed)});
+  assert.equal(corrected.events.filter(event=>event.type==='corner').length,2,
+   'A dashboard counter correction deactivates the excess provisional/linked incident');
+ }finally{await dashboardPg.close();}
 }
 
 console.log('PASS all-match Zizobet history, actor minute labels, 45-minute FT recovery bound, corrections and odds exclusion');
