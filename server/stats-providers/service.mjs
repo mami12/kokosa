@@ -321,6 +321,9 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
       row.kind==='card'&&(/yellow|red/i.test(String(row.market_name??''))||['yellow','red'].includes(String(row.card_color).toLowerCase())));
      return !coverageRows.some(row=>{
       if(row.kind!==kind||row.complete!==true||row.confirmed_at==null)return false;
+      // Older releases may have stored FotMob goal coverage. It is not
+      // eligible for goal recovery or settlement under the current policy.
+      if(kind==='goal'&&row.provider==='fotmob')return false;
       if(totals.home!=null&&Number(row.count_home)!==totals.home)return false;
       if(totals.away!=null&&Number(row.count_away)!==totals.away)return false;
       if(colorRequired&&row.card_colors_verified!==true)return false;
