@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {pool} from '../db.mjs';
-import {HISTORICAL_GOAL_PROVIDERS} from './historical-event-facts.mjs';
+const HISTORICAL_TIMED_EVENT_PROVIDERS=new Set(['fotmob','apifootball','sportapi','goalapi','bsd','worldcup26']);
 
 const validCount=n=>n!=null&&n!==''&&Number.isSafeInteger(Number(n))&&Number(n)>=0&&Number(n)<=999;
 const eventKinds=new Set(['corner','card']);
@@ -13,7 +13,7 @@ const eventKinds=new Set(['corner','card']);
 export function validateHistoricalTimedEvents(payload){
  const source=String(payload?.source??'').toLowerCase();
  const kind=payload?.kind;
- if(!HISTORICAL_GOAL_PROVIDERS.has(source)||!eventKinds.has(kind)||
+ if(!HISTORICAL_TIMED_EVENT_PROVIDERS.has(source)||!eventKinds.has(kind)||
    payload?.final!==true||payload?.complete!==true||payload?.timelineAvailable!==true||
    !Array.isArray(payload?.events)||payload.events.length>999)return null;
  if(!validCount(payload.homeCount)||!validCount(payload.awayCount))return null;
