@@ -47,7 +47,7 @@ assert.equal(parsed.finished,true);
 assert.deepEqual([parsed.homeScore,parsed.awayScore],[1,0]);
 assert.deepEqual([parsed.cornersHome,parsed.cornersAway],[2,1]);
 assert.deepEqual([parsed.cardsHome,parsed.cardsAway],[1,1]);
-assert.equal(parsed.goalTimelineAvailable,true);
+assert.equal('goalEvents' in parsed,false,'FotMob does not expose goal chronology');
 assert.equal(parsed.cornerTimelineAvailable,true);
 assert.equal(parsed.cardTimelineAvailable,true);
 
@@ -62,9 +62,10 @@ try{
 
  const goalEvidence=await persistHistoricalGoalFacts(matchId,{
   source:'fotmob',final:true,complete:true,goalsAvailable:true,
-  homeScore:parsed.homeScore,awayScore:parsed.awayScore,events:parsed.goalEvents
+  homeScore:parsed.homeScore,awayScore:parsed.awayScore,
+  events:[{id:'not-eligible',type:'goal',team:'home',minute:22,own:false}]
  },{database});
- assert.equal(goalEvidence.stored,true,'legacy FotMob goal data can exist for audit, but is not a settlement authority');
+ assert.equal(goalEvidence.stored,false,'FotMob goal facts are rejected at the persistence boundary');
 
  const cornerEvidence=await persistHistoricalTimedEvents(matchId,{
   source:'fotmob',kind:'corner',final:true,complete:true,timelineAvailable:parsed.cornerTimelineAvailable,
