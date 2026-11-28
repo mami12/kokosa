@@ -329,6 +329,15 @@ try{
    {id:'ch5',team:'away',minute:70,second:14,sequence:5,phase:'H2'}
   ]
  });
+ const legacyCornerHtFt=makeQuote(cornerHtFtMatch,990106,
+  'Corners Halftime/Fulltime',{},'','1/1','NATIVE_HTFT_UNMAPPED');
+ const legacyCornerContract=recoverLegacyZizobetEventContract(legacyCornerHtFt);
+ assert.deepEqual({kind:legacyCornerContract?.kind,event:legacyCornerContract?.event,
+  mode:legacyCornerContract?.mode,halfSide:legacyCornerContract?.halfSide,
+  fullSide:legacyCornerContract?.fullSide},
+  {kind:'corner-comparison',event:'corner',mode:'half-full-result',
+   halfSide:'home',fullSide:'home'},
+  'An old native HT/FT corner hold must recover only its accepted provider quote');
  const cornerSettled=await gradeStoredEventContract({
   id:'00000000-0000-4000-8000-000000000106',match_id:cornerHtFtMatch,
   market_name:'Corners Halftime/Fulltime',outcome_name:'1/1',live_contract:cornerHtFt
