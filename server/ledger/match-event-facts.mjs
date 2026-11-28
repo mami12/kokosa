@@ -1141,7 +1141,7 @@ export async function loadVerifiedHalfTimeScore(matchId,result,{execute}={}){
     and c.provider=any($2::text[]) and c.complete=true and c.confirmed_at is not null
    order by case c.provider when 'zizobet' then 0 when 'fotmob' then 1 else 2 end,
     f.minute,f.seconds nulls last,f.provider_event_id`,[
-    id,['zizobet',...HISTORICAL_TIMED_EVENT_PROVIDERS]
+    id,['zizobet']
    ]);
  const groups=new Map();
  for(const row of rows){
@@ -1190,11 +1190,7 @@ export async function loadVerifiedHalfTimeScore(matchId,result,{execute}={}){
  }
  const primary=valid.find(item=>item.provider==='zizobet');
  if(primary)return {home:primary.home,away:primary.away,source:'ZIZOBET_EVENT_TIMELINE'};
- const backups=valid.filter(item=>item.provider!=='zizobet');
- const signatures=new Set(backups.map(item=>JSON.stringify([item.home,item.away])));
- if(signatures.size!==1||!backups.length)return null;
- return {home:backups[0].home,away:backups[0].away,
-  source:backups.map(item=>item.provider).sort().join('+').toUpperCase()+'_EVENT_TIMELINE'};
+ return null;
 }
 
 function freezeRelativeNextGoal(line){
@@ -1275,13 +1271,16 @@ export async function gradeStoredEventContract(line,result,{execute}={}){
   c.event==='corner'?[result?.corners_home,result?.corners_away]:
    [result?.cards_home,result?.cards_away];
  const validTotal=value=>value!=null&&Number.isSafeInteger(Number(value))&&Number(value)>=0;
+ const eligibleProviders=c.event==='goal'
+  ?[...HISTORICAL_TIMED_EVENT_PROVIDERS].filter(provider=>provider!=='fotmob')
+  :[...HISTORICAL_TIMED_EVENT_PROVIDERS];
  const {rows}=await execute(`select provider from app_match_event_coverage
   where match_id=$1 and kind=$2 and provider=any($3::text[])
     and complete=true and confirmed_at is not null
     and ($4::int is null or count_home=$4)
     and ($5::int is null or count_away=$5)
   order by case provider when 'fotmob' then 0 else 1 end,provider`,
- [line.match_id,c.event,[...HISTORICAL_TIMED_EVENT_PROVIDERS],
+ [line.match_id,c.event,eligibleProviders,
   validTotal(totals[0])?Number(totals[0]):null,
   validTotal(totals[1])?Number(totals[1]):null]);
  const verdicts=[];
