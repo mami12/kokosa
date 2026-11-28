@@ -5,6 +5,7 @@ import {rowOf,infoOf,oddsOf,isZizoId,OFFSET} from './zizobet/normalize.mjs';
 import {rankCompetitionRow} from './football-competitions.mjs';
 import {collectEventEvidence} from './zizobet/event-collector.mjs';
 import {archiveZizobetMatchHistory} from './ledger/zizobet-match-history.mjs';
+import {normalizeLiveFrame} from './ledger/live-observation-store.mjs';
 import {providerTimeline,inheritEventPlayers} from './live-event-timeline.mjs';
 
 // Keep checking the native event list briefly after FT: providers can publish
@@ -43,12 +44,28 @@ export function newlyConfirmedHistoryKinds(previous=[],current=[]){
  const before=new Set(Array.isArray(previous)?previous:[]);
  return [...new Set(Array.isArray(current)?current:[])].filter(kind=>!before.has(kind));
 }
+
+/** Compare aggregate counters with the same raw provider timeline. Mismatches
+ * request another snapshot; they never authorize fabricating an incident.
+ */
+export function timelineCounterMismatches(data){
+ if(!Array.isArray(data?.TimeLines))return [];
+ const frame=normalizeLiveFrame(data);
+ if(!frame.eventListAvailable||frame.rawTimelineTruncated)return [];
+ return ['goal','corner','card','foul'].filter(kind=>{
+  const pair=frame.teams?.[kind];
+  if(!Number.isSafeInteger(pair?.home)||!Number.isSafeInteger(pair?.away))return false;
+  const events=frame.events.filter(event=>event.type===kind);
+  return events.filter(event=>event.team==='home').length!==pair.home||
+   events.filter(event=>event.team==='away').length!==pair.away;
+ });
+}
 export {isZizoId};
 export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDefinitions=()=>{},onFixtureDiscovered=()=>{},onHistoryConfirmed=()=>{},selectRows=r=>r,getWatchedIds=()=>[],request=get,connectMqtt=startMqtt,autoStart=true,now=()=>Date.now(),transitionGraceMs=120000,retentionMs=21600000,historyEnabled=autoStart,archiveHistory=archiveZizobetMatchHistory}={}){
  const meta={teams:new Map(),regions:new Map(),champs:new Map(),liveMarkets:new Map(),preMarkets:new Map(),positions:new Map(),statuses:new Map()};
  const footballLiveMarkets=new Map();
  const state={provider:'ZIZOBET',transport:'MQTT cache invalidations + HTTP snapshots',running:false,cycles:0,syncedAt:null,lastError:null,received:0,kept:0,paused:false,pauses:0,resumes:0};
- const games=new Map(),quotes=new Map(),focused=new Map(),focusAttemptAt=new Map(),inflight=new Map(),dirty=new Set(),versions=new Map(),fullObserved=new Map(),watchedSnapshotAt=new Map(),transitions=new Map(),historyPollAt=new Map(),historyFtStartedAt=new Map(),historyFtAttempts=new Map(),historyConfirmedKinds=new Map(),headerEventSignals=new Map(),eventRefreshIds=new Set();let stopped=false,work=Promise.resolve(),mqtt,catalogAt=0,revision=0;
+ const games=new Map(),quotes=new Map(),focused=new Map(),focusAttemptAt=new Map(),inflight=new Map(),dirty=new Set(),versions=new Map(),fullObserved=new Map(),watchedSnapshotAt=new Map(),transitions=new Map(),historyPollAt=new Map(),historyFtStartedAt=new Map(),historyFtAttempts=new Map(),historyConfirmedKinds=new Map(),historyMismatchAttempts=new Map(),headerEventSignals=new Map(),eventRefreshIds=new Set();let stopped=false,work=Promise.resolve(),mqtt,catalogAt=0,revision=0;
  const queue=fn=>{const p=work.then(()=>stopped||state.paused?undefined:fn());work=p.catch(e=>{state.lastError=e.message;});return p;};
  const headerEventSignal=(row,game)=>{
   const info=infoOf(row,game,meta),signal={};
@@ -89,7 +106,9 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   if(headerEventSignals.size>3000)headerEventSignals.delete(headerEventSignals.keys().next().value);
   if(previous&&changed){
    eventRefreshIds.add(id);
-   // Make a failed/immediate refresh eligible for the short retry path.
+   // A new scoreboard delta starts a fresh attempt window for reconciling
+   // the event list with the aggregate counters.
+   historyMismatchAttempts.delete(id);
    historyPollAt.set(id,0);
   }
  };
@@ -355,8 +374,18 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
        catch(error){console.warn('[zizobet] confirmed history callback',row.match_id,error?.message);}
       }
       const interval=Math.max(10000,Number(process.env.ZIZO_HISTORY_REFRESH_MS)||30000);
+      const mismatchKinds=timelineCounterMismatches({Match:data.Match,
+       ...(Array.isArray(data.TimeLines)?{TimeLines:data.TimeLines}:{})});
+      let nextDelay=interval;
+      if(mismatchKinds.length){
+       const attempts=(historyMismatchAttempts.get(Number(id))??0)+1;
+       historyMismatchAttempts.set(Number(id),attempts);
+       // Retry incomplete raw timelines at 6s, then 15s, then the normal
+       // interval. This is bounded per fixture and never creates fake facts.
+       nextDelay=attempts<=10?6000:attempts<=20?15000:interval;
+      }else historyMismatchAttempts.delete(Number(id));
       historyPollAt.set(Number(id),now()+(ended?
-       postFinalHistoryRetryDelay(finalAge,interval,finishedAttempts):interval));
+       postFinalHistoryRetryDelay(finalAge,interval,finishedAttempts):nextDelay));
      }catch(error){
       if(ended){
        const interval=Math.max(10000,Number(process.env.ZIZO_HISTORY_REFRESH_MS)||30000);
@@ -420,7 +449,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
     if(!ids.has(id)){ids.add(id);historyOnlyIds.add(id);}
    }
    if(historyPollAt.size>10000)for(const id of historyPollAt.keys())if(!games.has(id)){
-    historyPollAt.delete(id);historyFtStartedAt.delete(id);historyFtAttempts.delete(id);historyConfirmedKinds.delete(id);
+    historyPollAt.delete(id);historyFtStartedAt.delete(id);historyFtAttempts.delete(id);historyConfirmedKinds.delete(id);historyMismatchAttempts.delete(id);
    }
   }
   for(const[id,t]of transitions){if(now()-t.at>=retentionMs){transitions.delete(id);continue;}if(t.next<=now())ids.add(id);}
