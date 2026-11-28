@@ -52,6 +52,18 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
  const queue=fn=>{const p=work.then(()=>stopped||state.paused?undefined:fn());work=p.catch(e=>{state.lastError=e.message;});return p;};
  const headerEventSignal=(row,game)=>{
   const info=infoOf(row,game,meta),signal={};
+  // Phase changes are timeline refresh signals in their own right. A halftime
+  // transition can happen without a score or counter changing, so relying only
+  // on goals/corners/cards leaves the archived event list stale across breaks.
+  const providerStatus=Number(game.EventStatus??game.MatchStatusID);
+  if(Number.isFinite(providerStatus))signal.providerStatus=providerStatus;
+  if(typeof info.feedStatus==='string'&&info.feedStatus.trim())
+   signal.feedStatus=info.feedStatus.trim().toLowerCase();
+  const clock=String(game.MatchTimeExtended??'').match(/^(\\d{1,3}):([0-5]\\d)$/);
+  const clockMinute=clock?Number(clock[1])+Number(clock[2])/60:
+   game.MatchTime==null?null:Number(game.MatchTime);
+  if(Number.isFinite(clockMinute)&&clockMinute>=0)
+   signal.half=clockMinute>45?'second':'first';
   if(Number.isSafeInteger(info.homeScore)&&Number.isSafeInteger(info.awayScore))
    signal.score=[info.homeScore,info.awayScore];
   if(Array.isArray(info.periodsScore))
@@ -246,7 +258,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   mqtt?.setLiveIds(liveIds());
   if(footballDefinitionsChanged)archiveMarketDefinitions();
   // Full live snapshots carry verified corners/cards and the event timeline.
-    const liveRefreshMs=Math.max(30000,Number(process.env.ZIZO_LIVE_REFRESH_MS)||60000);
+    const liveRefreshMs=Math.max(5000,Number(process.env.ZIZO_LIVE_REFRESH_MS)||10000);
     for(const r of rows)if(focused.get(Number(r.raw.nativeId))>now()&&now()-(fullObserved.get(Number(r.raw.nativeId))??0)>=liveRefreshMs)dirty.add('live/gamenew/'+r.raw.nativeId);
  }
  let pendingPre=[];
@@ -342,12 +354,12 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
         .catch(error=>console.warn('[zizobet] confirmed history callback',row.match_id,error?.message));}
        catch(error){console.warn('[zizobet] confirmed history callback',row.match_id,error?.message);}
       }
-      const interval=Math.max(30000,Number(process.env.ZIZO_HISTORY_REFRESH_MS)||60000);
+      const interval=Math.max(10000,Number(process.env.ZIZO_HISTORY_REFRESH_MS)||30000);
       historyPollAt.set(Number(id),now()+(ended?
        postFinalHistoryRetryDelay(finalAge,interval,finishedAttempts):interval));
      }catch(error){
       if(ended){
-       const interval=Math.max(30000,Number(process.env.ZIZO_HISTORY_REFRESH_MS)||60000);
+       const interval=Math.max(10000,Number(process.env.ZIZO_HISTORY_REFRESH_MS)||30000);
        historyPollAt.set(Number(id),now()+postFinalHistoryRetryDelay(finalAge,interval,finishedAttempts));
       }
       console.warn('[zizobet] match history',row.match_id,error?.message);
@@ -382,12 +394,12 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   for(const[id,until]of focused){
    if(until<now()){focused.delete(id);focusAttemptAt.delete(id);}
    else if(now()-Math.max(fullObserved.get(id)??0,focusAttemptAt.get(id)??0)>=
-     Math.max(15000,Number(process.env.ZIZO_FOCUSED_REFRESH_MS)||30000))ids.add(id);
+     Math.max(5000,Number(process.env.ZIZO_FOCUSED_REFRESH_MS)||10000))ids.add(id);
   }
   const watched=new Set();for(const id of await getWatchedIds())if(isZizoId(id)){
     const native=Number(id)-OFFSET;watched.add(native);
     // One pending ticket must not cause full odds/timeline downloads every 3s.
-    if(now()-(watchedSnapshotAt.get(native)??-Infinity)>=15000){ids.add(native);watchedSnapshotAt.set(native,now());}
+    if(now()-(watchedSnapshotAt.get(native)??-Infinity)>=Math.max(5000,Number(process.env.ZIZO_WATCHED_REFRESH_MS)||8000)){ids.add(native);watchedSnapshotAt.set(native,now());}
   }
   for(const native of watchedSnapshotAt.keys())if(!watched.has(native))watchedSnapshotAt.delete(native);
   // Bounded round-robin history polls: every active fixture eventually gets
@@ -395,8 +407,8 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   // An archive-only request never fetches/parses the full market grid for storage.
   const historyOnlyIds=new Set(urgentTimelineIds);
   if(historyEnabled){
-   const interval=Math.max(30000,Number(process.env.ZIZO_HISTORY_REFRESH_MS)||60000);
-   const batch=Math.max(1,Math.min(8,Number(process.env.ZIZO_HISTORY_PER_FLUSH)||4));
+   const interval=Math.max(10000,Number(process.env.ZIZO_HISTORY_REFRESH_MS)||30000);
+   const batch=Math.max(1,Math.min(24,Number(process.env.ZIZO_HISTORY_PER_FLUSH)||12));
    const due=[...games.entries()].filter(([id,e])=>e.live&&
     (e.row.status!=='ended'||
      now()-(historyFtStartedAt.get(id)??now())<POST_FINAL_HISTORY_GRACE_MS)&&
