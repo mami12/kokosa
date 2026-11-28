@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {isCurrentSettlementCheckQuote} from '../server/ledger/settlement-check.mjs';
 import {isDecidedLiveNumberedGoalWindow} from '../server/ledger/decided-markets.mjs';
 import {isSettlementCheckFixture} from '../server/fixture-dates.mjs';
+import fs from 'node:fs';
 
 const now=1000;
 const dateNow=new Date('2026-11-25T12:00:00+01:00');
@@ -68,7 +69,6 @@ console.log('PASS settlement-check bulk quote freshness and active-status filter
 
 // The admin settlement-check path must request each selected fixture's full
 // market snapshot, then serialize all stored offers (not the homepage subset).
-import fs from 'node:fs';
 const adminSource=fs.readFileSync(new URL('../server/ledger/admin.mjs',import.meta.url),'utf8');
 assert.match(adminSource,/await refreshAll\?\.\(ids\)/,
  'the settlement check must await a full-detail refresh for the selected fixtures');
@@ -76,4 +76,9 @@ assert.match(adminSource,/withOdds\(rows,\s*Date\.now\(\),\s*\{\s*board:\s*false
  'the settlement check must serialize all available markets, not the board projection');
 assert.match(adminSource,/loadMatchDetailsFully\s*\?\?/,
  'the two selected fixtures must use the shared full-market batch loader');
+const serverSource=fs.readFileSync(new URL('../server/index.mjs',import.meta.url),'utf8');
+assert.match(serverSource,/loadMatchDetailsFully=async values/,
+ 'the server must expose a batch loader for full match details');
+assert.match(serverSource,/Promise\.all\(ids\.map\(id=>collector\?\.focus\?\.\(id\)\)\)/,
+ 'the full-market snapshots for both selected matches must load concurrently');
 console.log('PASS settlement-check fetches full markets for both selected fixtures');
