@@ -6,7 +6,7 @@ const number=value=>value!=null&&/^\d+(?:[.,]\d+)?$/.test(String(value).trim())?
 const periodOf=line=>{const name=nameOf(line);if(/\b(?:first|1st)\s*half\b|\b1h\b/.test(name))return 1;if(/\b(?:second|2nd)\s*half\b|\b2h\b/.test(name))return 2;const raw=Number(line?.period??line?.accepted_contract?.providerPeriod??0);return Number.isInteger(raw)&&[0,1,2].includes(raw)?raw:null;};
 export function isStatisticMarket(line){
  const name=nameOf(line),hasLine=number(line?.line??line?.specifier)!==null;
- return /\b(?:shots?|fouls?|offsides?)\b|goditj|faulle?/.test(name)||
+ return /\b(?:shots?|fouls?|offsides?|goal\s*kicks?)\b|goditj|faulle?/.test(name)||
   ((/\b(?:total|number of|over|under)\b/.test(name)||hasLine)&&/\b(?:cards?|bookings?)\b|karton/.test(name));
 }
 export function statisticMarketContract(line){
@@ -16,7 +16,7 @@ export function statisticMarketContract(line){
   /\bcorners?\b/.test(name)?'corners':
   /\bcards?\b|\bbookings?\b|karton/.test(name)?'cards':
   /\bshots? (?:on target|on goal)\b|goditj\w* ne porte/.test(name)?'shotsOnTarget'
-  :/\bfouls?\b|faulle?/.test(name)?'fouls':/\boffside/.test(name)?'offsides':/\bshots?\b|goditj/.test(name)?'shots':null;
+  :/\bfouls?\b|faulle?/.test(name)?'fouls':/\bgoal\s*kicks?\b/.test(name)?'goalKicks':/\boffside/.test(name)?'offsides':/\bshots?\b|goditj/.test(name)?'shots':null;
  const period=periodOf(line);
  const unsupported=!stat||period===null||/\b(?:players?|scorer|quarter|minute|minutes|next|last|race|handicap|asian|overtime|extra|both|each|off target|blocked|odd|even|exact|range)\b|[+&/]|lojtari|pjesa|minut/.test(name)||
   (period===0&&/\b(?:first|1st|second|2nd)\s*half\b|\b(?:half|halves|ht|1h|2h|period)\b/.test(name));
@@ -29,7 +29,7 @@ export function statisticMarketContract(line){
  const scope=home?'home':away?'away':result?'result':'total';
  const comparison=result?name.replace(/\b(?:which team|who)\s+(?:has|have|commits?|makes?|takes?|will have)\s+(?:the\s+)?(?:most|more)\b/g,' '):name;
  let remainder=comparison
-  .replace(/\bshots? on (?:target|goal)\b|\bshots?\b|\bfouls?(?: committed)?\b|\boffside(?:s)?\b|goditj\w* ne porte|goditj\w*|faulle?/g,' ')
+  .replace(/\bshots? on (?:target|goal)\b|\bshots?\b|\bfouls?(?: committed)?\b|\bgoal\s*kicks?\b|\boffside(?:s)?\b|goditj\w* ne porte|goditj\w*|faulle?/g,' ')
   .replace(/\b(?:yellow|red)?\s*cards?\b|\bbookings?\b|karton\w*|\bcorners?\b/g,' ')
   .replace(/\b(?:home\s*team|home|away\s*team|away|team [12]|[12] team)\b|skuadra [12]|ekipi [12]/g,' ')
   .replace(/\b(?:first|1st|second|2nd)\s*half\b|\b(?:1h|2h|ht)\b/g,' ')
