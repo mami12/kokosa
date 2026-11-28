@@ -267,7 +267,7 @@ export function parseFotMobPayload(summary, details = null) {
     if(/corner/i.test(title)){
       if(Number.isInteger(s0))cornersH=s0;
       if(Number.isInteger(s1))cornersA=s1;
-    }else if(/goal\\s*kicks?/i.test(title)){
+    }else if(/goal\s*kicks?/i.test(title)){
       if(Number.isInteger(s0))goalKicksH=s0;
       if(Number.isInteger(s1))goalKicksA=s1;
     }else if(/foul/i.test(title)){
