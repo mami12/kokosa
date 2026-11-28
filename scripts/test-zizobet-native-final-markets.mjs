@@ -64,6 +64,17 @@ for(const [market,outcome,line,expected] of [
  assert.equal(hasRequiredSettlementEvidence(ticket,result),true,
   'held native quote has sufficient verified evidence: '+market);
 }
+// A leading asterisk in an accepted Zizobet title is display-only. The
+// parser uses a derived title while the ticket and accepted quote stay intact.
+const starredAwayCorners=held('* Total Corners awayteam','Under','3.5');
+const starredCornerResult={...result,corners_home:7,corners_away:4};
+assert.equal(gradeLine(starredAwayCorners,starredCornerResult),'LOST',
+ 'A held * Total Corners awayteam Under 3.5 settles against the away total of 4');
+assert.equal(starredAwayCorners.market_name,'* Total Corners awayteam',
+ 'The user-facing ticket title remains unchanged');
+assert.equal(starredAwayCorners.accepted_contract.providerMarketName,'* Total Corners awayteam',
+ 'The immutable accepted Zizobet quote remains unchanged');
+
 const heldMultiscore=held('Multiscores','Other home win','',{
  nativeMarketOutcomes:['1:0','2:0','2:1','0:1','0:2']
 });
