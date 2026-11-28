@@ -170,7 +170,7 @@ const goalWindow=recoverLegacyZizobetEventContract(oldGoalInterval);
 assert.deepEqual(
  {kind:goalWindow?.kind,event:goalWindow?.event,from:goalWindow?.from,to:goalWindow?.to,
   choice:goalWindow?.choice,threshold:goalWindow?.threshold},
- {kind:'window-total',event:'goal',from:1,to:9,choice:'over',threshold:0.5},
+ {kind:'window-total',event:'goal',from:1,to:10,choice:'over',threshold:0.5},
  'A legacy absolute goal interval recovers from the frozen native quote'
 );
 const oldCardInterval=legacy('Total cards in minutes 1-10 (10-minute interval)','Under',0,'1.5');
@@ -180,7 +180,7 @@ const cardWindow=recoverLegacyZizobetEventContract(oldCardInterval);
 assert.deepEqual(
  {kind:cardWindow?.kind,event:cardWindow?.event,from:cardWindow?.from,to:cardWindow?.to,
   choice:cardWindow?.choice,threshold:cardWindow?.threshold},
- {kind:'window-total',event:'card',from:1,to:9,choice:'under',threshold:1.5},
+ {kind:'window-total',event:'card',from:1,to:10,choice:'under',threshold:1.5},
  'A legacy absolute card interval recovers from the frozen native quote'
 );
 console.log('PASS legacy Zizobet Most Corners, team/half totals and recovered Who takes the Nth corner');
