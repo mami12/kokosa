@@ -1123,8 +1123,8 @@ async function gradeSingleEventProvider(line,result,{execute,provider='zizobet'}
 /**
  * Reconstruct a missing HT score only from one provider's complete, confirmed
  * goal timeline whose per-team totals reconcile to the authoritative FT score.
- * Prefer Zizobet; use FotMob/other historical providers only when the primary
- * chronology is unavailable. Never merge event sequences across providers.
+ * Only ZIZOBET goal facts are eligible. FotMob is a statistics/corner/card
+ * source and is never used to reconstruct goals or the half-time score.
  */
 export async function loadVerifiedHalfTimeScore(matchId,result,{execute}={}){
  const id=Number(matchId);
