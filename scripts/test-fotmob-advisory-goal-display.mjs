@@ -1,3 +1,4 @@
+import './fixtures/isolated-casino-env.mjs';
 import assert from 'node:assert/strict';
 import {parseFotMobPayload} from '../server/stats-providers/match-recovery.mjs';
 import {fotMobIncidents} from '../server/stats-providers/supplemental-incidents.mjs';
