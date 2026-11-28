@@ -62,7 +62,7 @@ assert.deepEqual(deactivation.params[3],['goal','corner','card','foul','shot'],
 const insertion=calls.find(call=>call.sql.includes('insert into app_supplemental_match_incident'));
 const savedRows=JSON.parse(insertion.params[3]);
 assert.deepEqual(new Set(savedRows.map(row=>row.kind)),new Set(['goal','corner','card','foul','shot']));
-assert.ok(savedRows.every(row=>row.provider==='undefined'||row.provider_event_id),
+assert.ok(savedRows.every(row=>typeof row.provider_event_id==='string'&&row.provider_event_id.length>0),
  'Every stored event retains a stable provider event identity');
 
 const collector=readFileSync(new URL('../server/collector.mjs',import.meta.url),'utf8');
