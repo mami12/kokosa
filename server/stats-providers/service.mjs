@@ -345,11 +345,22 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    const finalReviewNeeded=final&&(settlementFields.length>0||finalTimelineNeeds.length>0);
    const eventKindsKey=JSON.stringify(finalTimelineNeeds.slice().sort());
    const old=cached??await read('display:'+id);
+   // Opening a fixture is itself a request for the complete FotMob incident
+   // archive, even when Zizobet already supplied every aggregate statistic.
+   const detailTimelineRequested=(viewed.get(id)??0)>now();
+   const detailTimelineReady=old?.fotmobTimelineChecked===true;
+   const detailTimelineAttemptedAt=Number(old?.fotmobTimelineAttemptedAt??0);
+   const detailTimelineRetryMs=Math.max(30000,Number(env.STATS_DETAIL_TIMELINE_RETRY_MS)||300000);
+   const detailTimelineRefresh=detailTimelineRequested&&!detailTimelineReady&&
+    (!Number.isFinite(detailTimelineAttemptedAt)||detailTimelineAttemptedAt<=0||
+     now()-detailTimelineAttemptedAt>=detailTimelineRetryMs);
    const requiredKey=[...requiredForMatch].sort().join('|');
    const cachedKey=[...(old?.settlementFields??[])].sort().join('|');
-   if(old?.version===5&&old.identity===identity&&old.next>now()&&Number.isFinite(Number(old.at))&&now()-Number(old.at)<localTtl&&!urgent.has(id)&&(!final||old.finalReview&&cachedKey===requiredKey&&old.finalEventKindsKey===eventKindsKey)){displayCache.set(id,old);return;}
+   if(old?.version===5&&old.identity===identity&&old.next>now()&&Number.isFinite(Number(old.at))&&now()-Number(old.at)<localTtl&&!urgent.has(id)&&!detailTimelineRefresh&&(!final||old.finalReview&&cachedKey===requiredKey&&old.finalEventKindsKey===eventKindsKey)){displayCache.set(id,old);return;}
    // Start each refresh with new facts. Keeping non-null values froze live totals forever.
-   const entry={version:5,identity,values:{},goalIntervals:null,sources:{},at:now()};
+   const entry={version:5,identity,values:{},goalIntervals:null,sources:{},at:now(),
+    fotmobTimelineChecked:detailTimelineReady,
+    fotmobTimelineAttemptedAt:old?.fotmobTimelineAttemptedAt??null};
    const persistedHistoricalKinds=new Set();
    const persistTimedKind=async(source,kind,homeCount,awayCount,events,timelineAvailable,homeScore,awayScore)=>{
     if(!finalTimelineNeeds.includes(kind)||typeof persistTimedFacts!=='function'||timelineAvailable!==true||
@@ -466,7 +477,8 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    // If the primary score has goals but the SQL event timeline is missing,
    // a detail viewer still needs an advisory FotMob scorer lookup.
    const missingGoalActors=needsFotMobScorerLookup(row,primaryGoal);
-   if(missingGoalActors||needsAnyActors()||!matchStatsReady(entry)||finalReviewNeeded){
+   if(missingGoalActors||needsAnyActors()||!matchStatsReady(entry)||finalReviewNeeded||detailTimelineRefresh){
+    if(detailTimelineRefresh)entry.fotmobTimelineAttemptedAt=now();
     if(finalReviewNeeded)attempted.push('fotmob');
     try{
      const targetDate=row.start_at||row.startAt||new Date().toISOString();
@@ -512,10 +524,25 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
         const incidents=fotMobIncidents(details);
         const eventList=details?.content?.matchFacts?.events?.events;
         const shotList=details?.content?.shotmap?.shots;
-        const completeKinds=[...(Array.isArray(eventList)?['goal','card']:[]),
-         ...(Array.isArray(shotList)?['shot']:[])];
+        const completeKinds=[];
+        const reconcileKind=(kind,home,away,hasTimeline)=>{
+         if(!hasTimeline||!validCount(home)||!validCount(away))return;
+         const rows=incidents.filter(item=>item.kind===kind&&item.team&&item.minute!=null);
+         if(rows.filter(item=>item.team==='home').length===Number(home)&&
+            rows.filter(item=>item.team==='away').length===Number(away))
+          completeKinds.push(kind);
+        };
+        // A kind is marked complete only when its timed events reconcile with
+        // independent team totals. This keeps corrections safe without erasing
+        // valid corners/cards merely because another category was returned.
+        reconcileKind('goal',parsed.homeScore,parsed.awayScore,Array.isArray(eventList));
+        reconcileKind('corner',parsed.cornersHome,parsed.cornersAway,Array.isArray(eventList));
+        reconcileKind('card',parsed.cardsHome,parsed.cardsAway,Array.isArray(eventList));
+        reconcileKind('foul',parsed.statistics?.fouls?.home,parsed.statistics?.fouls?.away,Array.isArray(eventList));
+        reconcileKind('shot',parsed.statistics?.shots?.home,parsed.statistics?.shots?.away,Array.isArray(shotList));
         await storeSupplementalIncidents(Number(id),'fotmob',fm.match.id,incidents,
          {execute:runQuery,payload:details,completeKinds});
+        entry.fotmobTimelineChecked=true;
         await enrichPrimaryActors(Number(id),'fotmob',primaryActors,incidents,{execute:runQuery});
         await refreshActors();
        }catch(error){

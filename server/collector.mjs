@@ -566,7 +566,7 @@ export function serializeMatch(row, oddsRows = [], now = Date.now()) {
 
 /** loads current odds for the given match rows and serialises everything */
 export async function withOdds(rows, now = Date.now(),{board=false,displayStats=false,skipOdds=false}={}) {
-  if(displayStats&&!board)for(const row of rows)statsProviders.warm(row);
+  if(displayStats&&!board)await Promise.all(rows.map(row=>statsProviders.warm(row)));
   const ids = rows.map((r) => r.match_id);
   // prices are served from memory by default (no DB read on the board path);
   // ODDS_STORE=db restores the previous behaviour
@@ -664,7 +664,7 @@ export async function withOdds(rows, now = Date.now(),{board=false,displayStats=
           team:item.team,minute:Number(item.minute),player:item.player_name??undefined,
           minuteLabel:String(item.minute)+(Number(item.added_minute)>0?'+'+Number(item.added_minute):''),
           text:item.kind==='goal'?'Goal':item.kind==='corner'?'Corner':
-           item.kind==='card'?(item.card_color==='red'?'Red card':'Yellow card'):
+           item.kind==='card'?(item.card_color==='red'?'Red card':item.card_color==='yellow'?'Yellow card':'Card (colour unknown)'):
            item.kind==='foul'?'Foul':item.on_target===true?'Shot on target':'Shot',
           onTarget:item.on_target===true
          }));
