@@ -63,7 +63,7 @@ export function startZizoFeed({onMatch,onInfo,onOdds,onStatus,onCycle,onMarketDe
   const clockMinute=clock?Number(clock[1])+Number(clock[2])/60:
    game.MatchTime==null?null:Number(game.MatchTime);
   if(Number.isFinite(clockMinute)&&clockMinute>=0)
-   signal.half=clockMinute>45?'second':'first';
+   signal.half=Math.floor(clockMinute)>=46?'second':'first';
   if(Number.isSafeInteger(info.homeScore)&&Number.isSafeInteger(info.awayScore))
    signal.score=[info.homeScore,info.awayScore];
   if(Array.isArray(info.periodsScore))
