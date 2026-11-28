@@ -1,10 +1,11 @@
 /** Provider statistics are independent facts: absent is never the number zero. */
-export const TEAM_STAT_FIELDS=Object.freeze(['possession','shots','shotsOnTarget','fouls','corners','offsides','yellow','red']);
+export const TEAM_STAT_FIELDS=Object.freeze(['possession','shots','shotsOnTarget','fouls','corners','goalKicks','offsides','yellow','red']);
 const aliases=new Map(Object.entries({
  possession:'possession',possessionpercent:'possession',ballpossession:'possession',
  shots:'shots',totalshots:'shots',shotstotal:'shots',
  shotsontarget:'shotsOnTarget',shotsongoal:'shotsOnTarget',ontarget:'shotsOnTarget',
  fouls:'fouls',foulscommitted:'fouls',foulsconceded:'fouls',totalfouls:'fouls',
+ goalkicks:'goalKicks',goalkick:'goalKicks',
  corners:'corners',cornerkicks:'corners',cornersht:'cornersHT',cornersft:'cornersFT',corners2h:'corners2H',secondhalfcorners:'corners2H',firsthalfcorners:'cornersHT',offsides:'offsides',offside:'offsides',totaloffsides:'offsides',yellow:'yellow',yellowcards:'yellow',red:'red',redcards:'red',
 }));
 const stamp=value=>{const n=new Date(value).getTime();return value!=null&&Number.isFinite(n)?new Date(n).toISOString():null;};
@@ -106,7 +107,7 @@ export function teamStatisticsFromRow(row){
 export function verifiedFinalStatistics(row,{maxAgeMs=3*60*60*1000}={}){
  const teams=teamStatisticsFromRow(row),phaseAt=new Date(row?.feed_status_at??row?.score_at).getTime();
  const result={};if(!Number.isFinite(phaseAt))return result;
- for(const field of ['shots','shotsOnTarget','fouls','offsides','corners','yellow','red']){
+ for(const field of ['shots','shotsOnTarget','fouls','offsides','corners','goalKicks','yellow','red']){
   const values={};
   for(const side of ['home','away']){
    const team=teams[side],at=new Date(team?._observedAt?.[field]).getTime();
