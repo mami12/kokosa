@@ -1245,6 +1245,17 @@ export async function gradeStoredEventContract(line,result,{execute}={}){
   }
   return primary;
  }
+ // A present native Zizobet period-corner breakdown is authoritative. If it
+ // is malformed or contradicts the final counters, a secondary timeline must
+ // not overrule that conflict.
+ const resultStats=typeof result?.statistics==='string'?(()=>{
+  try{return JSON.parse(result.statistics);}catch{return null;}
+ })():result?.statistics;
+ const officialPeriodCorner=c?.event==='corner'&&(
+  ['half-total','half-exact-count','half-parity','corner-comparison'].includes(c.kind)||
+  c.kind==='score-handicap'&&[1,2].includes(c.half));
+ if(officialPeriodCorner&&String(result?.source??'').toUpperCase()==='ZIZOBET'&&
+    resultStats?.cornerPeriods!=null)return null;
  // If Zizobet cannot prove a period/sequence contract from its own event list,
  // the separately verified historical provider timeline may do so. That
  // alternate chronology must independently reconcile to the same FT totals;
