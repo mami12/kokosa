@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {recoverLegacyZizobetCornerContract} from '../server/ledger/legacy-zizobet-corner-contract.mjs';
+import {recoverLegacyZizobetCornerContract,recoverLegacyZizobetEventContract} from '../server/ledger/legacy-zizobet-corner-contract.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
 import {nativeZizobetContractRow} from '../server/ledger/native-zizobet-contract.mjs';
 import {liveContract} from '../server/ledger/live-contract-rules.mjs';
@@ -160,4 +160,27 @@ for(const [source,expected] of [
 const heldNextCornerStatus=await gradeStoredEventContract({...heldNextCorner,live_contract:recoveredNextCorner},result,{execute});
 assert.equal(heldNextCornerStatus,'WON',
  'The recovered historical 2nd corner ticket settles from the verified complete timeline');
+// Old absolute goal/card interval contracts can be rebuilt from the same
+// immutable accepted native quote. The result grader still requires complete
+// event coverage from the permitted provider for that event family.
+const oldGoalInterval=legacy('Total goals in minutes 1-10 (10-minute interval)','Over',0,'0.5');
+oldGoalInterval.market_name='Total goals in minutes 1-10 (10-minute interval)';
+oldGoalInterval.accepted_contract.settlementHold='NATIVE_PERIOD_GOAL_UNMAPPED';
+const goalWindow=recoverLegacyZizobetEventContract(oldGoalInterval);
+assert.deepEqual(
+ {kind:goalWindow?.kind,event:goalWindow?.event,from:goalWindow?.from,to:goalWindow?.to,
+  choice:goalWindow?.choice,threshold:goalWindow?.threshold},
+ {kind:'window-total',event:'goal',from:1,to:9,choice:'over',threshold:0.5},
+ 'A legacy absolute goal interval recovers from the frozen native quote'
+);
+const oldCardInterval=legacy('Total cards in minutes 1-10 (10-minute interval)','Under',0,'1.5');
+oldCardInterval.market_name='Total cards in minutes 1-10 (10-minute interval)';
+oldCardInterval.accepted_contract.settlementHold='NATIVE_STATISTIC_UNMAPPED';
+const cardWindow=recoverLegacyZizobetEventContract(oldCardInterval);
+assert.deepEqual(
+ {kind:cardWindow?.kind,event:cardWindow?.event,from:cardWindow?.from,to:cardWindow?.to,
+  choice:cardWindow?.choice,threshold:cardWindow?.threshold},
+ {kind:'window-total',event:'card',from:1,to:9,choice:'under',threshold:1.5},
+ 'A legacy absolute card interval recovers from the frozen native quote'
+);
 console.log('PASS legacy Zizobet Most Corners, team/half totals and recovered Who takes the Nth corner');
