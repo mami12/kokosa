@@ -1,5 +1,6 @@
 import {classifyZizobetCardEvents} from './zizobet/card-events.mjs';
 import {zizobetEventIdentities} from './zizobet/event-identity.mjs';
+import {zizobetEventTime} from './zizobet/event-time.mjs';
 
 /** Display only provider-timed incidents; reception time is never an event minute. */
 export function providerTimeline(matchId,rows,match={}){
@@ -12,17 +13,10 @@ export function providerTimeline(matchId,rows,match={}){
    events.delete(identities[index].id);
    continue;
   }
-  const rawTime=String(row.gt??row.minute??row.time??'').trim();
-  const clock=rawTime.match(/^(\d{1,3})(?:\s*\+\s*(\d{1,2}))?$/);
-  if(!clock)continue;
-  const minute=Number(clock[1]);
-  let added=Number(clock[2]??row.injury??0);
-  const eventClock=String(row.clk??row.clock??'').match(/^(\d{1,3}):([0-5]\d)$/);
-  const clockMinute=eventClock?Number(eventClock[1]):null;
-  if(added===0&&(minute===45||minute===90)&&clockMinute!==null&&
-     clockMinute>minute&&clockMinute<=minute+15)
-   added=clockMinute-minute;
-  if(minute>120||!Number.isInteger(added)||added<0)continue;
+  const eventTime=zizobetEventTime(row.gt??row.minute??row.time,row.clk??row.clock,row.injury);
+  if(!Number.isFinite(eventTime.minute)||eventTime.minute>120)continue;
+  const minute=eventTime.minute-eventTime.added;
+  const added=eventTime.added;
   const team=/^(?:home|h|1)$/i.test(String(row.team))?'home':/^(?:away|a|2)$/i.test(String(row.team))?'away':null;
   if(!team)continue;
   const sourceType=String(row.type??'').toLowerCase();
@@ -45,7 +39,9 @@ export function providerTimeline(matchId,rows,match={}){
     .map(playerName).find(Boolean)??'';
   const identity=identities[index];
   const id=identity.id;
-  events.set(id,{id,sequence:identity.sequence,matchId:String(matchId),type,minute,addedMinute:added,minuteLabel:added?minute+'+'+added:String(minute),team,text,...(player?{player}:{})});
+  events.set(id,{id,sequence:identity.sequence,matchId:String(matchId),type,minute,addedMinute:added,
+   minuteLabel:eventTime.label,phase:row.phase??row.period??row.periodName??row.period_name??row.half??eventTime.phase,
+   team,text,...(player?{player}:{})});
  }
  return [...events.values()].sort((a,b)=>a.minute-b.minute||a.addedMinute-b.addedMinute||a.sequence-b.sequence);
 }
