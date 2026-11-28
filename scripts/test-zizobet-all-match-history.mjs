@@ -4,7 +4,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {LEDGER_SQL} from '../server/ledger/schema.mjs';
 import {projectZizobetHistory,createZizobetHistoryArchive} from '../server/ledger/zizobet-match-history.mjs';
 import {normalizeLiveFrame} from '../server/ledger/live-observation-store.mjs';
-import {startZizoFeed} from '../server/zizobet-feed.mjs';
+import {startZizoFeed,timelineCounterMismatches} from '../server/zizobet-feed.mjs';
 import {providerTimeline} from '../server/live-event-timeline.mjs';
 
 const game=(score,clock,events,extra={})=>({
@@ -310,6 +310,68 @@ try{
   await watchedFeed.tick();
   assert.equal(detailReads,2,'Pending-ticket timeline is re-polled inside 10 seconds');
  }finally{watchedFeed.stop();await watchedFeed.drain();}
+}
+
+{
+ // A correct dashboard counter with an incomplete TimeLines list must cause
+ // bounded quick re-polls until the provider timeline catches up.
+ const mismatchMatch={
+  Score:'0:0',MatchTime:37,MatchTimeExtended:'37:00',
+  EventStatus:10,MatchStatusID:10,
+  CornersTeam1:1,CornersTeam2:0,
+  YellowCardsTeam1:0,YellowCardsTeam2:0,
+  RedCardsTeam1:0,RedCardsTeam2:0
+ };
+ assert.deepEqual(timelineCounterMismatches({Match:mismatchMatch,TimeLines:[]}),['corner'],
+  'The raw timeline/counter mismatch is identified without fabricating a corner minute');
+ let at=Date.parse('2026-11-12T13:00:00Z'),detailReads=0,events=[];
+ const liveHeader=()=>({
+  ID:34,Sport:1,Team1:1,Team2:2,Region:1,Champ:1,
+  MatchStatusID:10,Score:'0:0',MatchTime:37,StartTime:'2026-11-12T12:23:00Z',
+  CornersTeam1:1,CornersTeam2:0,
+  YellowCardsTeam1:0,YellowCardsTeam2:0,RedCardsTeam1:0,RedCardsTeam2:0
+ });
+ const archiveCalls=[];
+ const request=async url=>{
+  if(url.includes('getheader/teams'))return teams;
+  if(url.includes('getlivemarkets'))return {StatusNames:[{it:'1_10',nm:'1st half'}],PositionNames:[],MarketNames:[]};
+  if(url.includes('getprematchmarketsbysport'))return [Object.fromEntries(Array.from({length:11},(_,i)=>[i+1,{ID:i+1,Name:'Result'}]))];
+  if(url.includes('headerformobilenew'))return {Games:[liveHeader()],Teams:teams,Regions:regions,Championats:champs};
+  if(url.includes('sport/getheader/en'))return {EN:{Sports:{1:{Regions:{}}}}};
+  if(url.includes('live/gamenew/34')){
+   detailReads++;
+   return {Match:{...liveHeader(),GameID:34,EventStatus:10},TimeLines:events,gmk:[]};
+  }
+  throw Error('Unexpected incomplete-timeline request '+url);
+ };
+ const mismatchFeed=startZizoFeed({
+  autoStart:false,historyEnabled:true,now:()=>at,request,
+  archiveHistory:async(id,raw)=>{archiveCalls.push({id,raw});return {stored:true,confirmedKinds:[]};},
+  connectMqtt:()=>({setLiveIds(){},stop(){},pause(){},resume(){}}),
+  onMatch(){},onInfo(){},onOdds(){}
+ });
+ try{
+  await mismatchFeed.tick();
+  assert.equal(detailReads,1,'Initial raw timeline is captured');
+  at+=5000;
+  await mismatchFeed.tick();
+  assert.equal(detailReads,2,'A scoreboard counter change immediately requests the raw timeline');
+  at+=5000;
+  await mismatchFeed.tick();
+  assert.equal(detailReads,2,'Mismatch retry waits for its short bounded delay');
+  at+=1000;
+  await mismatchFeed.tick();
+  assert.equal(detailReads,3,'An unreconciled corner total is retried after about six seconds');
+  events=[{id:'corner-34',type:'corner_kick',team:1,gt:'37',clk:'37:10'}];
+  at+=6000;
+  await mismatchFeed.tick();
+  assert.equal(detailReads,4,'The next poll sees the provider's corrected incident list');
+  assert.ok(archiveCalls.at(-1).raw.TimeLines.some(event=>event.id==='corner-34'),
+   'The newly published provider incident reaches the history archive');
+  at+=6000;
+  await mismatchFeed.tick();
+  assert.equal(detailReads,4,'Once counters reconcile, the short retry loop stops');
+ }finally{mismatchFeed.stop();await mismatchFeed.drain();}
 }
 
 {
