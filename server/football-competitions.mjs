@@ -12,8 +12,12 @@ export function isSyntheticFootballMatch(match={}) {
     match.isEsport,match.is_esport,match.isEsports,match.is_esports,match.is_e_sports,
     match.isElectronicSport,match.isElectronicSports,match.isSimulated,match.is_simulated,
     match.isVirtual,match.is_virtual,match.isSynthetic,match.is_synthetic,
-    tournament.isEsport,tournament.is_esports,category.isEsport,category.is_esports,
-    sport.isEsport,sport.is_esports,raw.isEsport,raw.is_esport,raw.isEsports,
+    tournament.isEsport,tournament.is_esport,tournament.isEsports,tournament.is_esports,tournament.is_e_sports,
+    tournament.isElectronicSport,tournament.isElectronicSports,tournament.isSimulated,tournament.isVirtual,
+    category.isEsport,category.is_esport,category.isEsports,category.is_esports,category.is_e_sports,
+    category.isElectronicSport,category.isElectronicSports,category.isSimulated,category.isVirtual,
+    sport.isEsport,sport.is_esport,sport.isEsports,sport.is_esports,sport.is_e_sports,
+    sport.isElectronicSport,sport.isElectronicSports,raw.isEsport,raw.is_esport,raw.isEsports,
     raw.is_esports,raw.isSimulated,raw.isVirtual,raw.isSynthetic,
   ];
   if(explicitFlags.some(value=>value===true)||match.is_real===false||raw.is_real===false)return true;
@@ -182,8 +186,8 @@ export function rankCompetitionRow(row, { allowUnlisted = false } = {}) {
   const categorySlug = row.category_slug ?? row.tournament?.category?.slug ?? '';
   const tournamentName = row.tournament_name ?? row.tournament?.name ?? '';
   const decision = competitionDecision(
-    { name: tournamentName, categorySlug },
-    { slug: categorySlug },
+    { ...row, name: tournamentName, categorySlug, tournament: row.tournament, category: row.category },
+    { ...(row.category ?? {}), slug: categorySlug },
   );
   if (!decision.allowed) {
     return allowUnlisted ? { ...row, competition_rank: null } : null;
