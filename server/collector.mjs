@@ -566,7 +566,7 @@ export function serializeMatch(row, oddsRows = [], now = Date.now()) {
 
 /** loads current odds for the given match rows and serialises everything */
 export async function withOdds(rows, now = Date.now(),{board=false,displayStats=false,skipOdds=false}={}) {
-  if(displayStats&&!board)for(const row of rows)statsProviders.warm(row);
+  if(displayStats&&!board)await Promise.all(rows.map(row=>statsProviders.warm(row)));
   const ids = rows.map((r) => r.match_id);
   // prices are served from memory by default (no DB read on the board path);
   // ODDS_STORE=db restores the previous behaviour
