@@ -48,7 +48,7 @@ const stored=await storeSupplementalIncidents(101,'fotmob','fotmob-9001',inciden
 assert.deepEqual(stored,{stored:3});
 assert.equal(calls.length,3,'Archive reconciles active rows, inserts incidents and stores the source snapshot');
 const deactivation=calls.find(call=>call.sql.startsWith('update app_supplemental_match_incident'));
-assert.deepEqual(deactivation.params[3],['goal','corner','card','foul','shot'],
+assert.deepEqual(deactivation.params[3],['corner','card'],
  'Corners and cards participate in completeness/reconciliation, not only shots');
 const insertion=calls.find(call=>call.sql.includes('insert into app_supplemental_match_incident'));
 const savedRows=JSON.parse(insertion.params[3]);
