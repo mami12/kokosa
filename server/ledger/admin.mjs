@@ -129,24 +129,32 @@ const checkRequestId = (runId, outcomeId) => {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${((Number.parseInt(hex[16], 16) & 3) | 8).toString(16)}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 };
 
-async function settlementCheckSelections(matchIds) {
+async function settlementCheckSelections(matchIds, refreshAll) {
   if (!Array.isArray(matchIds) || matchIds.length !== 2) throw badRequest('Zgjidh saktësisht dy ndeshje.');
   const ids = matchIds.map(value => Number(value));
   if (ids.some(id => !Number.isSafeInteger(id) || id <= 0) || new Set(ids).size !== 2) throw badRequest('Dy ndeshjet duhet të jenë të ndryshme.');
 
   // Read only the two selected fixtures in parallel. This check is intentionally
   // limited to primary board offers; it must not request every offer per match.
-  const rows = await Promise.all(ids.map(id => getMatchRow(id)));
-  if (rows.some(row => !row || isSyntheticFootballMatch(row) || overrides.isMatchHidden(row))) {
+  const selectedRows = await Promise.all(ids.map(id => getMatchRow(id)));
+  if (selectedRows.some(row => !row || isSyntheticFootballMatch(row) || overrides.isMatchHidden(row))) {
     throw badRequest('Një nga ndeshjet nuk është e disponueshme për këtë kontroll.');
   }
-  const quotedMatches = await withOdds(rows, Date.now(), { board: true });
+
+  // Load the COMPLETE market grid for both selected fixtures concurrently.
+  // Never use the homepage/board projection in the settlement-check flow.
+  await refreshAll?.(ids);
+  const rows = await Promise.all(ids.map(async (id, index) => (await getMatchRow(id)) ?? selectedRows[index]));
+  if (rows.some(row => !row || isSyntheticFootballMatch(row) || overrides.isMatchHidden(row))) {
+    throw badRequest('Një nga ndeshjet nuk është më e disponueshme për këtë kontroll.');
+  }
+  const quotedMatches = await withOdds(rows, Date.now(), { board: false });
   const quotedById = new Map(quotedMatches.map(quoted => [String(quoted.id), quoted]));
   const matches = [];
 
   for (const current of rows) {
     const quoted = quotedById.get(String(current.match_id));
-    if (!quoted) throw badRequest('Nuk u lexuan kuotat kryesore të njërës prej ndeshjeve.');
+    if (!quoted) throw badRequest('Nuk u ngarkuan të gjitha tregjet e njërës prej ndeshjeve.');
     const match = toClientMatch(quoted);
     if (!['LIVE', 'PREMATCH'].includes(match.status) || match.isSuspended || match.isHidden) throw badRequest('Zgjidh vetëm ndeshje aktive live ose para fillimit.');
     const isLiveMatch = match.status === 'LIVE' || current.service === 'LIVE' || current.live === true;
@@ -506,7 +514,7 @@ adminRouter.post('/manager/users/:id/withdraw', ...manager, moveBalance(-1, 'WIT
 
 /* ------------------------------------------------ settlement check tickets */
 adminRouter.post('/admin/settlement-check/preview', ...admin, guard(async (req, res) => {
-  const matches = await settlementCheckSelections(req.body?.matchIds);
+  const matches = await settlementCheckSelections(req.body?.matchIds, req.app.locals.loadMatchDetailsFully ?? (ids => Promise.all(ids.map(id => req.app.locals.loadMatchDetailFully?.(id)))));
   const ticketCount = matches.reduce((total, match) => total + match.selections.length, 0);
   res.json({stakePerTicket:automatedCheckStake,ticketCount,totalStake:ticketCount * automatedCheckStake,matches:matches.map(({selections,...match})=>({...match,ticketCount:selections.length}))});
 }));
@@ -515,7 +523,7 @@ adminRouter.post('/admin/settlement-check/place', ...admin, guard(async (req, re
   if (!uuidPattern.test(String(runId ?? ''))) throw badRequest('Identifikuesi i kontrollit nuk është i vlefshëm. Rifresko dhe provo përsëri.');
   const player = await ledger.getUserById(playerId);
   if (!player || player.role !== 'PLAYER' || player.status !== 'ACTIVE') throw badRequest('Zgjidh një llogari lojtari aktive.');
-  const matches = await settlementCheckSelections(matchIds), placed = [], skipped = [];
+  const matches = await settlementCheckSelections(matchIds, req.app.locals.loadMatchDetailsFully ?? (ids => Promise.all(ids.map(id => req.app.locals.loadMatchDetailFully?.(id))))), placed = [], skipped = [];
   for (const match of matches) for (const selection of match.selections) {
     try {
       const ticket = await bets.placeBet({user:player,stake:automatedCheckStake,selections:[selection],clientRequestId:checkRequestId(String(runId).toLowerCase(),selection.outcomeId)});
