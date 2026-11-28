@@ -1,5 +1,5 @@
 import {displayTeamStatistics,displayGoalIntervals} from './display-stats.mjs';
-import {primaryGoalDisplay,matchedSupplementalScorers} from './primary-goal-display.mjs';
+import {primaryGoalDisplay} from './primary-goal-display.mjs';
 import {enrichPrimaryActors} from './primary-actor-enrichment.mjs';
 import {SUPPLEMENTAL_INCIDENT_SQL,fotMobIncidents,backupIncidents,rawProviderIncidents,storeSupplementalIncidents} from './supplemental-incidents.mjs';
 import {teamStatisticsFromRow,verifiedFinalStatistics} from '../match-statistics.mjs';
@@ -391,11 +391,10 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
    // Zizobet remains first choice. A complete fallback timeline is stored
    // separately and is considered only when the primary event kind is missing.
    let primaryFacts=[],primaryGoal=null,primaryActors=[],goalCoverage=null;
-   const actorSQL="select provider_event_id,kind,minute,team,card_color,player_name,aiscore_player_name,aiscore_verified,own_goal,fotmob_player_name,fotmob_verified,supplemental_player_name,supplemental_verified from app_match_event_fact where match_id=$1 and provider='zizobet' and kind in ('goal','card','foul','corner') and active=true";
+   const actorSQL="select provider_event_id,kind,minute,team,card_color,player_name,aiscore_player_name,aiscore_verified,own_goal,supplemental_player_name,supplemental_verified from app_match_event_fact where match_id=$1 and provider='zizobet' and kind in ('goal','card','foul','corner') and active=true";
    const refreshActors=async()=>{primaryActors=(await runQuery(actorSQL,[Number(id)])).rows;return primaryActors;};
    const needsActors=()=>primaryActors.some(f=>['goal','card','foul'].includes(f.kind)&&
      !f.player_name&&!(f.aiscore_verified&&f.aiscore_player_name)&&
-     !(f.fotmob_verified&&f.fotmob_player_name)&&
      !(f.supplemental_verified&&f.supplemental_player_name));
    try{
     const coverage=(await runQuery(
@@ -407,7 +406,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
      goalCoverage=coverage;
      primaryFacts=(await runQuery(
        "select provider_event_id,minute,team,phase,player_name,aiscore_player_name,aiscore_verified, "+
-       "own_goal,fotmob_player_name,fotmob_verified,supplemental_player_name,supplemental_verified "+  
+       "own_goal,supplemental_player_name,supplemental_verified "+  
        "from app_match_event_fact where match_id=$1 and provider='zizobet' and kind='goal' and active=true",
        [Number(id)])).rows;
      primaryGoal=primaryGoalDisplay(coverage,primaryFacts,row);
@@ -650,7 +649,7 @@ export function createStatsService({runQuery=query,env=process.env,request=fetch
     try{
      const {rows:fresh}=await runQuery(
       "select provider_event_id,minute,team,phase,player_name,own_goal,"+
-      "aiscore_player_name,aiscore_verified,fotmob_player_name,fotmob_verified,"+
+      "aiscore_player_name,aiscore_verified,"+
       "supplemental_player_name,supplemental_verified "+
       "from app_match_event_fact where match_id=$1 and provider='zizobet' "+
       "and kind='goal' and active=true",[Number(id)]);
