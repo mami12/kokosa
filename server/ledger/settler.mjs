@@ -1942,7 +1942,7 @@ export async function settleMatch(matchId) {
   ).rows;
   if (!lines.length) return { matchId: String(matchId), settled: 0 };
   if((result.half_home_score==null||result.half_away_score==null)&&
-     lines.some(line=>isHtFtMarket(line.market_name)||/\\b(?:1st|first)\\s+half\\b/i.test(String(line.market_name??'')))){
+     lines.some(line=>{const title=String(line.market_name??'').toLowerCase();return isHtFtMarket(title)||title.includes('1st half')||title.includes('first half');}))){
     try{
       const half=await loadVerifiedHalfTimeScore(matchId,result,{execute:query});
       if(half&&
