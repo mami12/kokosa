@@ -1955,7 +1955,11 @@ export async function settleMatch(matchId) {
   ).rows;
   if (!lines.length) return { matchId: String(matchId), settled: 0 };
   if((result.half_home_score==null||result.half_away_score==null)&&
-     lines.some(line=>{const title=String(line.market_name??'').toLowerCase();return isHtFtMarket(title)||title.includes('1st half')||title.includes('first half');})) {
+     lines.some(line=>{
+      const title=String(line.market_name??'').toLowerCase();
+      const hasHalfScope=/\b(?:1st|first|2nd|second)\s+half\b|\b(?:halftime|half[ -]time)\b/.test(title);
+      return isHtFtMarket(title)||hasHalfScope||[1,2].includes(Number(line.period??0));
+     })) {
     try{
       const half=await loadVerifiedHalfTimeScore(matchId,result,{execute:query});
       if(half&&
