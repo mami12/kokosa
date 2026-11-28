@@ -122,7 +122,7 @@ export async function manualReviewQueue({runQuery=query,limit=150,offset=0,revie
  const eventsByMatch=new Map(),coverageByMatch=new Map();
  if(matchIds.length){
   const eventRows=(await runQuery(`with confirmed as (
-    select c.match_id,c.kind as coverage_kind,c.through_minute,c.complete,
+    select c.match_id,c.provider as coverage_provider,c.kind as coverage_kind,c.through_minute,c.complete,
       c.confirmed_at,c.count_home,c.count_away,c.card_colors_verified,
       f.provider_event_id,f.kind as event_kind,f.team,f.minute,f.seconds,
       case when f.supplemental_verified then f.supplemental_player_name
@@ -130,23 +130,24 @@ export async function manualReviewQueue({runQuery=query,limit=150,offset=0,revie
         when f.fotmob_verified then f.fotmob_player_name
         else f.player_name end as player_name,
       f.card_color,f.own_goal,f.phase,
-      row_number() over(partition by c.match_id,c.kind
+      row_number() over(partition by c.match_id,c.provider,c.kind
         order by f.minute,f.seconds nulls last,f.provider_event_id) as event_index
     from app_match_event_coverage c
     left join app_match_event_fact f
       on f.match_id=c.match_id and f.provider=c.provider
       and f.kind=c.kind and f.active=true
-    where c.match_id=any($1::bigint[]) and c.provider='zizobet'
+    where c.match_id=any($1::bigint[]) and c.provider=any($2::text[])
       and c.kind in ('goal','corner','card','foul')
   )
   select * from confirmed where event_index<=250
-  order by match_id,minute,seconds nulls last,provider_event_id`,[matchIds])).rows;
+  order by match_id,coverage_provider,minute,seconds nulls last,provider_event_id`,[matchIds,['zizobet','fotmob']])).rows;
   for(const row of eventRows){
-   const id=String(row.match_id),kind=String(row.coverage_kind??'');
+   const id=String(row.match_id),kind=String(row.coverage_kind??''),provider=String(row.coverage_provider??'zizobet');
    if(!coverageByMatch.has(id))coverageByMatch.set(id,new Map());
-   if(kind&&!coverageByMatch.get(id).has(kind)){
-    coverageByMatch.get(id).set(kind,{
-     kind,throughMinute:Number(row.through_minute),complete:row.complete===true,
+   const coverageKey=provider+':'+kind;
+   if(kind&&!coverageByMatch.get(id).has(coverageKey)){
+    coverageByMatch.get(id).set(coverageKey,{
+     provider,kind,throughMinute:Number(row.through_minute),complete:row.complete===true,
      confirmed:row.confirmed_at!=null,confirmedAt:row.confirmed_at,
      countHome:Number(row.count_home),countAway:Number(row.count_away),
      cardColorsVerified:row.card_colors_verified===true
@@ -155,7 +156,7 @@ export async function manualReviewQueue({runQuery=query,limit=150,offset=0,revie
    if(row.event_kind&&row.provider_event_id!=null){
     if(!eventsByMatch.has(id))eventsByMatch.set(id,[]);
     eventsByMatch.get(id).push({
-     id:String(row.provider_event_id),kind:String(row.event_kind),team:String(row.team),
+     id:String(row.provider_event_id),provider:String(row.coverage_provider??'zizobet'),kind:String(row.event_kind),team:String(row.team),
      minute:Number(row.minute),seconds:row.seconds==null?null:Number(row.seconds),
      playerName:row.player_name??null,cardColor:row.card_color??null,
      ownGoal:row.own_goal??null,phase:row.phase??null,verified:row.confirmed_at!=null
@@ -189,7 +190,7 @@ export async function manualReviewQueue({runQuery=query,limit=150,offset=0,revie
    if(typeof detail==='string'){try{detail=JSON.parse(detail);}catch{detail={};}}
    if(!eventsByMatch.has(id))eventsByMatch.set(id,[]);
    eventsByMatch.get(id).push({
-    id:String(row.provider_event_id),kind:String(row.kind),team:String(row.team),
+    id:String(row.provider_event_id),provider:'zizobet',kind:String(row.kind),team:String(row.team),
     minute:Number(row.minute),
     seconds:detail.seconds==null?null:Number(detail.seconds),
     minuteLabel:detail.minuteLabel??null,
