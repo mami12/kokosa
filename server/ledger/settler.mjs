@@ -162,6 +162,19 @@ export function gradeHeldNativeCombo(line,result){
    if(['WON','LOST','VOID'].includes(status))return status;
   }
  }
+ // Re-run exact, now-supported parsers against the frozen native quote for
+ // old final/statistic/period-goal parser holds. The standard evidence gate
+ // still rejects missing timelines, unresolved baselines, ambiguous periods,
+ // and unsupported composite selections.
+ if(['NATIVE_FINAL_RULE_UNMAPPED','NATIVE_PERIOD_GOAL_UNMAPPED',
+     'NATIVE_STATISTIC_UNMAPPED'].includes(reason)){
+  const repaired={...line,...frozen,
+   accepted_contract:{...saved,settlementHold:null}};
+  if(hasRequiredSettlementEvidence(repaired,result)){
+   const status=gradeLine(repaired,result);
+   if(['WON','LOST','VOID'].includes(status))return status;
+  }
+ }
  if(reason==='NATIVE_PARAMETERS_UNMAPPED'){
   if(!saved.nativeMarketName||!saved.providerMarketKey||saved.nativeMarketId==null)return null;
   let decoded;
