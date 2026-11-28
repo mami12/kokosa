@@ -209,6 +209,7 @@ export async function manualReviewQueue({runQuery=query,limit=150,offset=0,revie
   item.eventTimeline=eventsByMatch.get(id)??[];
   item.eventCoverage=[...(coverageByMatch.get(id)?.values()??[])];
   item.eventTimelineSource=!item.eventTimeline.length?'UNAVAILABLE':
+   item.eventTimeline.some(event=>event.provider==='fotmob')?'MULTI_PROVIDER':
    item.eventTimeline.every(event=>event.verified)?'ZIZOBET_CONFIRMED':'ZIZOBET_ARCHIVED';
  }
  return {items,count:items.length,notificationCount:items.filter(item=>item.notificationActive).length,
