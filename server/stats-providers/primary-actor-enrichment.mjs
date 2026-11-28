@@ -9,12 +9,11 @@ const kinds=new Set(['goal','card','corner','foul']);
 const key=e=>[e.kind??e.type,e.team,Number(e.minute)].join('|');
 const missingActor=f=>!actorName(f.player_name)&&
  !(f.aiscore_verified===true&&actorName(f.aiscore_player_name))&&
- !(f.fotmob_verified===true&&actorName(f.fotmob_player_name))&&
  !(f.supplemental_verified===true&&actorName(f.supplemental_player_name));
 
 export async function enrichPrimaryActors(matchId,source,primaryFacts,events,{execute}={}){
  const id=Number(matchId);
- if(!Number.isSafeInteger(id)||id<=0||!['fotmob','apifootball','bsd','goalapi','sportapi','worldcup26'].includes(source)||
+ if(!Number.isSafeInteger(id)||id<=0||!['apifootball','bsd','goalapi','sportapi','worldcup26'].includes(source)||
     typeof execute!=='function'||!Array.isArray(primaryFacts)||!Array.isArray(events))
   return {updated:0,reason:'UNVERIFIED_FIXTURE_OR_EVIDENCE'};
  const primary=new Map(),candidate=new Map();
@@ -48,7 +47,6 @@ export async function enrichPrimaryActors(matchId,source,primaryFacts,events,{ex
    "and (kind<>'goal' or own_goal=false) "+
    "and (player_name is null or lower(player_name)=lower($4)) "+
    "and (aiscore_verified=false or aiscore_player_name is null or lower(aiscore_player_name)=lower($4)) "+
-   "and (fotmob_verified=false or fotmob_player_name is null or lower(fotmob_player_name)=lower($4)) "+
    "and (supplemental_verified=false or supplemental_player_name is null or lower(supplemental_player_name)=lower($4)) ",
    [id,String(f.provider_event_id),f.kind,player,source,f.team,Number(f.minute)]);
   updated+=Number(result?.rowCount??0);
