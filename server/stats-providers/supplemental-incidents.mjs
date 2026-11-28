@@ -190,7 +190,8 @@ export async function storeSupplementalIncidents(matchId,provider,fixtureId,rows
  if(!Number.isSafeInteger(id)||id<=0||!providers.has(source)||
   fixtureId==null||!String(fixtureId).trim()||typeof execute!=='function'||!Array.isArray(rows))
   return {stored:0,reason:'SOURCE_FIXTURE_UNVERIFIED'};
- const valid=rows.filter(row=>kinds.has(row?.kind)&&
+ const normalized=rows.filter(row=>kinds.has(row?.kind)&&
+  row.providerEventId!=null&&String(row.providerEventId).trim()!==''&&
   (row.team==null||['home','away'].includes(row.team))&&
   (row.minute==null||Number.isSafeInteger(row.minute)&&row.minute>=0&&row.minute<=130)&&
   (row.addedMinute==null||Number.isSafeInteger(row.addedMinute)&&row.addedMinute>=0&&row.addedMinute<=30))
@@ -204,6 +205,26 @@ export async function storeSupplementalIncidents(matchId,provider,fixtureId,rows
    card_color:row.cardColor??null,on_target:row.onTarget??null,
    raw:row.raw??{}
   }));
+ // PostgreSQL cannot update the same ON CONFLICT key twice in one INSERT.
+ // Providers occasionally repeat an incident in a single timeline response;
+ // collapse those copies before sending the batch while keeping the richest
+ // available representation of that provider event.
+ const identityFields=['team','minute','added_minute','seconds','source_order',
+  'player_id','player_name','card_color','on_target'];
+ const completeness=row=>identityFields.filter(field=>row[field]!=null).length;
+ const uniqueByIdentity=new Map();
+ for(const row of normalized){
+  const key=JSON.stringify([row.provider_event_id,row.kind]);
+  const previous=uniqueByIdentity.get(key);
+  if(!previous){uniqueByIdentity.set(key,row);continue;}
+  const preferred=completeness(row)>=completeness(previous)?row:previous;
+  const fallback=preferred===row?previous:row;
+  const merged={...fallback,...preferred};
+  for(const field of identityFields)merged[field]=preferred[field]??fallback[field]??null;
+  merged.raw=preferred.raw??fallback.raw??{};
+  uniqueByIdentity.set(key,merged);
+ }
+ const valid=[...uniqueByIdentity.values()];
  const certifiedKinds=[...new Set(completeKinds)].filter(kind=>kinds.has(kind));
  if(certifiedKinds.length){
   const ids=valid.filter(row=>certifiedKinds.includes(row.kind)).map(row=>row.provider_event_id);
