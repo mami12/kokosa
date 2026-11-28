@@ -26,7 +26,7 @@ assert.equal(decoded.stats['10'].shotsOnTarget,2);assert.equal(decoded.stats['10
 const replayed=decodePushMessage({messageType:'match-info',data:{matchId:900,ts:now-300000,scoreBoard:{results:{10:{shotsOnTarget:'3'}}}}}).info;
 assert.equal(replayed.stats['10']._observedAt.shotsOnTarget,old,'delayed source packet neverbecomes fresh justbecause itarrivednow');
 const base={match_id:900,home:'Home',away:'Away',home_score:7,away_score:4,score_at:at,feed_status:'Finished',feed_status_at:at,raw:{homeTeam:{id:10},awayTeam:{id:20}}};
-const row={...base,stats:{10:normalizeTeamStatistics({shotsOnTarget:3,shots:10,fouls:8,offsides:2},{observedAt:at}),20:normalizeTeamStatistics({shotsOnTarget:5,shots:12,fouls:11,offsides:1},{observedAt:at})}};
+const row={...base,stats:{10:normalizeTeamStatistics({shotsOnTarget:3,shots:10,fouls:8,offsides:2,goalKicks:8},{observedAt:at}),20:normalizeTeamStatistics({shotsOnTarget:5,shots:12,fouls:11,offsides:1,goalKicks:6},{observedAt:at})}};
 assert.equal(teamStatisticsFromRow(row).home.shotsOnTarget,3);
 assert.equal(teamStatisticsFromRow({...row,raw:{competitors:[{id:10},{id:20}]}}).away.fouls,11);
 assert.equal(trackerTeamStatistics({}).home.shotsOnTarget,null,'unknown never displays aszero');
