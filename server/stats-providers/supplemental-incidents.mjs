@@ -44,7 +44,12 @@ const providers=new Set(['fotmob','aiscore','apifootball','sportapi','goalapi','
 const count=v=>v!==null&&v!==undefined&&v!==''&&Number.isSafeInteger(Number(v))&&Number(v)>=0?Number(v):null;
 const nameOf=v=>typeof v==='string'&&v.trim()?v.trim().slice(0,200):null;
 const minutes=value=>{
- const match=String(value??'').trim().match(/^(\d{1,3})(?:\s*\+\s*(\d{1,2}))?(?:['’])?$/);
+ const raw=value&&typeof value==='object'
+  ?value.display??value.label??value.text??
+   (value.elapsed!=null?String(value.elapsed)+(value.extra!=null&&Number(value.extra)>0?'+'+value.extra:''):
+    value.minute??value.min)
+  :value;
+ const match=String(raw??'').trim().match(/^(\d{1,3})(?:\s*\+\s*(\d{1,2}))?(?:['’])?$/);
  if(!match)return {minute:null,addedMinute:null};
  const minute=Number(match[1]),addedMinute=Number(match[2]??0);
  return minute<=130&&addedMinute<=30?{minute,addedMinute}:{minute:null,addedMinute:null};
@@ -64,40 +69,57 @@ export function fotMobIncidents(details){
  const shots=details?.content?.shotmap?.shots;
  const result=[];
  const knownTeams=details?.header?.teams??[];
- const homeId=details?.general?.homeTeam?.id??knownTeams?.[0]?.id??null;
- const awayId=details?.general?.awayTeam?.id??knownTeams?.[1]?.id??null;
+ const homeTeam=details?.general?.homeTeam??knownTeams?.[0]??{};
+ const awayTeam=details?.general?.awayTeam??knownTeams?.[1]??{};
+ const homeId=homeTeam?.id??null,awayId=awayTeam?.id??null;
+ const normalize=value=>String(value??'').normalize('NFD')
+  .replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
  const teamOf=e=>{
-  if(e?.isHome===true)return 'home';if(e?.isHome===false)return 'away';
-  const id=e?.teamId??e?.team_id;
-  return id!=null&&homeId!=null&&String(id)===String(homeId)?'home':
-   id!=null&&awayId!=null&&String(id)===String(awayId)?'away':null;
+  if(e?.isHome===true||e?.isHomeTeam===true||e?.is_home===true||e?.team?.isHome===true)return 'home';
+  if(e?.isHome===false||e?.isHomeTeam===false||e?.is_home===false||e?.team?.isHome===false)return 'away';
+  const side=String(e?.side??e?.teamSide??e?.team_side??'').toLowerCase();
+  if(['home','h','1'].includes(side))return 'home';
+  if(['away','a','2'].includes(side))return 'away';
+  const id=e?.teamId??e?.team_id??e?.team?.id;
+  if(id!=null&&homeId!=null&&String(id)===String(homeId))return 'home';
+  if(id!=null&&awayId!=null&&String(id)===String(awayId))return 'away';
+  const name=e?.teamName??e?.team_name??e?.team?.name??e?.team;
+  const normalized=normalize(name);
+  if(normalized&&normalized===normalize(homeTeam?.name))return 'home';
+  if(normalized&&normalized===normalize(awayTeam?.name))return 'away';
+  return null;
  };
  if(Array.isArray(eventRows)){
   for(const [i,e] of eventRows.entries()){
    if(e?.cancelled===true||e?.canceled===true||e?.disabled===true||
       e?.isDisallowed===true||e?.isPenaltyShootoutEvent===true)continue;
-   const label=String(e?.type??'').trim().toLowerCase();
-   const kind=label==='goal'?'goal':label==='card'?'card':
-    /^(?:corner|cornerkick|corner kick)$/.test(label)?'corner':
-    /^(?:foul|foul committed)$/.test(label)?'foul':null;
+   const label=String(e?.type??e?.eventType??'').trim()
+    .replace(/([a-z])([A-Z])/g,'$1 $2').toLowerCase()
+    .replace(/[_-]+/g,' ').replace(/\s+/g,' ');
+   const kind=/^(?:goal|own goal|score change|scoring)$/.test(label)?'goal':
+    /card|booking|caution|sending off|dismissal/.test(label)?'card':
+    /corner/.test(label)?'corner':
+    /foul/.test(label)?'foul':null;
    if(!kind)continue;
-   const clock=minutes(e.time??e.timeStr??e.minute);
+   const clock=minutes(e.time??e.timeStr??e.minute??e.clock);
    const actor=identity(e);
+   const cardText=[e.card,e.cardType,e.card_type,e.description,e.type].filter(Boolean).join(' ');
    result.push({kind,team:teamOf(e),...clock,...actor,
     providerEventId:eventId('fotmob',kind,i,e),
-    ownGoal:kind==='goal'?(e.ownGoal===true||e.shotmapEvent?.isOwnGoal===true):null,
-    cardColor:kind==='card'?/red/i.test(String(e.card??e.cardType??''))?'red':
-     /yellow/i.test(String(e.card??e.cardType??''))?'yellow':null:null,
+    ownGoal:kind==='goal'?(e.ownGoal===true||e.shotmapEvent?.isOwnGoal===true||/own goal/i.test(label)):null,
+    cardColor:kind==='card'?/red/i.test(cardText)?'red':
+     /yellow/i.test(cardText)?'yellow':null:null,
     onTarget:null,sourceOrder:i,raw:e});
   }
  }
  if(Array.isArray(shots)){
   for(const [i,s] of shots.entries()){
-   const base=count(s.min),injury=count(s.minAdded??0);
-   const clock=base!==null&&base<=130&&injury!==null&&injury<=30?
-    {minute:base,addedMinute:injury}:{minute:null,addedMinute:null};
+   const clock=minutes(s.time??s.min??s.minute);
+   const added=count(s.minAdded??s.addedMinute??0);
+   if(added!==null&&added>0&&clock.minute!==null)clock.addedMinute=added;
    result.push({kind:'shot',team:teamOf(s),...clock,
-    playerId:s.playerId??null,playerName:nameOf(s.playerName??s.fullName),
+    playerId:s.playerId??s.player?.id??null,
+    playerName:nameOf(s.playerName??s.player?.name??s.fullName),
     providerEventId:eventId('fotmob','shot',i,s),
     cardColor:null,onTarget:typeof s.isOnTarget==='boolean'?s.isOnTarget:null,
     sourceOrder:i,raw:s});
