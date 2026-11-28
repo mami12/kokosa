@@ -4,6 +4,8 @@ import {PGlite} from '@electric-sql/pglite';
 import {LEDGER_SQL} from '../server/ledger/schema.mjs';
 import {recoverLegacyZizobetEventContract} from '../server/ledger/legacy-zizobet-corner-contract.mjs';
 import {gradeStoredEventContract} from '../server/ledger/match-event-facts.mjs';
+import {liveContract} from '../server/ledger/live-contract-rules.mjs';
+import {parseCornerComparison,gradeCornerComparisonFacts} from '../server/ledger/corner-comparisons.mjs';
 import {gradeHeldNativeCombo} from '../server/ledger/settler.mjs';
 
 const db=new PGlite();
@@ -236,7 +238,7 @@ try{
  ]){
   const row=heldHalf(92000+Math.abs(market.length*17+selection.length),
    market,selection,threshold);
-  const parsed=(await import('../server/ledger/settler.mjs')).gradeHeldNativeCombo(row,nott);
+  const parsed=gradeHeldNativeCombo(row,nott);
   assert.equal(parsed,expected,market+' / '+selection);
  }
 
@@ -295,6 +297,45 @@ try{
   'Halftime/fulltime & total goals (2.5)','1/1 and Under','2.5'),southamptonNoHt),null);
 
  console.log('PASS four-match pending markets: full/1H/2H O-U combos, HTFT exact/score/totals, DC+BTTS by half, goal/corner/card intervals and evidence-only holds');
+ // Corners Halftime/Fulltime: the first result is the HT corner leader,
+ // the second the FT corner leader. This needs one complete Zizobet timeline.
+ const cornerHtFtLine={market_name:'Corners Halftime/Fulltime',outcome_name:'1/1',
+  outcome_key:'1/1',period:0};
+ const cornerHtFt=liveContract(cornerHtFtLine);
+ assert.deepEqual({kind:cornerHtFt?.kind,event:cornerHtFt?.event,mode:cornerHtFt?.mode,
+  halfSide:cornerHtFt?.halfSide,fullSide:cornerHtFt?.fullSide},
+  {kind:'corner-comparison',event:'corner',mode:'half-full-result',
+   halfSide:'home',fullSide:'home'});
+ const cornerPhaseFacts=[
+  {team:'home',minute:8,phase:'H1'},
+  {team:'home',minute:17,phase:'H1'},
+  {team:'away',minute:24,phase:'H1'},
+  {team:'home',minute:62,phase:'H2'},
+  {team:'away',minute:70,phase:'H2'}
+ ];
+ assert.equal(gradeCornerComparisonFacts(cornerHtFt,cornerPhaseFacts,{complete:true}),'WON');
+ assert.equal(gradeCornerComparisonFacts({...cornerHtFt,fullSide:'away'},
+  cornerPhaseFacts,{complete:true}),'LOST');
+ assert.equal(gradeCornerComparisonFacts(cornerHtFt,cornerPhaseFacts,{complete:false}),null);
+
+ const cornerHtFtMatch=990106;
+ await addMatch(cornerHtFtMatch,{
+  score:[0,0],cornerTotal:[3,2],
+  corners:[
+   {id:'ch1',team:'home',minute:8,second:10,sequence:1,phase:'H1'},
+   {id:'ch2',team:'home',minute:17,second:11,sequence:2,phase:'H1'},
+   {id:'ch3',team:'away',minute:24,second:12,sequence:3,phase:'H1'},
+   {id:'ch4',team:'home',minute:62,second:13,sequence:4,phase:'H2'},
+   {id:'ch5',team:'away',minute:70,second:14,sequence:5,phase:'H2'}
+  ]
+ });
+ const cornerSettled=await gradeStoredEventContract({
+  id:'00000000-0000-4000-8000-000000000106',match_id:cornerHtFtMatch,
+  market_name:'Corners Halftime/Fulltime',outcome_name:'1/1',live_contract:cornerHtFt
+ },{home_score:0,away_score:0,corners_home:3,corners_away:2,source:'ZIZOBET'},
+ {execute:run});
+ assert.equal(cornerSettled,'WON','The stored complete primary corner timeline settles HT/FT corners');
+
  console.log('PASS four-match legacy pending markets: goal interval, Nth corner, race to X, last corner, corner interval and separate yellow/red cards');
 }finally{
  await db.close();
