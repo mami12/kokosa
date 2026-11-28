@@ -19,22 +19,21 @@ assert.equal(parseFotMobPayload({status:{finished:true,reason:{short:'FT',shortK
 const minute=parseFotMobPayload({status:{finished:true,scoreStr:'1 - 0'}},{
  content:{matchFacts:{events:{events:[{type:'Goal',time:'90+2',isHome:true}]}}}
 });
-assert.equal(minute.goalEvents.length,1);
-assert.equal(minute.goalEvents[0].minute,90);
-assert.equal(minute.goalEvents[0].injury,2);
-assert.equal(minute.goalEvents[0].player,null,'Goal is retained when the scorer is unknown');
+assert.equal('goalEvents' in minute,false,'FotMob does not provide goal chronology or scorer data');
 assert.equal(minute.cardsHome,null,'No event-card count is not zero');
 
 const now=Date.now();
 const base={match_id:456,home_score:1,away_score:0,
  home_team:'Alpha',away_team:'Beta',finished_at:new Date(now-1000).toISOString(),
  snapshot:{start_at:new Date(now-9000000).toISOString(),raw:{}}};
-const history={source:'fotmob',complete:true,final:true,events:[
+const history={source:'apifootball',complete:true,final:true,goalsAvailable:true,events:[
  {id:'goal1',type:'goal',team:'home',minute:37,player:'Example Scorer'}
 ]};
 assert.equal(archivedFavorite({...base,event_evidence:history},now)?.events?.[0]?.player,'Example Scorer');
 assert.equal(archivedFavorite({...base,event_evidence:{...history,complete:false}},now)?.events.length,0,
  'Partial historical timeline must not be displayed as verified FT');
+assert.equal(archivedFavorite({...base,event_evidence:{...history,source:'fotmob'}},now)?.events.length,0,
+ 'FotMob goal rows are not accepted for historical goal display');
 
 const messages=[];
 const slip={data:{feedScope:{selectionIds:['123|corners||over']}},
