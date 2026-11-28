@@ -65,6 +65,26 @@ assert.deepEqual(new Set(savedRows.map(row=>row.kind)),new Set(['goal','corner',
 assert.ok(savedRows.every(row=>typeof row.provider_event_id==='string'&&row.provider_event_id.length>0),
  'Every stored event retains a stable provider event identity');
 
+// Repeated source IDs in one response must not make PostgreSQL process the
+// same ON CONFLICT target twice in a single INSERT batch.
+const duplicateCalls=[];
+const duplicateRows=[
+ {providerEventId:'same-corner',kind:'corner',team:'home',minute:12,sourceOrder:1,raw:{id:'same-corner'}},
+ {providerEventId:'same-corner',kind:'corner',team:'home',minute:12,sourceOrder:1,
+  playerName:'Corner taker',raw:{id:'same-corner',player:'Corner taker'}},
+ {providerEventId:'other-corner',kind:'corner',team:'away',minute:13,sourceOrder:2,raw:{id:'other-corner'}}
+];
+assert.deepEqual(await storeSupplementalIncidents(101,'fotmob','fotmob-9001',duplicateRows,{
+ execute:async(sql,params=[])=>{duplicateCalls.push({sql,params});return {rowCount:1};}
+}),{stored:2});
+const duplicateInsert=duplicateCalls.find(call=>call.sql.includes('insert into app_supplemental_match_incident'));
+const duplicateSaved=JSON.parse(duplicateInsert.params[3]);
+assert.equal(duplicateSaved.length,2);
+assert.equal(new Set(duplicateSaved.map(row=>row.provider_event_id+'|'+row.kind)).size,2,
+ 'No INSERT batch may contain duplicate primary-key identities');
+assert.equal(duplicateSaved.find(row=>row.provider_event_id==='same-corner').player_name,'Corner taker',
+ 'Duplicate copies retain the most complete event representation');
+
 const collector=readFileSync(new URL('../server/collector.mjs',import.meta.url),'utf8');
 const service=readFileSync(new URL('../server/stats-providers/service.mjs',import.meta.url),'utf8');
 assert.match(collector,/if\(displayStats&&!board\)await Promise\.all\(rows\.map\(row=>statsProviders\.warm\(row\)\)\)/,
