@@ -289,7 +289,7 @@ try{
  assert.equal(gradeHeldNativeCombo(frozenCombo(92401,
   'Halftime/fulltime & total goals (5.5)','1/1 and Under','5.5'),werderNoHt),'LOST');
  assert.equal(gradeHeldNativeCombo(frozenCombo(92402,
-  'Halftime/fulltime & total goals (5.5)','1/1 and Over','5.5'),werderNoHt),null);
+  'Halftime/fulltime & total goals (5.5)','1/X and Over','5.5'),werderNoHt),null);
  const southamptonNoHt={home_score:2,away_score:0,half_home_score:null,half_away_score:null};
  assert.equal(gradeHeldNativeCombo(frozenCombo(92403,
   'Halftime/fulltime & total goals (2.5)','1/1 and Over','2.5'),southamptonNoHt),'LOST');
