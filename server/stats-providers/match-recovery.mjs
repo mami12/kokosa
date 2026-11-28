@@ -199,6 +199,8 @@ export function parseFotMobPayload(summary, details = null) {
   let redA = 0;
   let foulsH = null;
   let foulsA = null;
+  let goalKicksH = null;
+  let goalKicksA = null;
   let shotsH = null;
   let shotsA = null;
   let sOnTargetH = null;
@@ -265,6 +267,9 @@ export function parseFotMobPayload(summary, details = null) {
     if(/corner/i.test(title)){
       if(Number.isInteger(s0))cornersH=s0;
       if(Number.isInteger(s1))cornersA=s1;
+    }else if(/goal\\s*kicks?/i.test(title)){
+      if(Number.isInteger(s0))goalKicksH=s0;
+      if(Number.isInteger(s1))goalKicksA=s1;
     }else if(/foul/i.test(title)){
       if(Number.isInteger(s0))foulsH=s0;
       if(Number.isInteger(s1))foulsA=s1;
@@ -324,6 +329,7 @@ export function parseFotMobPayload(summary, details = null) {
       shots: (shotsH != null && shotsA != null) ? { home: shotsH, away: shotsA } : {},
       shotsOnTarget: (sOnTargetH != null && sOnTargetA != null) ? { home: sOnTargetH, away: sOnTargetA } : {},
       fouls: (foulsH != null && foulsA != null) ? { home: foulsH, away: foulsA } : {},
+      goalKicks: (goalKicksH != null && goalKicksA != null) ? { home: goalKicksH, away: goalKicksA } : {},
       possession: (possessionH != null && possessionA != null) ? { home: possessionH, away: possessionA } : {}
     },
     goalEvents,
